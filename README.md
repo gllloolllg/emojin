@@ -19,13 +19,13 @@
 
 ## 2. GitHub Pages を設定する
 
-1. このフォルダーの中身を、`.github` フォルダーを含めて GitHub リポジトリのルートへ置き、`main` ブランチに push します。`node_modules`、`dist`、`.env` は置きません。
-2. GitHub リポジトリの **Settings → Secrets and variables → Actions → Variables** に、`VITE_GAS_URL` という名前で先ほどの `/exec` URL を登録します。
-3. **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にします。同梱の `.github/workflows/pages.yml` がテスト・ビルド・公開を行います。通常の `ユーザー名.github.io/リポジトリ名/` ではパスが自動設定されます。独自ドメインの場合は GitHub 変数 `PAGES_BASE_PATH` に `/` を設定します。
+1. `src/gas-client.js` の `ENDPOINT` にある仮のURLを、手順1で控えた GAS の `/exec` URL に置き換えます。例：`const ENDPOINT='https://script.google.com/macros/s/実際のデプロイID/exec';`。このURLは公開ページから見えるため、秘密情報は入れないでください。
+2. このフォルダーの中身を、`.github` フォルダーを含めて GitHub リポジトリのルートへ置き、`main` ブランチに push します。`node_modules` と `dist` は置きません。
+3. GitHub リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にします。同梱の `.github/workflows/pages.yml` がURL設定の確認・テスト・ビルド・公開を行います。通常の `ユーザー名.github.io/リポジトリ名/` ではパスが自動設定されます。独自ドメインの場合は GitHub 変数 `PAGES_BASE_PATH` に `/` を設定します。
 
 ## ローカルで確認する
 
-Node.js と npm が必要です。`.env.example` を `.env` にコピーして `/exec` URL を入力します。
+Node.js と npm が必要です。先に `src/gas-client.js` の `ENDPOINT` に `/exec` URL を入力します。
 
 ```sh
 npm ci

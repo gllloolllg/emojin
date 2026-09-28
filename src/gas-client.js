@@ -1,6 +1,7 @@
 import './engine.js';
 const E=window.EmojinEngine;
-const ENDPOINT=import.meta.env.VITE_GAS_URL;
+
+const ENDPOINT='https://script.google.com/macros/s/AKfycbzJHwzgGZGBDwEwANQJoADfoqBkFfwlEDRby9aLEdPnuih7QU4en2FwphIH6u_8b2VqMA/exec';
 const TOKEN_KEY='emojin.gas.deviceToken.v1';
 const WALLET_PREFIX='emojin.gas.wallet.v1.';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -57,8 +58,8 @@ async function request(op,token,data={}){
   throw new Error('結果を確認できませんでした。少し待って再読み込みしてください。');
 }
 export async function createCloud(){
-  if(!ENDPOINT||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(ENDPOINT))
-    throw new Error('GASのURLを設定してください（VITE_GAS_URL）。');
+  if(ENDPOINT.includes('REPLACE_WITH_')||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(ENDPOINT))
+    throw new Error('src/gas-client.js にGASの /exec URLを設定してください。');
   const token=deviceToken();
   const cloud={uid:null};
   cloud.wallet=()=>cloud.uid?wallet(cloud.uid):null;

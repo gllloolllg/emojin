@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#211C29">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>エモジン</title>
+<meta name="description" content="放置育成型のエモジンバトルゲーム。">
+<meta name="robots" content="noindex,nofollow">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="stylesheet" href="./style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Freckle+Face&family=Monomaniac+One&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+  <main id="cityScreen" aria-label="エモジンの街">
+    <canvas id="cityCanvas" aria-hidden="true"></canvas>
+    <div id="residents"></div>
+    <header class="city-header">
+      <div class="header-tools">
+        <button id="unreadButton" class="unread-button hidden" aria-label="未再生のバトルを見る"></button>
+        
+      </div>
+      <div class="mo-meter" aria-label="モジ残高">
+        <div class="mo-rain" aria-hidden="true"><span>モ</span><span>モ</span><span>モ</span></div>
+        <div class="mo-vessel"><svg viewBox="0 0 44 50" aria-hidden="true"><defs><clipPath id="mo-vessel-clip"><path d="M14 7H30V19L37 39Q39 45 32 45H12Q5 45 7 39L14 19Z"/></clipPath></defs><rect id="moFluid" x="5" y="45" width="34" height="0" clip-path="url(#mo-vessel-clip)"/><path d="M14 7H30V19L37 39Q39 45 32 45H12Q5 45 7 39L14 19Z"/><path d="M11 7H33"/></svg><div class="mo-reading"><strong id="moBalance">0</strong><small>モジ</small></div></div>
+      </div>
+    </header>
+    <div id="emptyCity" class="empty-city hidden">すこし静かな街。</div>
+    <nav class="bottom-nav" aria-label="メニュー">
+      <button id="forceBattleButton" class="nav-action" aria-label="強制バトル、100モジ"><span class="nav-icon-wrap"><span class="nav-icon" aria-hidden="true">⚔️</span></span><span class="nav-cost">100 <small>モジ</small></span></button>
+      <button id="generateButton" class="generate-button" aria-label="エモジンを生成、1400モジ"><span class="nav-icon-wrap"><span class="egg-sign" aria-hidden="true">&#129370;</span></span><span class="nav-cost">1400 <small>モジ</small></span></button>
+      <button id="browseButton" class="nav-action" aria-label="エモジンを閲覧"><span class="nav-icon-wrap"><svg class="nav-browse-icon" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="7" width="18" height="21" rx="2"/><path d="M10 4h17v20M9 13h10M9 18h10M9 23h7"/></svg></span><span class="nav-cost nav-cost-spacer" aria-hidden="true">&nbsp;</span></button>
+    </nav>
+  </main>
+
+  <div id="battleCutin" class="battle-cutin hidden" aria-hidden="true"><span class="cutin-ring"></span><span class="cutin-icon">⚔️</span></div>
+
+  <section id="battleScreen" class="battle-screen hidden" aria-label="バトル">
+    <div class="battle-grid" aria-hidden="true"></div>
+    <div class="battle-roof roof-upper" aria-hidden="true"></div>
+    <div class="battle-roof roof-lower" aria-hidden="true"></div>
+    <div class="battle-axis" aria-hidden="true"></div>
+    <header class="battle-header">
+      <span id="battleCount">バトル</span>
+      <div class="battle-controls">
+        <button id="speedButton" aria-label="再生速度を変更">1×</button>
+        <button id="skipButton">スキップ <span>≫</span></button>
+      </div>
+    </header>
+    <div id="fighter1" class="fighter fighter-upper">
+      <div class="fighter-platform"></div><div class="fighter-art"></div><div class="fighter-status"></div><div class="fighter-hit-area"></div>
+    </div>
+    <div id="info1" class="battle-info info-upper"></div>
+    <div id="die1" class="battle-dice die-upper"></div>
+    <div id="fighter0" class="fighter fighter-lower">
+      <div class="fighter-platform"></div><div class="fighter-art"></div><div class="fighter-status"></div><div class="fighter-hit-area"></div>
+    </div>
+    <div id="info0" class="battle-info info-lower"></div>
+    <div id="die0" class="battle-dice die-lower"></div>
+    <div id="battleFx" class="battle-fx" aria-hidden="true"></div>
+    <div class="battle-caption-wrap"><div id="battleCaption" class="battle-caption" role="status"></div><div id="battleProgress" class="battle-progress"></div><button id="battleNext" class="battle-next hidden" aria-label="次のバトル" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div>
+  </section>
+
+  <div id="modalHost" class="modal-host hidden"></div>
+  <div id="detailHost" class="modal-host detail-overlay hidden"></div>
+  <div id="popoverHost" class="popover-host hidden"></div>
+
+  <section id="revealScreen" class="reveal-screen hidden" aria-label="新しいエモジン">
+    <div class="reveal-grid" aria-hidden="true"></div><div class="reveal-pulse" aria-hidden="true"></div>
+    <div class="signal-ring ring-one" aria-hidden="true"></div><div class="signal-ring ring-two" aria-hidden="true"></div><div class="signal-ring ring-three" aria-hidden="true"></div>
+    <div class="signal-cross" aria-hidden="true"></div>
+    <button id="revealContinue" class="reveal-continue" aria-label="エモジンの生成を続ける">
+      <span class="hatch-stage">
+        <span id="revealEmoji" class="reveal-emoji"></span>
+        <span id="revealEgg" class="hatch-egg" aria-hidden="true">
+          <span class="egg-intact">&#129370;</span>
+          <span class="egg-shell egg-shell-top">&#129370;</span>
+          <span class="egg-shell egg-shell-bottom">&#129370;</span>
+          <svg class="egg-crack" viewBox="0 0 200 220" aria-hidden="true"><path d="M57 111L73 103L88 117L101 104L116 113L130 101L146 111"/></svg>
+        </span>
+      </span>
+      <span class="reveal-lines" aria-hidden="true"></span>
+    </button>
+    <div id="revealFx" class="reveal-fx" aria-hidden="true"></div>
+  </section>
+
+  <section id="legendScreen" class="legend-screen hidden" aria-label="レジェンド誕生">
+    <div class="legend-sunburst" aria-hidden="true"></div><div class="legend-ring" aria-hidden="true"></div>
+    <div class="legend-content">
+      <div class="legend-kicker">🏆</div>
+      <h1 class="legend-title">レジェンド</h1>
+      <div id="legendHero" class="legend-hero"></div>
+      <h2 id="legendName"></h2>
+      <div id="legendStar"></div>
+      <div id="legendSlots" class="slots-row"></div>
+      <div id="legendOwner" class="owner-line"></div>
+      <button id="legendContinue" class="legend-continue" aria-label="街へ戻る"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+    </div>
+    <div id="legendFx" class="legend-fx" aria-hidden="true"></div>
+  </section>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="tutorial" class="tutorial hidden" role="dialog" aria-label="あそびかた" aria-modal="true" tabindex="0"><div id="tutorialSpotlight" class="tutorial-spotlight"></div><div id="tutorialBubble" class="tutorial-bubble" role="status"></div></div>
+  <div id="bootScreen" class="boot-screen" role="status" aria-label="エモジンを読み込み中"><span>エモジン</span><div class="loader" aria-hidden="true"></div></div>
+</div>
+<script src="./app.js" defer></script>
+<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));</script>
+</body>
+</html>

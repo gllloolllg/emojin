@@ -21,7 +21,14 @@ button{color:inherit;cursor:pointer;touch-action:manipulation;-webkit-appearance
 button:disabled{cursor:default;opacity:.48}
 button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);outline-offset:4px}
 .hidden{display:none!important}
-#app{height:100%;height:100dvh;position:relative;overflow:hidden;isolation:isolate}
+#app{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:auto;
+  overflow:hidden;
+  isolation:isolate;
+}
 #cityScreen{position:absolute;inset:0;overflow:hidden;background:var(--city-bg) url('./city-background.png') center / 100% 100% no-repeat}
 #cityCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .city-header{position:absolute;top:calc(24px + var(--safe-top));left:25px;right:25px;display:flex;align-items:center;justify-content:flex-end;z-index:5;pointer-events:none}
@@ -420,7 +427,17 @@ button.slot:active{transform:scale(.89)}
 body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 
 /* First sign-in guide */
-.tutorial {position:fixed;inset:0;z-index:120;background:transparent;isolation:isolate;cursor:pointer;touch-action:manipulation;}
+.tutorial{
+  position:fixed;
+  inset:0;
+  z-index:120;
+  background:transparent;
+  isolation:isolate;
+  cursor:pointer;
+  touch-action:manipulation;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
 .tutorial.no-target {background:rgba(12,9,21,.72);}
 .tutorial-spotlight {position:fixed;z-index:0;border:2px solid #ffadd9;border-radius:12px;box-shadow:0 0 0 200vmax rgba(12,9,21,.72),0 0 24px 4px rgba(255,158,211,.65);pointer-events:none;}
 .tutorial-bubble {position:relative;z-index:1;width:220px;max-width:calc(100vw - 24px);padding:15px 17px;border:0;border-radius:13px;background:#ffadd9;color:#291c2e;text-align:center;font-size:15px;font-weight:800;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.45),0 0 25px rgba(255,158,211,.35);animation:tutorial-in .25s both;}

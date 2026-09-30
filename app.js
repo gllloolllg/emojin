@@ -694,12 +694,30 @@ function showTutorial(registration=cloud.waitRegistration()){
     host.classList.toggle('no-target',!rect);
     if(rect){
       const pad=step.target==='#forceBattleButton'?5:7;
-      spotlight.style.left=(rect.left-pad)+'px';spotlight.style.top=(rect.top-pad)+'px';
-      spotlight.style.width=(rect.width+pad*2)+'px';spotlight.style.height=(rect.height+pad*2)+'px';
+      spotlight.style.left=(rect.left-pad)+'px';
+      spotlight.style.top=(rect.top-pad)+'px';
+      spotlight.style.width=(rect.width+pad*2)+'px';
+      spotlight.style.height=(rect.height+pad*2)+'px';
       spotlight.classList.remove('hidden');
+
+      const viewport=window.visualViewport;
+      const viewTop=viewport?.offsetTop||0;
+      const viewHeight=viewport?.height||innerHeight;
+      const styles=getComputedStyle(host);
+      const topLimit=viewTop+(parseFloat(styles.paddingTop)||0)+12;
+      const bottomLimit=viewTop+viewHeight
+        -(parseFloat(styles.paddingBottom)||0)-bubble.offsetHeight-12;
+      const desiredTop=step.position==='below'
+        ?rect.bottom+18
+        :rect.top-bubble.offsetHeight-18;
+
       bubble.style.position='fixed';
-      bubble.style.left=Math.max(12,Math.min(innerWidth-232,rect.left+rect.width/2-110))+'px';
-      bubble.style.top=(step.position==='below'?Math.min(innerHeight-100,rect.bottom+18):Math.max(16,rect.top-82))+'px';
+      bubble.style.left=Math.max(
+        12,
+        Math.min(innerWidth-bubble.offsetWidth-12,
+          rect.left+rect.width/2-bubble.offsetWidth/2)
+      )+'px';
+      bubble.style.top=Math.max(topLimit,Math.min(bottomLimit,desiredTop))+'px';
     }else spotlight.classList.add('hidden');
   };
   const advance=async()=>{

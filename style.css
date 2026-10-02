@@ -465,3 +465,7 @@ body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{an
 .endpoint-setup details p{font-size:14px;margin:12px 0;overflow-wrap:anywhere}
 .endpoint-setup code{color:#b6f0ff}
 .endpoint-setup textarea{width:100%;resize:vertical;background:#f9f5fa;color:#211c29;border:0;border-radius:5px;padding:10px;font:13px monospace}
+
+#cityScreen {
+  background: #705678 !important;
+}

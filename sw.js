@@ -1,4 +1,4 @@
-const CACHE = 'emojin-shell-v2';
+const CACHE = 'emojin-shell-v3';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './city-background.png', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {

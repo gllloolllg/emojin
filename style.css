@@ -116,7 +116,12 @@ button.slot:active{transform:scale(.89)}
 .archive-arrow{color:var(--muted);font-size:19px}
 .archive-empty{text-align:center;color:var(--muted);padding:42px 0;line-height:1.9;font-size:13px}
 .register-panel{text-align:center;padding:37px 26px 27px}
-.register-brand{color:var(--rose-light);letter-spacing:.28em;font-size:20px;font-weight:800;margin-bottom:30px}
+.register-brand{color:var(--rose-light);letter-spacing:.28em;font-size:20px;font-weight:800;margin-bottom:30px;font-family: "Monomaniac One", sans-serif;}
+.auth-actions,.auth-form{display:grid;gap:12px}
+.auth-heading{font-size:17px;margin:-8px 0 22px;color:var(--text)}
+.auth-form .input-error{min-height:1.5em;text-align:left;font-size:13px}
+.auth-secondary{background:var(--panel-light);color:var(--text);border:1px solid var(--line)}
+.auth-back{margin:18px auto 0;padding:8px 16px;background:transparent;color:var(--muted);font-size:14px}
 .field-wrap{text-align:left}
 .text-input{display:block;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:16px;color:var(--text);font-size:17px;outline:none;transition:border-color .2s}
 .text-input:focus{border-color:var(--neon-sky)}
@@ -385,6 +390,8 @@ button.slot:active{transform:scale(.89)}
 .generate-button .nav-cost{color:var(--text)}
 .generate-button.available{background:transparent}
 .generate-button.available .nav-cost{color:var(--neon-green)}
+#forceBattleButton:not(:disabled) .nav-cost,#generateButton:not(:disabled) .nav-cost{color:var(--neon-green)}
+#forceBattleButton:disabled,#generateButton:disabled{opacity:.38;filter:grayscale(.4)}
 .battle-cutin{position:fixed;inset:0;z-index:19;display:grid;place-items:center;background:rgba(33,28,41,.55);pointer-events:none}
 .cutin-icon{z-index:1;font-size:82px;line-height:1}
 .cutin-ring{position:absolute;width:150px;height:150px;border:2px solid var(--neon-sky);border-radius:50%;opacity:.8}

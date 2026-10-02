@@ -301,12 +301,15 @@ const KEY='emojin.gas.v1';
 const parse=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{};}catch{return {};}};
 let local=parse();
 const persist=()=>localStorage.setItem(KEY,JSON.stringify(local));
-const uid=local.uid ||= (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+let uid=local.uid ||= (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`);
 local.wallet ||= {balance:3000,updatedAt:Date.now()};
 local.seenBattleSeq ||= 0;local.seenLegendSeq ||= 0;
 persist();
 let world={emojins:[],battles:[],legends:[],nextSeq:1,nextLegendSeq:1};
-let registrationReady=!!local.player && !(local.pending||[]).some(op=>op.action==='register');
+async function hashPassword(password){
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
+  return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
+}
 function read(action, args={},timeout=25000){
   if(!ENDPOINT) return Promise.reject(new Error('app.js の ENDPOINT にGASの /exec URLを設定してください。'));
   return new Promise((resolve,reject)=>{
@@ -338,7 +341,6 @@ async function flush(){
         throw error;
       }
       local.pending=local.pending.filter(item=>item.id!==op.id);persist();
-      if(op.action==='register')registrationReady=true;
     }
     return {npcs};
   })().finally(()=>{flushing=null;});
@@ -352,13 +354,10 @@ function enqueue(action,data,id){
 async function createCloud(){
   const E=window.EmojinEngine;
   if(!ENDPOINT)throw new Error('app.js の ENDPOINT にGASの /exec URLを設定してください。');
-  flush().catch(console.warn);
+  if(local.player)flush().catch(console.warn);
   return {
-    uid,
+    get uid(){return uid;},
     get player(){return local.player||null;},get wallet(){return local.wallet;},
-    get registrationReady(){return registrationReady;},
-    waitRegistration(){return registrationReady?Promise.resolve():flush();},
-    cancelRegistration(){local.player=null;local.pending=(local.pending||[]).filter(op=>op.action!=='register');registrationReady=false;persist();},
     setWallet(value){local.wallet=value;persist();},
     spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw new Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
     async getState(){
@@ -367,16 +366,30 @@ async function createCloud(){
       return {version:1,player:local.player||null,wallet:local.wallet,draft:local.draft||null,
         ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
     },
-    createPlayer({name}){
+    async createOwner({name,password}){
+      const result=await write('register',{uid,name,passwordHash:await hashPassword(password)});
+      uid=result.uid;local.uid=uid;
       local.player={uid,name,seenBattleSeq:world.nextSeq-1,seenLegendSeq:world.nextLegendSeq-1,tutorialSeen:false};
-      persist();registrationReady=false;
-      return enqueue('register',{uid,name},'register-'+uid).then(()=>{registrationReady=true;});
+      persist();return result;
+    },
+    async loginOwner({name,password}){
+      const result=await write('login',{name,passwordHash:await hashPassword(password)});
+      const changed=uid!==result.uid;
+      uid=result.uid;local.uid=uid;
+      if(changed){
+        local.draft=null;
+        local.wallet={balance:3000,updatedAt:Date.now()};
+        local.pending=(local.pending||[]).filter(op=>op.action!=='register'&&op.data?.uid===uid);
+      }
+      local.player={uid,name:result.name,seenBattleSeq:0,seenLegendSeq:0,tutorialSeen:true};
+      persist();flush().catch(console.warn);
+      return result;
     },
     markTutorialSeen(){local.player.tutorialSeen=true;persist();return Promise.resolve();},
     markSeen({battleSeq,legendSeq}){local.player.seenBattleSeq=Math.max(local.player.seenBattleSeq,battleSeq);
       local.player.seenLegendSeq=Math.max(local.player.seenLegendSeq,legendSeq);persist();return Promise.resolve();},
     startDraft(){
-      if(!local.draft){this.spend(1400);local.draft=E.createDraft(Math.random,Date.now());persist();}
+      if(!local.draft){this.spend(800);local.draft=E.createDraft(Math.random,Date.now());persist();}
       return {draft:local.draft,wallet:local.wallet};
     },
     chooseSpecial({name,chosen}){
@@ -405,7 +418,7 @@ const E = window.EmojinEngine;
 const $ = id => document.getElementById(id);
 const cloud = window.EmojinCloud;
 const HOUR = 3600000;
-const MOJI_CAP = 3000, EGG_COST = 1400, BATTLE_COST = 100;
+const MOJI_CAP = 3000, EGG_COST = 800, BATTLE_COST = 100;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("ja", {granularity:"grapheme"}) : null;
 const chars = s => segmenter ? [...segmenter.segment(s)].map(v => v.segment) : Array.from(s);
@@ -649,30 +662,61 @@ function showArchive(status="active") {
     "エモジンを閲覧",{panelClass:"archive-panel",hideClose:true});
   $("modalHost").querySelector(".archive-panel").dataset.activeTab=tabs[index].key;
 }
-function register() {
+function showAuthChoice(){
   openModal(`<div class="register-brand">エモジン</div>
-    <form id="registerForm"><div class="field-wrap"><input id="playerInput" class="text-input" aria-label="プレイヤー名" autocomplete="off" autocapitalize="off" placeholder="プレイヤー名" maxlength="40"><div class="input-meta"><span id="registerError" class="input-error"></span></div></div><button class="primary-button" type="submit">はじめる</button></form>
-    <p class="demo-notice">名前を決めて街へ。</p>`,
-    "プレイヤー名登録",{closable:false,panelClass:"register-panel"});
-  $("registerForm").addEventListener("submit",ev=>{
+    <div class="auth-actions"><button class="primary-button" id="authRegister" type="button">オーナー登録</button>
+    <button class="primary-button auth-secondary" id="authLogin" type="button">オーナーログイン</button></div>`,
+    "オーナー認証",{closable:false,panelClass:"register-panel"});
+  $("authRegister").onclick=()=>showAuthForm('register');
+  $("authLogin").onclick=()=>showAuthForm('login');
+}
+function showAuthLoading(){
+  const screen=$("bootScreen");
+  screen.getAnimations().forEach(animation=>animation.cancel());
+  screen.style.opacity='1';
+  screen.classList.remove('hidden');
+}
+function showAuthForm(mode){
+  const registering=mode==='register';
+  openModal(`<div class="register-brand">エモジン</div>
+    <h2 class="auth-heading">${registering?'オーナー登録':'オーナーログイン'}</h2>
+    <form id="authForm" class="auth-form">
+      <input id="ownerNameInput" class="text-input" aria-label="オーナー名" autocomplete="username" autocapitalize="off" placeholder="オーナー名" maxlength="40" required>
+      <input id="ownerPasswordInput" class="text-input" type="password" aria-label="パスワード" autocomplete="${registering?'new-password':'current-password'}" placeholder="パスワード" required>
+      <div id="authError" class="input-error" role="alert"></div>
+      <button class="primary-button" type="submit">${registering?'登録':'ログイン'}</button>
+    </form><button class="auth-back" id="authBack" type="button">戻る</button>`,
+    registering?'オーナー登録':'オーナーログイン',
+    {closable:false,panelClass:'register-panel',focus:'#ownerNameInput'});
+  $("authBack").onclick=showAuthChoice;
+  $("authForm").addEventListener('submit',async ev=>{
     ev.preventDefault();
-    const name=normalName($("playerInput").value);
-    if(!name||chars(name).length>12){$("registerError").textContent="1〜12文字で入力してください。";return;}
-    if(/[\u0000-\u001f\u007f]/.test(name)){$("registerError").textContent="この文字は使えません。";return;}
-    const button=$("registerForm").querySelector('button[type="submit"]');button.disabled=true;
-    try {
-      // enqueue() starts the GAS request now; the guide runs while it is pending.
-      const registration=cloud.createPlayer({name});
-      store.player=cloud.player;store.wallet=cloud.wallet;
-      const host=$("modalHost");
-      modalRevision++;modalClosing=false;modalKind=null;modalReturn=null;oldFocus=null;
-      host.getAnimations({subtree:true}).forEach(animation=>animation.cancel());
-      host.classList.add('hidden');host.classList.remove('is-closing');host.innerHTML='';
+    const name=normalName($("ownerNameInput").value);
+    const password=$("ownerPasswordInput").value;
+    const errorLabel=$("authError");
+    if(!name||chars(name).length>12){errorLabel.textContent='オーナー名は1〜12文字で入力してください。';return;}
+    if(/[\u0000-\u001f\u007f]/.test(name)){errorLabel.textContent='このオーナー名は使えません。';return;}
+    if(!password){errorLabel.textContent='パスワードを入力してください。';return;}
+    errorLabel.textContent='';
+    const button=$("authForm").querySelector('button[type="submit"]');button.disabled=true;
+    showAuthLoading();
+    try{
+      if(registering)await cloud.createOwner({name,password});
+      else await cloud.loginOwner({name,password});
+      store=await cloud.getState();
+      if(!registering)cloud.markSeen({battleSeq:store.nextSeq-1,legendSeq:store.nextLegendSeq-1});
+      await closeModal(true);
+      $("bootScreen").classList.add('hidden');
       renderCity();refreshNav();
-      showTutorial(registration);
-    } catch(error) {const label=$("registerError");if(label)label.textContent=error.message || '登録に失敗しました。';else reportError(error);}
-    finally {button.disabled=false;}
-
+      if(registering)showTutorial();
+      else if(store.draft)beginGeneration();
+      else playUpdates();
+    }catch(error){
+      $("bootScreen").classList.add('hidden');
+      if(errorLabel.isConnected)errorLabel.textContent=error.message||'通信に失敗しました。';
+      else reportError(error);
+      button.disabled=false;
+    }
   });
 }
 const tutorialSteps=[
@@ -681,9 +725,8 @@ const tutorialSteps=[
   {target:'#forceBattleButton',text:'ランダムでバトルを開催',position:'above'},
   {target:null,text:'バトルは1時間に1回自動的に開催されます',position:'center'}
 ];
-function showTutorial(registration=cloud.waitRegistration()){
-  let index=0,finishing=false;
-  const completion=Promise.resolve(registration).then(()=>null,error=>error);
+function showTutorial(){
+  let index=0;
   const host=$("tutorial"),bubble=$("tutorialBubble"),spotlight=$("tutorialSpotlight");
   host.classList.remove('hidden');
   const display=()=>{
@@ -721,20 +764,8 @@ function showTutorial(registration=cloud.waitRegistration()){
     }else spotlight.classList.add('hidden');
   };
   const advance=async()=>{
-    if(finishing)return;
     if(++index<tutorialSteps.length){display();return;}
-    finishing=true;
-    // Only wait here if registration is still pending after the four hints.
-    if(!cloud.registrationReady){
-      host.classList.add('no-target');spotlight.classList.add('hidden');
-      bubble.classList.add('centered');bubble.style.cssText='';
-      bubble.innerHTML='<span class="wait-spinner" aria-hidden="true"></span>準備しています…';
-      const error=await completion;
-      if(error){
-        reportError(error);host.classList.add('hidden');
-        cloud.cancelRegistration();store.player=null;register();return;
-      }
-    }
+    host.onclick=null;host.onkeydown=null;
     host.classList.add('hidden');
     cloud.markTutorialSeen();store.player.tutorialSeen=true;
     if(store.draft)beginGeneration();else playUpdates();
@@ -748,7 +779,7 @@ function refreshNav() {
   btn.classList.toggle("available",available);
   btn.disabled=!available;
   btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":`エモジンを生成、${EGG_COST}モジ`);
-  btn.querySelector(".nav-cost").innerHTML=store.draft?'つづき':'1400 <small>モジ</small>';
+  btn.querySelector(".nav-cost").innerHTML=store.draft?'つづき':'800 <small>モジ</small>';
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||active().length<2;
   $("moBalance").textContent=balance.toLocaleString("ja-JP");
   const height=38*balance/MOJI_CAP;
@@ -874,7 +905,7 @@ function worldLoop(time) {
    Reloading or closing the modal never re-rolls the day's offer. */
 async function beginGeneration() {
   if(busy||playback)return;
-  if(!store.player){register();return;}
+  if(!store.player){showAuthChoice();return;}
   if(store.draft){
     if(store.draft.chosen){showReels(true);return;}
     if(store.draft.stage==="special"){showSpecial();return;}
@@ -1690,12 +1721,17 @@ function wireEvents() {
   setInterval(()=>{if(!document.hidden)syncWorld({play:true}).catch(reportError);},60000);
 }
 async function init() {
-  store=await cloud.getState();document.body.classList.toggle("reduce-motion",store.reducedMotion);
+  store=cloud.player?await cloud.getState():{
+    version:1,player:null,wallet:cloud.wallet,draft:null,
+    emojins:[],battles:[],legends:[],nextSeq:1,nextLegendSeq:1,
+    reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'
+  };
+  document.body.classList.toggle("reduce-motion",store.reducedMotion);
   wireEvents();drawCity();renderCity();requestAnimationFrame(worldLoop);
   await delay(680);
   animate($("bootScreen"),[{opacity:1},{opacity:0}],350);
   await delay(350);$("bootScreen").classList.add("hidden");
-  if(!store.player){register();return;}
+  if(!store.player){showAuthChoice();return;}
   if(!store.player.tutorialSeen){showTutorial();return;}
   if(store.draft){beginGeneration();return;}
   await playUpdates();

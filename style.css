@@ -466,6 +466,18 @@ body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{an
 .endpoint-setup code{color:#b6f0ff}
 .endpoint-setup textarea{width:100%;resize:vertical;background:#f9f5fa;color:#211c29;border:0;border-radius:5px;padding:10px;font:13px monospace}
 
-#cityScreen {
-  background: #705678 !important;
+/* ホーム画面から起動したPWAの高さを補正 */
+@media (display-mode: standalone) {
+  html,
+  body {
+    height: 100vh;
+  }
+
+  #app {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    height: 100vh;
+  }
 }

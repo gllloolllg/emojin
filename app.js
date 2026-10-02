@@ -315,10 +315,10 @@ function read(action, args={},timeout=25000){
   return new Promise((resolve,reject)=>{
     const callback='emojin_cb_'+Math.random().toString(36).slice(2);
     const script=document.createElement('script');
-    const timer=setTimeout(()=>finish(new Error('GASの応答がありません。')),timeout);
+    const timer=setTimeout(()=>finish(new Error('サーバーの応答がありません。')),timeout);
     function finish(err,data){clearTimeout(timer);delete window[callback];script.remove();err?reject(err):resolve(data);}
-    window[callback]=payload=>payload.ok?finish(null,payload.data):finish(new Error(payload.error||'GASでエラーが発生しました。'));
-    script.onerror=()=>finish(new Error('GASとの通信に失敗しました。公開設定とURLを確認してください。'));
+    window[callback]=payload=>payload.ok?finish(null,payload.data):finish(new Error(payload.error||'サーバーエラー'));
+    script.onerror=()=>finish(new Error('通信に失敗しました。'));
     script.src=ENDPOINT+'?'+new URLSearchParams({action,callback,...args,nonce:String(Date.now())});
     document.head.appendChild(script);
   });
@@ -1287,7 +1287,7 @@ function paintBattle(states) {
     fighterEl(side).classList.toggle("cursed",shown.cursedSlots.length>0);
     fighterEl(side).classList.toggle("dead",e.status==="dead");
     const info=infoEl(side);
-    info.innerHTML=`<div class="battle-info-head"><h2>${esc(e.name)}</h2>${star(e.stars,e.status==="legend")}</div>${hearts(e)}`;
+    info.innerHTML=`<div class="battle-info-head"><h2 class="${my(e) ? "battle-my-name" : ""}">${esc(e.name)}</h2>${star(e.stars,e.status==="legend")}</div>${hearts(e)}`;
   });
 }
 function queueCurseRecovery(side,slots) {
@@ -1360,6 +1360,8 @@ async function rollDice(rolls,twinSide=null) {
   await battleWait(BATTLE_TIMING.diceHold);
 }
 async function playEvent(ev) {
+  // 防御の事前演出と、攻撃が来なかったカウンター演出を省く
+  if (ev.type === "guard" || ev.type === "counterIdle") return;
   const old=battleStates;
   $("battleScreen").dataset.phase=ev.type;
   if(ev.type==="roll"){

@@ -426,7 +426,13 @@ const normalName = s => String(s).normalize("NFC").trim().replace(/\s+/g," ");
 const nameKey = s => normalName(s).toLocaleLowerCase("ja");
 const isReducedSystem = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let store, modalKind = null, modalReturn = null, toastTimer, busy = false, revealReady = false;
-let playback = null, currentBattle = null, battleStates = null, replaySpeed = 1;
+let playback = null, currentBattle = null, battleStates = null;
+let replaySpeed = 1;
+
+try {
+  const saved = Number(localStorage.getItem("emojin.battleSpeed"));
+  if ([1, 2, 4].includes(saved)) replaySpeed = saved;
+} catch {}
 let legendResolve = null, revealResolve = null, revealAutoTimer = null;
 let wander = new Map(), canvasW = 0, canvasH = 0, worldFrame = 0, priorFrame = 0;
 let saveWarning = false;
@@ -1651,7 +1657,14 @@ function wireEvents() {
     if(ev.target.closest(".battle-controls") || ev.target.closest("#battleNext"))return;
     advanceBattle();
   });
-  $("speedButton").onclick=()=>{replaySpeed=replaySpeed===1?2:replaySpeed===2?4:1;$("speedButton").textContent=replaySpeed+"×";};
+  $("speedButton").onclick = () => {
+    replaySpeed = replaySpeed === 1 ? 2 : replaySpeed === 2 ? 4 : 1;
+    $("speedButton").textContent = replaySpeed + "×";
+
+    try {
+      localStorage.setItem("emojin.battleSpeed", String(replaySpeed));
+    } catch {}
+  };
   $("modalHost").addEventListener("click",ev=>{
     if(modalClosing)return;
     const close=ev.target.closest("[data-close-modal]");

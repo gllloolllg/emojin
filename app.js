@@ -973,61 +973,154 @@ function showAuthForm(mode){
     }
   });
 }
-const tutorialSteps=[
-  {target:'.mo-vessel svg',text:'ポイントを貯めて',position:'below'},
-  {target:'#generateButton .egg-sign',text:'エモジンを生成する',position:'above'},
-  {target:'#forceBattleButton',text:'ランダムでバトルを開催',position:'above'},
-  {target:null,text:'バトルは1時間に1回自動的に開催されます',position:'center'}
+
+const tutorialSteps = [
+  {
+    target: '#cityScreen',
+    lines: ['ここはエモジンランド']
+  },
+  {
+    target: '#cityScreen',
+    lines: [
+      'のんびり暮らすエモジンたち。',
+      'でも、バトルは命がけ。'
+    ]
+  },
+  {
+    target: '.mo-meter',
+    lines: ['1分ごとに、1モジたまる。']
+  },
+  {
+    target: '#generateButton',
+    lines: [
+      'たまったモジで',
+      'マイエモジンを生み出そう。'
+    ]
+  },
+  {
+    target: '#cityScreen',
+    lines: [
+      '1時間に1回、',
+      'バトルが自動で行われる。'
+    ]
+  },
+  {
+    target: '#cityScreen',
+    lines: [
+      '次にキミが訪れたとき、',
+      '留守中のマイエモジンの',
+      '戦いを観戦できる。'
+    ]
+  },
+  {
+    target: '#cityScreen',
+    lines: [
+      '未確認のバトルがたくさんたまると、',
+      '確認するまで、バトルはお休み。'
+    ]
+  },
+  {
+    target: '#forceBattleButton',
+    lines: [
+      '100モジで、',
+      'ランダムバトルを今すぐ開催。'
+    ]
+  },
+  {
+    target: '#cityScreen',
+    lines: ['めざせ、エモジンマスター！']
+  }
 ];
-function showTutorial(){
-  let index=0;
-  const host=$("tutorial"),bubble=$("tutorialBubble"),spotlight=$("tutorialSpotlight");
-  host.classList.remove('hidden');
-  const display=()=>{
-    const step=tutorialSteps[index],rect=step.target?document.querySelector(step.target).getBoundingClientRect():null;
-    bubble.textContent=step.text;
-    bubble.style.cssText='';
-    bubble.classList.toggle('centered',!rect);
-    host.classList.toggle('no-target',!rect);
-    if(rect){
-      const pad=step.target==='#forceBattleButton'?5:7;
-      spotlight.style.left=(rect.left-pad)+'px';
-      spotlight.style.top=(rect.top-pad)+'px';
-      spotlight.style.width=(rect.width+pad*2)+'px';
-      spotlight.style.height=(rect.height+pad*2)+'px';
-      spotlight.classList.remove('hidden');
 
-      const viewport=window.visualViewport;
-      const viewTop=viewport?.offsetTop||0;
-      const viewHeight=viewport?.height||innerHeight;
-      const styles=getComputedStyle(host);
-      const topLimit=viewTop+(parseFloat(styles.paddingTop)||0)+12;
-      const bottomLimit=viewTop+viewHeight
-        -(parseFloat(styles.paddingBottom)||0)-bubble.offsetHeight-12;
-      const desiredTop=step.position==='below'
-        ?rect.bottom+18
-        :rect.top-bubble.offsetHeight-18;
+function showTutorial() {
+  let index = 0;
+  let finished = false;
 
-      bubble.style.position='fixed';
-      bubble.style.left=Math.max(
-        12,
-        Math.min(innerWidth-bubble.offsetWidth-12,
-          rect.left+rect.width/2-bubble.offsetWidth/2)
-      )+'px';
-      bubble.style.top=Math.max(topLimit,Math.min(bottomLimit,desiredTop))+'px';
-    }else spotlight.classList.add('hidden');
+  const host = $('tutorial');
+  const bubble = $('tutorialBubble');
+  const spotlight = $('tutorialSpotlight');
+
+  host.classList.remove('hidden', 'no-target');
+  bubble.style.cssText = '';
+  bubble.classList.add('centered');
+
+  const display = () => {
+    const step = tutorialSteps[index];
+    const target = document.querySelector(step.target);
+
+    bubble.innerHTML = step.lines
+      .map(line => `<span class="tutorial-line">${esc(line)}</span>`)
+      .join('');
+
+    host.classList.toggle(
+      'whole-screen',
+      step.target === '#cityScreen'
+    );
+
+    if (!target) {
+      spotlight.classList.add('hidden');
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const bounds = host.getBoundingClientRect();
+    const pad = step.target === '#cityScreen' ? 0 : 6;
+
+    const left = Math.max(bounds.left, rect.left - pad);
+    const top = Math.max(bounds.top, rect.top - pad);
+    const right = Math.min(bounds.right, rect.right + pad);
+    const bottom = Math.min(bounds.bottom, rect.bottom + pad);
+
+    Object.assign(spotlight.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${Math.max(0, right - left)}px`,
+      height: `${Math.max(0, bottom - top)}px`
+    });
+
+    spotlight.classList.remove('hidden');
   };
-  const advance=async()=>{
-    if(++index<tutorialSteps.length){display();return;}
-    host.onclick=null;host.onkeydown=null;
+
+  const reposition = () => display();
+
+  const advance = async () => {
+    if (finished) return;
+
+    if (++index < tutorialSteps.length) {
+      display();
+      return;
+    }
+
+    finished = true;
+    host.onclick = null;
+    host.onkeydown = null;
+    window.removeEventListener('resize', reposition);
+    window.visualViewport?.removeEventListener('resize', reposition);
+
     host.classList.add('hidden');
-    cloud.markTutorialSeen();store.player.tutorialSeen=true;
-    if(store.draft)beginGeneration();else playUpdates();
+    store.player.tutorialSeen = true;
+    cloud.markTutorialSeen().catch(reportError);
+
+    if (store.draft) beginGeneration();
+    else playUpdates();
   };
-  host.onclick=advance;
-  host.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();advance();}};
-  display();host.focus({preventScroll:true});
+
+  host.onclick = advance;
+  host.onkeydown = event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      advance();
+    }
+  };
+
+  window.addEventListener('resize', reposition);
+  window.visualViewport?.addEventListener('resize', reposition);
+
+  display();
+  host.focus({ preventScroll: true });
 }
+
+
 function refreshNav() {
   const balance=updateMoji(), available=!!store.player && (!!store.draft||balance>=EGG_COST), btn=$("generateButton");
   btn.classList.toggle("available",available);

@@ -29,9 +29,9 @@
   const EMOJIS = ["🦐","🐙","🍙","🤖","👾","💩","🐸","🦖","🦕","🌷","🍄","🦆","🦀","🍋","🍞","🥑","🐌","👻","🗿","🦑","🐧","🐼","🦊","🦋","🐢","🦔","🐟","🐳","🌵","🍆","🥕","🍥","🍣","🍔","🍟","🍩","🍮","🧀","🧊","🚽","🛸","🚀","🧸","🪩","🦷","🧠","🫀","🪼","🦎","🐣","🦭","🐈","🍤","🥦","🍑","🌝","🥸","🤡","👹","👺","👽","👄","💃","🕺","🛌","🐒","🦍","🦧","🐕","🐩","🐺","🦝","🐈‍⬛","🐅","🐆","🐴","🫎","🫏","🐎","🦓","🦌","🦬","🐃","🐄","🐖","🐗","🐑","🐫","🦙","🦒","🐘","🦣","🦏","🦛","🐀","🐇","🐿️","🦫","🦇","🐨","🦥","🦦","🦨","🦘","🦡","🐓","🐤","🐦","🕊️","🦅","🦢","🦉","🦤","🪶","🦩","🦚","🦜","🪽","🐦‍⬛","🪿","🐦‍🔥","🐊","🐍","🐉","🐬","🫍","🐠","🐡","🦈","🐚","🪸","🦞","🦪","🐛","🐜","🐝","🪲","🐞","🦗","🦟","🪰","💐","🌸","🌹","🌻","🌱","🌴","🍀","🍁","🍇","🍈","🍉","🍊","🍌","🍍","🍎","🍒","🍓","🥝","🥔","🌽","🌶️","🫑","🧄","🥜","🫛","🥐","🥖","🥨","🥞","🍖","🍕","🌭","🍳","🍱","🍜","🍡","🍦","🍪","🎂","🍫","🍬","🍭","🍼","☕","🍾","🍷","🍺","🧋","🔪","🏺","🎃","🎄","🎈","🎉","🎎","🎁","⚾","🏀","🏈","🥊","⛳","⛸️","🤿","🥌","🔫","🎱","🪄","🎮","🎴","🧞‍♂️","🧟","🫈","🌍","🗾","🧭","🌋","🪵","🗼","🗽","🎡","🚂","🚃","🚑","🚒","🚓","🚚","🏍️","🛵","🛺","🚲","🛴","🛢️","⛽","🛞","🚨","🪂","🚁","🌪️","🕶️","👘","👛","⛑️","📢","🎸","💴","✒️","📌","🔨","🚬","🪬"];
 
   function accrueMoji(wallet, timestamp) {
-    const balance = Math.max(0, Math.min(3000, Math.floor(wallet.balance)));
+    const balance = Math.max(0, Math.floor(wallet.balance));
     let updatedAt = Math.min(timestamp, wallet.updatedAt);
-    if (balance === 3000) return { balance, updatedAt: timestamp };
+    if (balance >= 3000) return { balance, updatedAt: timestamp };
     const gained = Math.max(0, Math.floor((timestamp - updatedAt) / 60000));
     const next = Math.min(3000, balance + gained);
     updatedAt = next === 3000 ? timestamp : updatedAt + gained * 60000;
@@ -290,135 +290,371 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
-  const api = { BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  // Shared persistence rules: browser and GAS use the same eligibility/NPC logic.
+  function eligible(emojins, owners) {
+    return emojins.filter(e => e.status === 'active' &&
+      (e.isNpc || e.ownerUid === 'npc' ||
+       (owners[e.ownerUid] && (owners[e.ownerUid].unreadBattleIds || []).length < 7)));
+  }
+  function planBattle(all, owners, meta, inputLog) {
+    const log = clone(inputLog), nextMeta = {...meta};
+    log.seq = Number(meta.battleSeq || 0) + 1;
+    log.ownerUids = [...new Set(log.before.filter(e => !e.isNpc && e.ownerUid !== 'npc').map(e => e.ownerUid))];
+    nextMeta.battleSeq = log.seq;
+    const ownerUpdates = {};
+    log.ownerUids.forEach(uid => {
+      if (!owners[uid] || (owners[uid].unreadBattleIds || []).length >= 7) {
+        throw Error('休止中のオーナーのエモジンはバトルに参加できません。');
+      }
+      const ids = [...new Set([...(owners[uid].unreadBattleIds || []), log.battleId])];
+      ownerUpdates[uid] = {...owners[uid], unreadBattleIds: ids, suspended: ids.length >= 7};
+    });
+    const suspended = new Set(meta.suspendedOwnerUids || []);
+    Object.entries(ownerUpdates).forEach(([uid,p]) => { if(p.suspended)suspended.add(uid);else suspended.delete(uid); });
+    nextMeta.suspendedOwnerUids = [...suspended];
+    const updates = new Map(log.after.map(e => [e.id, e]));
+    const world = all.map(e => updates.get(e.id) || e);
+    const npcs = [];
+    const missing = Math.max(0, 10 - world.filter(e => e.status === 'active').length);
+    const kana = Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');
+    for (let i = 0; i < missing; i++) {
+      const draft = createDraft(Math.random, log.battleAt);
+      npcs.push({id:draft.id, emoji:draft.emoji,
+        name:Array.from({length:3}, () => kana[index(Math.random,kana.length)]).join('')+'ン',
+        ownerName:'NPC', ownerUid:'npc', isNpc:true, currentHp:draft.maxHp, maxHp:draft.maxHp,
+        slots:[...draft.basicSlots,'attack1'], poisoned:false, cursedSlots:[], stars:0,
+        status:'active', createdAt:log.battleAt, endedAt:null});
+    }
+    const legends = [];
+    (log.legendIds || []).forEach(id => {
+      nextMeta.legendSeq = Number(nextMeta.legendSeq || 0) + 1;
+      legends.push({seq:nextMeta.legendSeq, battleSeq:log.seq, at:log.battleAt,
+        emojin:log.after.find(e => e.id === id)});
+    });
+    return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
+  }
+
+  const api = { eligible, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
-/* Google Apps Script /exec endpoint. Small idempotent JSONP operations avoid iframe POST transport. */
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzR3m_AsL07HjUDS3S9R5-gJzYpHGhn6YnpWGrml4S0RBUdYKceTbDv2kuD_O9N-b-V/exec';
-const KEY='emojin.gas.v1';
-const parse=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{};}catch{return {};}};
-let local=parse();
-const persist=()=>localStorage.setItem(KEY,JSON.stringify(local));
-let uid=local.uid ||= (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`);
-local.wallet ||= {balance:3000,updatedAt:Date.now()};
-local.seenBattleSeq ||= 0;local.seenLegendSeq ||= 0;
-persist();
-let world={emojins:[],battles:[],legends:[],nextSeq:1,nextLegendSeq:1};
-async function hashPassword(password){
-  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
+/* Firebase configuration is public. Paste the Web app config from Firebase here. */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
+  authDomain: "emojin-49855.firebaseapp.com",
+  projectId: "emojin-49855",
+  storageBucket: "emojin-49855.firebasestorage.app",
+  messagingSenderId: "463527434619",
+  appId: "1:463527434619:web:94a1441c0a9b490fb105de"
+};
+const FIREBASE_SDK_VERSION = '13.0.0';
+const KEY = 'emojin.firestore.v1.' + FIREBASE_CONFIG.projectId;
+const parse = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
+let local = parse();
+const persist = () => localStorage.setItem(KEY, JSON.stringify(local));
+local.wallet ||= {balance:3500, updatedAt:Date.now()};
+local.pending ||= [];
+let uid = local.uid || '';
+let world = {emojins:[], battles:[], legends:[], nextSeq:1, nextLegendSeq:1, suspendedOwnerUids:[]};
+let writeOperation, flushing = null;
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const transient = error => /unavailable|deadline-exceeded|aborted|network-request-failed|timeout|failed to fetch|error loading dynamically imported/i.test(String(error.code || '')+' '+String(error.message || ''));
+function bounded(task, ms=30000) {
+  let timer;
+  return Promise.race([task, new Promise((_,reject) => {timer=setTimeout(() => reject(Object.assign(new Error('通信を再試行しています。'),{code:'timeout'})),ms);})]).finally(() => clearTimeout(timer));
+}
+async function retry(task, forever=false) {
+  let tries=0;
+  for (;;) {
+    try {
+      const result = await bounded(Promise.resolve().then(task));
+      const message=document.getElementById('bootMessage');if(message)message.textContent='';
+      return result;
+    } catch(error) {
+      if (!transient(error) || (!forever && tries >= 3)) throw error;
+      const message=document.getElementById('bootMessage');
+      if(message)message.textContent='接続を再試行しています…';
+      await pause(Math.min(2000 * 2 ** tries++,15000));
+    }
+  }
+}
+async function hashText(text) {
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
   return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
 }
-function read(action, args={},timeout=25000){
-  if(!ENDPOINT) return Promise.reject(new Error('app.js の ENDPOINT にGASの /exec URLを設定してください。'));
-  return new Promise((resolve,reject)=>{
-    const callback='emojin_cb_'+Math.random().toString(36).slice(2);
-    const script=document.createElement('script');
-    const timer=setTimeout(()=>finish(new Error('サーバーの応答がありません。')),timeout);
-    function finish(err,data){clearTimeout(timer);delete window[callback];script.remove();err?reject(err):resolve(data);}
-    window[callback]=payload=>payload.ok?finish(null,payload.data):finish(new Error(payload.error||'サーバーエラー'));
-    script.onerror=()=>finish(new Error('通信に失敗しました。'));
-    script.src=ENDPOINT+'?'+new URLSearchParams({action,callback,...args,nonce:String(Date.now())});
-    document.head.appendChild(script);
-  });
+function authError(error) {
+  const code=String(error.code || '');
+  const messages={
+    'auth/email-already-in-use':'このオーナー名は使われています。',
+    'auth/invalid-credential':'オーナー名またはパスワードが違います。',
+    'auth/wrong-password':'オーナー名またはパスワードが違います。',
+    'auth/user-not-found':'オーナー名またはパスワードが違います。',
+    'auth/too-many-requests':'アクセスが集中しています。少し待ってからお試しください。',
+    'auth/operation-not-allowed':'Firebaseでメール／パスワード認証を有効にしてください。',
+    'permission-denied':'Firestoreのルール設定を確認してください。'
+  };
+  return new Error(messages[code] || error.message || '通信に失敗しました。');
 }
-function write(action,data){
-  return read(action,{payload:JSON.stringify(data)},45000);
-}
-let flushing=null;
-async function flush(){
+async function flush() {
   if(flushing)return flushing;
   flushing=(async()=>{
-    const npcs=[];
-    while(local.pending?.length){
+    const npcs=[];let last={};
+    while(local.pending.length) {
       const op=local.pending[0];
-      try {const result=await write(op.action,op.data);npcs.push(...(result.npcs||[]));}
-      catch(error){
-        if(op.action==='battle'&&/別のバトルで状態が変わりました/.test(error.message)){
-          local.pending=local.pending.filter(item=>item.id!==op.id);persist();
+      try {last=await retry(()=>writeOperation(op));npcs.push(...(last.npcs || []));}
+      catch(error) {
+        if(/別のバトルで状態が変わりました|休止中のオーナー/.test(error.message)) {
+          local.pending=local.pending.filter(x=>x.id!==op.id);persist();
         }
         throw error;
       }
-      local.pending=local.pending.filter(item=>item.id!==op.id);persist();
+      local.pending=local.pending.filter(x=>x.id!==op.id);persist();
     }
-    return {npcs};
+    return {...last,npcs};
   })().finally(()=>{flushing=null;});
   return flushing;
 }
-function enqueue(action,data,id){
-  local.pending ||= [];
+function enqueue(action,data,id) {
   if(!local.pending.some(op=>op.id===id))local.pending.push({action,data,id});
   persist();return flush();
 }
-async function createCloud(){
+async function createCloud() {
   const E=window.EmojinEngine;
-  if(!ENDPOINT)throw new Error('app.js の ENDPOINT にGASの /exec URLを設定してください。');
-  if(local.player)flush().catch(console.warn);
+  if(FIREBASE_CONFIG.projectId==='YOUR_PROJECT_ID' || FIREBASE_CONFIG.apiKey==='YOUR_FIREBASE_API_KEY') {
+    throw Error('app.js の FIREBASE_CONFIG にFirebaseの設定を入力してください。');
+  }
+  const base='https://www.gstatic.com/firebasejs/'+FIREBASE_SDK_VERSION+'/';
+  const [appSDK,A,F]=await retry(()=>Promise.all([
+    import(base+'firebase-app.js'),import(base+'firebase-auth.js'),import(base+'firebase-firestore.js')
+  ]),true);
+  const app=appSDK.initializeApp(FIREBASE_CONFIG);
+  const auth=A.getAuth(app);
+  const db=F.initializeFirestore(app,{experimentalForceLongPolling:true});
+  await A.setPersistence(auth,A.browserLocalPersistence);
+  await auth.authStateReady();
+  const ref=(collection,id)=>F.doc(db,collection,id);
+  const metaRef=ref('meta','game');
+  const activeQuery=F.query(F.collection(db,'emojins'),F.where('status','==','active'));
+  const defaultMeta=()=>({battleSeq:0,legendSeq:0,hour:Math.floor(Date.now()/3600000),runningHour:0,scheduledCount:0});
+  const data=s=>s.exists()?s.data():null;
+  const decodeLog=s=>JSON.parse(s.data().json);
+  let reading=null, archiveCache=null, archiveAt=0;
+  const activeDocs=()=>F.getDocsFromServer(activeQuery);
+  // One live subscription per collection/doc; no full-world polling every minute.
+  let watchers=null;
+  const logCache=new Map();
+  function startWatch() {
+    if(watchers && watchers.uid===uid)return watchers.ready;
+    if(watchers)watchers.stop.forEach(fn=>fn());
+    const cache={uid,meta:null,owner:null,active:[],stop:[],seen:new Set()};
+    watchers=cache;
+    cache.ready=new Promise((resolve,reject)=>{
+      function receive(kind,snapshot) {
+        if(snapshot.metadata.fromCache)return;
+        if(kind==='active')cache.active=snapshot.docs.map(s=>s.data());
+        else cache[kind]=data(snapshot);
+        cache.seen.add(kind);
+        if(cache.seen.size===3)resolve();
+      }
+      function failed(error) {
+        cache.stop.forEach(fn=>fn());
+        if(watchers===cache)watchers=null;
+        reject(error);
+      }
+      cache.stop.push(F.onSnapshot(metaRef,s=>receive('meta',s),failed));
+      cache.stop.push(F.onSnapshot(ref('owners',uid),s=>receive('owner',s),failed));
+      cache.stop.push(F.onSnapshot(activeQuery,s=>receive('active',s),failed));
+    });
+    return cache.ready;
+  }
+
+  function compose() {
+    return {version:2, player:local.player || null, wallet:local.wallet, draft:local.draft || null,
+      ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
+  }
+  if(auth.currentUser) {
+    if(uid && uid!==auth.currentUser.uid) {local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];}
+    uid=auth.currentUser.uid;local.uid=uid;
+    local.player ||= {uid,name:'',unreadBattleIds:[],seenBattleSeq:0,seenLegendSeq:0,tutorialSeen:true};
+  } else {uid='';delete local.player;local.pending=[];}
+  persist();
+  writeOperation=async op=>{
+    if(!auth.currentUser)throw Error('オーナーログインが必要です。');
+    return F.runTransaction(db,async tx=>{
+      // Read meta before all other transaction reads; every world change updates this doc.
+      const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
+      if(op.action==='createEmojin') {
+        const e=op.data.emojin,eRef=ref('emojins',e.id);
+        const existing=await tx.get(eRef);
+        if(existing.exists())return {ok:true,npcs:[]};
+        tx.set(eRef,{...e,isNpc:false});
+        tx.set(metaRef,{...meta,revision:Number(meta.revision||0)+1});
+        return {ok:true,npcs:[]};
+      }
+      if(op.action!=='battle')throw Error('Unknown operation');
+      const req=op.data.battleRequest,logRef=ref('battles',req.battleId);
+      const existing=await tx.get(logRef);
+      if(existing.exists())return {ok:true,seq:existing.data().seq,npcs:[]};
+      const pairSnaps=await Promise.all(req.ids.map(id=>tx.get(ref('emojins',id))));
+      const pair=pairSnaps.map(data);
+      const version=e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots];
+      if(pair.some((e,i)=>!e || e.status!=='active' || JSON.stringify(version(e))!==JSON.stringify(req.expected[i]))) {
+        throw Error('別のバトルで状態が変わりました。画面を更新してください。');
+      }
+      const ownerIds=[...new Set(pair.filter(e=>!e.isNpc && e.ownerUid!=='npc').map(e=>e.ownerUid))];
+      const ownerSnaps=await Promise.all(ownerIds.map(id=>tx.get(ref('owners',id))));
+      const owners=Object.fromEntries(ownerIds.map((id,i)=>[id,data(ownerSnaps[i])]));
+      const log=E.battle(pair[0],pair[1],E.seeded(req.seed),req.at);log.battleId=req.battleId;
+      // Refresh the active pool on every transaction attempt. Metadata conflicts serialize create/battle writes.
+      const freshPool=(await activeDocs()).docs.map(s=>s.data());
+      const plan=E.planBattle(freshPool,owners,meta,log);
+      plan.emojins.forEach(e=>tx.set(ref('emojins',e.id),e));
+      tx.set(logRef,{seq:plan.log.seq,ownerUids:plan.log.ownerUids,json:JSON.stringify(plan.log)});
+      Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended}));
+      plan.legends.forEach(l=>tx.set(ref('legends',String(l.seq)),{seq:l.seq,json:JSON.stringify(l)}));
+      tx.set(metaRef,{...plan.meta,revision:Number(meta.revision||0)+1});
+      return {ok:true,seq:plan.log.seq,log:plan.log,npcs:plan.npcs,legends:plan.legends};
+    });
+  };
+  // Pending operations keep their IDs, so retrying a completed write cannot duplicate it.
+  let retryWrites=null;
+  function resumeWrites() {
+    if(!local.pending.length || retryWrites)return;
+    retryWrites=(async()=>{
+      for(let n=0;local.pending.length;n++) {
+        try{await flush();}catch(error){if(!transient(error)){console.warn(error);break;}await pause(Math.min(3000*2**n,30000));}
+      }
+    })().finally(()=>{retryWrites=null;});
+  }
+  resumeWrites();
+  async function credentials(name,password) {
+    const key=String(name).normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
+    return {email:(await hashText(key))+'@owners.emojin.invalid',password:await hashText(password)};
+  }
+  async function installOwner(name,credential,registering) {
+    const user=credential.user;
+    if(uid && uid!==user.uid){local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];}
+    uid=user.uid;local.uid=uid;
+    const owner=await retry(()=>F.runTransaction(db,async tx=>{
+      const ownerRef=ref('owners',uid),snap=await tx.get(ownerRef);
+      if(snap.exists())return snap.data();
+      if(!registering)throw Error('オーナー情報がありません。登録から同じ名前とパスワードで再試行してください。');
+      const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
+      const value={uid,name,createdAt:Date.now(),unreadBattleIds:[],suspended:false,
+        tutorialSeen:false,seenBattleSeq:meta.battleSeq||0,seenLegendSeq:meta.legendSeq||0};
+      tx.set(ownerRef,value);return value;
+    }));
+    local.player=owner;persist();return {uid,name:owner.name};
+  }
   return {
-    get uid(){return uid;},
-    get player(){return local.player||null;},get wallet(){return local.wallet;},
+    get uid(){return uid;},get player(){return local.player||null;},get wallet(){return local.wallet;},
     setWallet(value){local.wallet=value;persist();},
-    spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw new Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
+    spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
     async getState(){
-      const fresh=await read('state',{uid});
-      world=fresh;
-      return {version:1,player:local.player||null,wallet:local.wallet,draft:local.draft||null,
-        ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
+      if(reading)return reading;
+      if(!auth.currentUser)return compose();
+      reading=retry(async()=>{
+        await startWatch();
+        const owner=watchers.owner;
+        if(!owner){delete local.player;persist();return compose();}
+        // Clone watcher data: local replay acknowledgements must never mutate snapshots.
+        local.player=E.clone(owner);persist();
+        const meta=watchers.meta||defaultMeta(),live=E.clone(watchers.active);
+        const pendingIds=owner.unreadBattleIds||[];
+        await Promise.all(pendingIds.filter(id=>!logCache.has(id)).map(async id=>{
+          const snap=await F.getDocFromServer(ref('battles',id));
+          if(snap.exists())logCache.set(id,decodeLog(snap));
+        }));
+        let legends=world.legends.filter(l=>l.seq>(owner.seenLegendSeq||0));
+        if(Number(meta.legendSeq||0)>(world.nextLegendSeq||1)-1) {
+          const snap=await F.getDocsFromServer(F.query(F.collection(db,'legends'),F.where('seq','>',owner.seenLegendSeq||0),F.orderBy('seq'),F.limit(200)));
+          legends=snap.docs.map(decodeLog);
+        }
+        world={emojins:live,battles:pendingIds.filter(id=>logCache.has(id)).map(id=>logCache.get(id)),
+          legends,nextSeq:Number(meta.battleSeq||0)+1,nextLegendSeq:Number(meta.legendSeq||0)+1,
+          suspendedOwnerUids:meta.suspendedOwnerUids||[]};
+        resumeWrites();return compose();
+      },true).finally(()=>{reading=null;});
+      return reading;
+    },
+    async getArchive(){
+      if(archiveCache && Date.now()-archiveAt<30000)return archiveCache;
+      const [dead,legends]=await retry(()=>Promise.all([
+        F.getDocsFromServer(F.query(F.collection(db,'emojins'),F.where('status','==','dead'),F.where('isNpc','==',false),F.orderBy('endedAt','desc'),F.limit(200))),
+        F.getDocsFromServer(F.query(F.collection(db,'emojins'),F.where('status','==','legend'),F.orderBy('endedAt','desc'),F.limit(200)))
+      ]));
+      archiveCache=[...dead.docs,...legends.docs].map(s=>s.data());archiveAt=Date.now();return archiveCache;
     },
     async createOwner({name,password}){
-      const result=await write('register',{uid,name,passwordHash:await hashPassword(password)});
-      uid=result.uid;local.uid=uid;
-      local.player={uid,name,seenBattleSeq:world.nextSeq-1,seenLegendSeq:world.nextLegendSeq-1,tutorialSeen:false};
-      persist();return result;
+      try{
+        const creds=await credentials(name,password);
+        let credential;
+        try{credential=await retry(()=>A.createUserWithEmailAndPassword(auth,creds.email,creds.password));}
+        catch(error){if(error.code!=='auth/email-already-in-use')throw error;
+          try{credential=await retry(()=>A.signInWithEmailAndPassword(auth,creds.email,creds.password));}
+          catch(error){if(transient(error))throw error;throw Object.assign(Error('このオーナー名は使われています。'),{code:'auth/email-already-in-use'});}
+          const existing=await retry(()=>F.getDocFromServer(ref('owners',credential.user.uid)));
+          if(existing.exists())throw Object.assign(Error('このオーナー名は使われています。ログインしてください。'),{code:'owner-name-taken'});
+        }
+        return await installOwner(name,credential,true);
+      }catch(error){throw authError(error);}
     },
     async loginOwner({name,password}){
-      const result=await write('login',{name,passwordHash:await hashPassword(password)});
-      const changed=uid!==result.uid;
-      uid=result.uid;local.uid=uid;
-      if(changed){
-        local.draft=null;
-        local.wallet={balance:3000,updatedAt:Date.now()};
-        local.pending=(local.pending||[]).filter(op=>op.action!=='register'&&op.data?.uid===uid);
-      }
-      local.player={uid,name:result.name,seenBattleSeq:0,seenLegendSeq:0,tutorialSeen:true};
-      persist();flush().catch(console.warn);
-      return result;
+      try{const creds=await credentials(name,password);
+        return await installOwner(name,await retry(()=>A.signInWithEmailAndPassword(auth,creds.email,creds.password)),false);
+      }catch(error){throw authError(error);}
     },
-    markTutorialSeen(){local.player.tutorialSeen=true;persist();return Promise.resolve();},
-    markSeen({battleSeq,legendSeq}){local.player.seenBattleSeq=Math.max(local.player.seenBattleSeq,battleSeq);
-      local.player.seenLegendSeq=Math.max(local.player.seenLegendSeq,legendSeq);persist();return Promise.resolve();},
-    startDraft(){
-      if(!local.draft){this.spend(800);local.draft=E.createDraft(Math.random,Date.now());persist();}
-      return {draft:local.draft,wallet:local.wallet};
+    async markTutorialSeen(){
+      await retry(()=>F.updateDoc(ref('owners',uid),{tutorialSeen:true}));local.player.tutorialSeen=true;persist();
     },
+    async markSeen({battleSeq,legendSeq,battleIds=[]}){
+      await flush();
+      const owner=await retry(()=>F.runTransaction(db,async tx=>{
+        const ownerRef=ref('owners',uid),snap=await tx.get(ownerRef),p=data(snap);
+        const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
+        if(!p)throw Error('オーナー情報がありません。');
+        const ids=(p.unreadBattleIds||[]).filter(id=>!battleIds.includes(id));
+        const value={...p,unreadBattleIds:ids,suspended:ids.length>=7,
+          seenBattleSeq:Math.max(p.seenBattleSeq||0,battleSeq||0),seenLegendSeq:Math.max(p.seenLegendSeq||0,legendSeq||0)};
+        const suspended=new Set(meta.suspendedOwnerUids||[]);
+        if(value.suspended)suspended.add(uid);else suspended.delete(uid);
+        tx.set(metaRef,{...meta,suspendedOwnerUids:[...suspended],revision:Number(meta.revision||0)+1});
+        tx.update(ownerRef,{unreadBattleIds:value.unreadBattleIds,suspended:value.suspended,
+          seenBattleSeq:value.seenBattleSeq,seenLegendSeq:value.seenLegendSeq});return value;
+      }));
+      Object.assign(local.player,owner);persist();
+      world.suspendedOwnerUids=world.suspendedOwnerUids.filter(id=>id!==uid);
+      if(owner.suspended)world.suspendedOwnerUids.push(uid);
+      return owner;
+    },
+    startDraft(){if(!local.draft){this.spend(1600);local.draft=E.createDraft(Math.random,Date.now());persist();}return {draft:local.draft,wallet:local.wallet};},
     chooseSpecial({name,chosen}){
-      if(!local.draft?.offers.includes(chosen))throw new Error('特殊能力を選び直してください。');
+      if(!local.draft?.offers.includes(chosen))throw Error('特殊能力を選び直してください。');
       local.draft={...local.draft,name,chosen,stage:'reels'};persist();
-      const e={...E.fromDraft(local.draft,name,local.player.name,chosen,Date.now()),ownerUid:uid};
-      enqueue('createEmojin',{uid,emojin:e},'create-'+e.id).catch(console.warn);
+      const e={...E.fromDraft(local.draft,name,local.player.name,chosen,Date.now()),ownerUid:uid,isNpc:false};
+      enqueue('createEmojin',{uid,emojin:e},'create-'+e.id).catch(error=>{console.warn(error);resumeWrites();});
       return local.draft;
     },
     async finishDraft({draftId}){
-      if(local.draft?.id!==draftId)throw new Error('生成内容がありません。');
-      const d=local.draft,e={...E.fromDraft(d,d.name,local.player.name,d.chosen,Date.now()),ownerUid:uid};
-      // Wait only if the animation ended before the write. Retry from the saved operation on reload.
-      await flush();local.draft=null;persist();return e;
+      if(local.draft?.id!==draftId)throw Error('生成内容がありません。');
+      const d=local.draft,e={...E.fromDraft(d,d.name,local.player.name,d.chosen,Date.now()),ownerUid:uid,isNpc:false};
+      await flush();local.draft=null;persist();archiveAt=0;return e;
     },
-    saveBattle(request){return enqueue('battle',{uid,battleRequest:request},'battle-'+request.battleId);}
+    saveBattle(request){archiveAt=0;return enqueue('battle',{uid,battleRequest:request},'battle-'+request.battleId);}
   };
 }
 
 createCloud().then(cloud=>{
   window.EmojinCloud=cloud;
-/* Emojin online UI: shared GAS world, local wallet and animations. */
+/* Emojin online UI: shared Firestore world, local wallet and animations. */
 (function () {
 "use strict";
 const E = window.EmojinEngine;
 const $ = id => document.getElementById(id);
 const cloud = window.EmojinCloud;
 const HOUR = 3600000;
-const MOJI_CAP = 3000, EGG_COST = 800, BATTLE_COST = 100;
+const MOJI_CAP = 3000, EGG_COST = 1600, BATTLE_COST = 100;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("ja", {granularity:"grapheme"}) : null;
 const chars = s => segmenter ? [...segmenter.segment(s)].map(v => v.segment) : Array.from(s);
@@ -471,7 +707,9 @@ function dayKey(ts = now()) {
 function dateText(ts) {
   return new Intl.DateTimeFormat("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric"}).format(ts);
 }
-function reduced() { return isReducedSystem || !!(store && store.reducedMotion); }
+function reduced() {
+  return false;
+}
 function updateMoji(timestamp=Date.now()) {
   if(!store?.player || !store.wallet)return 0;
   store.wallet=E.accrueMoji(store.wallet,timestamp);cloud.setWallet(store.wallet);
@@ -493,6 +731,7 @@ function reportError(error) {
   toast(error.message || '通信に失敗しました。もう一度お試しください。',5000);
 }
 function active() { return store.emojins.filter(e=>e.status==="active"); }
+function battlePool() { return active().filter(e=>e.isNpc || !(store.suspendedOwnerUids||[]).includes(e.ownerUid)); }
 function playerName() { return store.player ? store.player.name : ""; }
 function my(e) { return e.ownerUid===cloud.uid; }
 function findEmojin(id) { return store.emojins.find(e=>e.id===id); }
@@ -652,12 +891,22 @@ function showDetail(e, ret=null) {
   modalReturn=ret;
   openModal(content,"エモジン",{panelClass:"detail-panel",tapToClose:true});
 }
-function showArchive(status="active") {
+async function showArchive(status="active") {
+  if(busy)return;
+  busy=true;
+  openModal(`<div class="archive-loading"><div class="loader"></div></div>`,"エモジンを読み込み中",{panelClass:"archive-panel"});
+  const loadingRevision=modalRevision;
+  try {
+    const archive=await cloud.getArchive();
+    if(loadingRevision!==modalRevision)return;
+    store.emojins=[...active(),...archive];
+  } catch(error) { reportError(error);await closeModal(true);return; }
+  finally { busy=false; }
   modalReturn=null;
   const tabs=[{key:"active",name:"👤"},{key:"legend",name:"🏆"},{key:"dead",name:"🪦"}];
   const chosen=tabs.findIndex(t=>t.key===status),index=chosen<0?0:chosen;
   const panes=tabs.map(tab=>{
-    const emojins=store.emojins.filter(e=>e.status===tab.key&&(tab.key!=="active"||my(e)))
+    const emojins=store.emojins.filter(e=>e.status===tab.key&&(tab.key!=="active"||my(e))&&(tab.key!=="dead"||!e.isNpc))
       .sort((a,b)=>tab.key==="active"?b.createdAt-a.createdAt:b.endedAt-a.endedAt);
     const entries=emojins.map(e=>`<button class="archive-entry" data-emojin-id="${e.id}" data-return-status="${tab.key}"><span class="archive-emoji">${e.emoji}</span><span><h3>${esc(e.name)}</h3><span class="owner-line">${tab.key==="active"?`HP ${e.currentHp} / ${e.maxHp}`:`オーナー：${esc(e.ownerName)}`}</span></span>${star(e.stars,tab.key==="legend")}<span class="archive-arrow">${nextSvg()}</span></button>`).join("");
     return `<div class="archive-pane" role="tabpanel" id="pane-${tab.key}"><div class="archive-list">${entries||'<div class="archive-empty">エモジンはいない</div>'}</div></div>`;
@@ -710,7 +959,6 @@ function showAuthForm(mode){
       if(registering)await cloud.createOwner({name,password});
       else await cloud.loginOwner({name,password});
       store=await cloud.getState();
-      if(!registering)cloud.markSeen({battleSeq:store.nextSeq-1,legendSeq:store.nextLegendSeq-1});
       await closeModal(true);
       $("bootScreen").classList.add('hidden');
       renderCity();refreshNav();
@@ -785,12 +1033,12 @@ function refreshNav() {
   btn.classList.toggle("available",available);
   btn.disabled=!available;
   btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":`エモジンを生成、${EGG_COST}モジ`);
-  btn.querySelector(".nav-cost").innerHTML=store.draft?'つづき':'800 <small>モジ</small>';
-  $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||active().length<2;
+  btn.querySelector(".nav-cost").innerHTML=store.draft?'つづき':'1600 <small>モジ</small>';
+  $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
   $("moBalance").textContent=balance.toLocaleString("ja-JP");
-  const height=38*balance/MOJI_CAP;
+  const height=38*Math.min(balance,MOJI_CAP)/MOJI_CAP;
   $("moFluid").setAttribute("y",String(45-height));$("moFluid").setAttribute("height",String(height));
-  const unread=store.player?store.battles.filter(b=>b.seq>store.player.seenBattleSeq && b.ownerNames.includes(playerName())).length:0;
+  const unread=store.player?(store.player.unreadBattleIds||[]).length:0;
   const legends=store.player?store.legends.filter(l=>l.seq>store.player.seenLegendSeq).length:0;
   $("unreadButton").classList.toggle("hidden",!unread&&!legends);
   $("unreadButton").textContent=unread?`▶ ${unread}`:"🏆";
@@ -1115,12 +1363,12 @@ async function forceBattle() {
   busy=true;
   let battleId;
   try {
-    if(active().length<2||updateMoji()<BATTLE_COST){refreshNav();return;}
+    if(battlePool().length<2||updateMoji()<BATTLE_COST){refreshNav();return;}
     const fresh=await showBattleCutin(cloud.getState());
     store=fresh;renderCity();refreshNav();
-    if(active().length<2){toast('生存中のエモジンが2体必要です。');return;}
+    if(battlePool().length<2){toast('バトルに参加できるエモジンが2体必要です。');return;}
     if(updateMoji()<BATTLE_COST){toast('100モジ必要です。');return;}
-    const pair=E.sample(active(),2,Math.random);
+    const pair=E.sample(battlePool(),2,Math.random);
     const seed=crypto.getRandomValues(new Uint32Array(1))[0];
     const at=Date.now();
     const log=E.battle(pair[0],pair[1],E.seeded(seed),at);
@@ -1138,6 +1386,12 @@ async function forceBattle() {
       store.legends.push({seq:store.nextLegendSeq++,battleSeq:log.seq,at:log.battleAt,emojin});
     }
     cloud.saveBattle(request).then(result=>{
+      if(result.log){Object.assign(log,result.log);store.nextSeq=Math.max(store.nextSeq,result.seq+1);}
+      for(const saved of result.legends||[]){
+        const shown=store.legends.find(l=>l.emojin.id===saved.emojin.id);
+        if(shown)Object.assign(shown,saved);else store.legends.push(saved);
+        store.nextLegendSeq=Math.max(store.nextLegendSeq,saved.seq+1);
+      }
       const known=new Set(store.emojins.map(e=>e.id));
       store.emojins.push(...(result.npcs||[]).filter(e=>!known.has(e.id)));
       renderCity();
@@ -1578,7 +1832,7 @@ async function playBattle(log,i,total) {
 async function playUpdates(extraIds=[]) {
   if(!store.player||busy||playback)return;
   const maxBattle=store.nextSeq-1,maxLegend=store.nextLegendSeq-1;
-  const queue=store.battles.filter(b=>(b.seq>store.player.seenBattleSeq && b.ownerNames.includes(playerName()))||extraIds.includes(b.battleId)).sort((a,b)=>a.seq-b.seq);
+  const queue=store.battles.filter(b=>(store.player.unreadBattleIds||[]).includes(b.battleId)||extraIds.includes(b.battleId)).sort((a,b)=>a.seq-b.seq);
   const newLegends=store.legends.filter(l=>l.seq>store.player.seenLegendSeq&&l.seq<=maxLegend).sort((a,b)=>a.seq-b.seq);
   if(!queue.length&&!newLegends.length){
     if(maxBattle>store.player.seenBattleSeq){
@@ -1594,7 +1848,7 @@ async function playUpdates(extraIds=[]) {
     for(let i=0;i<queue.length;i++){
       await playBattle(queue[i],i,queue.length);
       store.player.seenBattleSeq=Math.max(store.player.seenBattleSeq,queue[i].seq);
-      try{await cloud.markSeen({battleSeq:store.player.seenBattleSeq,legendSeq:store.player.seenLegendSeq});}
+      try{await cloud.markSeen({battleSeq:store.player.seenBattleSeq,legendSeq:store.player.seenLegendSeq,battleIds:[queue[i].battleId]});}
       catch(error){reportError(error);}
     }
   }catch(err){
@@ -1609,9 +1863,12 @@ async function playUpdates(extraIds=[]) {
     store.player.seenLegendSeq=l.seq;
   }
   store.player.seenLegendSeq=Math.max(store.player.seenLegendSeq,maxLegend);
-  try{await cloud.markSeen({battleSeq:store.player.seenBattleSeq,legendSeq:store.player.seenLegendSeq});}
+  try{await cloud.markSeen({battleSeq:store.player.seenBattleSeq,legendSeq:store.player.seenLegendSeq,battleIds:replayCompleted?queue.map(b=>b.battleId):[]});}
   catch(error){reportError(error);}
-  renderCity();
+  store.player=cloud.player;
+  store.suspendedOwnerUids=(store.suspendedOwnerUids||[]).filter(id=>id!==cloud.uid);
+  if(store.player.suspended)store.suspendedOwnerUids.push(cloud.uid);
+  renderCity();refreshNav();
 }
 async function showLegend(e) {
   if(!e)return;busy=true;
@@ -1752,15 +2009,15 @@ async function init() {
   await playUpdates();
 }
 init().catch(err=>{
-  console.error(err);$("bootScreen").classList.add("hidden");
-  toast("起動できませんでした。ブラウザを更新してお試しください。",10000);
+  console.error(err);
+  $("bootMessage").textContent=err.message||"接続できませんでした。";
+  $("bootRetry").classList.remove("hidden");
+  $("bootRetry").onclick=()=>location.reload();
 });
 })();
 
 }).catch(error=>{
   console.error('初期化に失敗しました',error);
-  document.getElementById('bootScreen').classList.add('hidden');
-  const toast=document.getElementById('toast');
-  toast.textContent=error.message || '接続できませんでした。再読み込みしてください。';
-  toast.classList.remove('hidden');
+  document.getElementById('bootMessage').textContent=error.message||'接続できませんでした。';
+  const button=document.getElementById('bootRetry');button.classList.remove('hidden');button.onclick=()=>location.reload();
 });

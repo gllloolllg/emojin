@@ -1,4 +1,4 @@
-const CACHE = 'emojin-shell-v3';
+const CACHE = 'emojin-firestore-shell-v1';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './city-background.png', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
@@ -15,11 +15,12 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+  const sdk=url.origin==='https://www.gstatic.com' && url.pathname.startsWith('/firebasejs/');
+  if(request.method!=='GET' || (url.origin!==self.location.origin && !sdk))return;
   event.respondWith((async () => {
     try {
       const response = await fetch(request);
-      if (response.ok && response.type === 'basic') {
+      if (response.ok && (response.type === 'basic' || response.type === 'cors')) {
         const cache = await caches.open(CACHE);
         cache.put(request, response.clone()).catch(() => {});
       }

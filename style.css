@@ -430,8 +430,7 @@ button.slot:active{transform:scale(.89)}
 .poison-gone{position:absolute;left:50%;top:40%;z-index:10;font-size:46px;line-height:1;transform:translate(-50%,-50%);pointer-events:none}
 @media(max-width:350px){.city-header{left:14px;right:14px}.bottom-nav{width:calc(100% - 18px)}.archive-tab{font-size:10px}}
 
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
-body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+
 
 /* First sign-in guide */
 .tutorial{
@@ -495,3 +494,5 @@ body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{an
     height: 100vh;
   }
 }
+#bootMessage{max-width:85%;font-size:13px;line-height:1.7;text-align:center;letter-spacing:0;color:var(--muted)}
+.archive-loading{height:100%;display:grid;place-items:center}

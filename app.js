@@ -1192,7 +1192,8 @@ function refreshNav() {
   btn.classList.toggle("available",available);
   btn.disabled=!available;
   btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":`エモジンを生成、${EGG_COST}モジ`);
-  btn.querySelector(".nav-cost").innerHTML=store.draft?'つづき':'1600 <small>モジ</small>';
+  btn.querySelector(".nav-cost").innerHTML =
+  store.draft ? 'つづき' : `${EGG_COST} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
   $("moBalance").textContent=balance.toLocaleString("ja-JP");
   const height=38*Math.min(balance,MOJI_CAP)/MOJI_CAP;

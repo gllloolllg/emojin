@@ -597,3 +597,11 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .archive-heading{position:absolute;top:10px;left:0;right:0;height:38px;display:flex;align-items:center;justify-content:center;margin:0;padding:0;font-family:"Monomaniac One",sans-serif;font-size:24px;font-weight:400;line-height:1;letter-spacing:.08em;color:var(--text);pointer-events:none}
 .archive-panel[data-active-tab="legend"] .archive-heading{color:#573808;text-shadow:0 1px 0 #fff4b5}
 .archive-panel .archive-viewport{border:0}
+
+/* Small street finds; controls and residents retain their own layers. */
+.street-loot{position:absolute;inset:0;z-index:4;pointer-events:none}
+.street-loot-item{position:absolute;display:grid;place-items:center;width:44px;height:44px;margin:0;padding:0;transform:translate(-50%,-50%);background:none;border:0;line-height:1;font-size:25px;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 2px 2px #17121d88)}
+.street-loot-item:active{filter:brightness(1.2)}
+.loot-flight-layer{position:absolute;inset:0;z-index:65;pointer-events:none;overflow:hidden}
+.loot-flying{position:absolute;font-size:25px;line-height:1;pointer-events:none;filter:drop-shadow(0 0 5px #b8e69b55)}
+.loot-reward{position:absolute;z-index:1;color:var(--neon-green);font-family:"Freckle Face",system-ui;font-size:23px;font-weight:700;line-height:1.2;white-space:nowrap;text-shadow:0 2px 4px var(--bg),0 0 10px #b8e69b88;pointer-events:none}

@@ -1190,8 +1190,113 @@ function showTutorial() {
 }
 
 
+/* All loot, including its reward, belongs to this device's local wallet. */
+const LOOT = Object.freeze({interval:10000, chance:1/6, limit:3, lifetime:120000,
+  items:[
+    {name:'たばこ',emoji:'🚬',moji:1,weight:60},
+    {name:'あめ',emoji:'🍬',moji:5,weight:25},
+    {name:'コイン',emoji:'🪙',moji:10,weight:10},
+    {name:'プレゼント',emoji:'🎁',moji:30,weight:4},
+    {name:'宝石',emoji:'💎',moji:100,weight:1}
+  ]});
+const streetLoot=new Map();
+let lootLayer,lootElapsed=0,lootSerial=0,lootFlights=0,lootPending=0;
+function lootCanPlay() {
+  return !!store?.player && !document.hidden && !busy && !playback && !modalKind
+    && !modalClosing && !revivalPlaying && !store.draft
+    && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','detailHost','popoverHost']
+      .every(id=>$(id).classList.contains('hidden'));
+}
+function lootItem(random=rng) {
+  let value=random()*LOOT.items.reduce((sum,item)=>sum+item.weight,0);
+  for(const item of LOOT.items){value-=item.weight;if(value<0)return item;}
+  return LOOT.items[LOOT.items.length-1];
+}
+function lootPosition() {
+  const screen=$('cityScreen').getBoundingClientRect();
+  if(screen.width<80 || screen.height<160)return null;
+  const forbidden=[...$('residents').children,...$('residents').querySelectorAll('.resident-name'),$('forceBattleButton').closest('nav'),document.querySelector('.city-header'),
+    ...[...streetLoot.values()].map(drop=>drop.el)].filter(Boolean).map(el=>el.getBoundingClientRect());
+  for(let attempt=0;attempt<80;attempt++){
+    const x=28+rng()*(screen.width-56),y=70+rng()*Math.max(0,screen.height-180);
+    const left=screen.left+x,top=screen.top+y;
+    if(forbidden.some(r=>left+30>r.left-10 && left-30<r.right+10 && top+30>r.top-10 && top-30<r.bottom+10))continue;
+    return {x:x/screen.width,y:y/screen.height};
+  }
+  return null;
+}
+function removeLoot(drop) {streetLoot.delete(drop.id);drop.el.remove();}
+function spawnLoot(item=lootItem(),timestamp=Date.now()) {
+  if(streetLoot.size>=LOOT.limit)return null;
+  const position=lootPosition();if(!position)return null;
+  if(!lootLayer){lootLayer=document.createElement('div');lootLayer.className='street-loot';$('cityScreen').appendChild(lootLayer);}
+  const el=document.createElement('button');el.type='button';el.className='street-loot-item';
+  el.textContent=item.emoji;el.setAttribute('aria-label',`${item.name}、${item.moji}モジを拾う`);
+  el.style.left=position.x*100+'%';el.style.top=position.y*100+'%';
+  const drop={id:++lootSerial,item,el,expires:timestamp+LOOT.lifetime,picked:false};
+  el.addEventListener('click',()=>{collectLoot(drop).catch(reportError);});
+  streetLoot.set(drop.id,drop);lootLayer.appendChild(el);
+  // The wrapper owns positioning, while scale/translate supply a tiny entrance.
+  const entrance=el.animate([{opacity:0,scale:'.72',translate:'0 4px'},
+    {opacity:1,scale:'1.06',translate:'0 -2px',offset:.7},{opacity:1,scale:'1',translate:'0 0'}],
+    {duration:360,easing:'ease-out'});
+  entrance.finished.catch(()=>{});return drop;
+}
+function tickLoot(dt,timestamp=Date.now(),random=rng) {
+  for(const drop of streetLoot.values())if(timestamp>=drop.expires)removeLoot(drop);
+  if(!lootCanPlay())return;
+  lootElapsed+=dt*1000;
+  if(lootElapsed<LOOT.interval)return;
+  // Never replay missed background intervals or produce a catch-up burst.
+  lootElapsed=0;
+  if(streetLoot.size<LOOT.limit && random()<LOOT.chance)spawnLoot(lootItem(random),timestamp);
+}
+async function collectLoot(drop) {
+  if(!lootCanPlay() || drop.picked || !streetLoot.has(drop.id))return;
+  if(Date.now()>=drop.expires){removeLoot(drop);return;}
+  drop.picked=true;drop.el.disabled=true;
+  const start=drop.el.getBoundingClientRect();removeLoot(drop);
+  const balance=updateMoji(),reward=Math.max(0,Math.min(drop.item.moji,MOJI_CAP-balance));
+  // Save before the flight: closing the app cannot lose or duplicate a collected reward.
+  const wallet={...store.wallet,balance:balance+reward};
+  cloud.setWallet(wallet);store.wallet=wallet;
+  lootPending+=reward;lootFlights++;
+  const overlay=document.createElement('div');overlay.className='loot-flight-layer';$('app').appendChild(overlay);
+  const flight=document.createElement('span');flight.className='loot-flying';flight.textContent=drop.item.emoji;overlay.appendChild(flight);
+  const bounds=overlay.getBoundingClientRect(),target=document.querySelector('.mo-vessel svg').getBoundingClientRect();
+  const x=start.left+start.width/2-bounds.left,y=start.top+start.height/2-bounds.top;
+  const dx=target.left+target.width/2-bounds.left-x,dy=target.top+target.height/2-bounds.top-y;
+  flight.style.left=x+'px';flight.style.top=y+'px';
+  let revealed=false;
+  try {
+    const flying=flight.animate([
+      {transform:'translate(-50%,-50%) scale(1)',opacity:1},
+      {transform:`translate(calc(-50% + ${dx*.3}px),calc(-50% + ${dy*.3-28}px)) scale(1.1)`,opacity:1,offset:.35},
+      {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.22)`,opacity:0}
+    ],{duration:720,easing:'cubic-bezier(.4,0,.65,1)',fill:'forwards'});
+    await flying.finished.catch(()=>{});flight.remove();
+    lootPending-=reward;revealed=true;refreshNav();
+    const vessel=document.querySelector('.mo-vessel svg');
+    const glow=vessel.animate([{filter:'drop-shadow(0 0 0px #B8E69B)',scale:'1'},
+      {filter:'drop-shadow(0 0 12px #B8E69B) brightness(1.65)',scale:'1.08',offset:.35},
+      {filter:'drop-shadow(0 0 0px #B8E69B)',scale:'1'}],{duration:600});
+    glow.finished.catch(()=>{});
+    const label=document.createElement('span');label.className='loot-reward';
+    label.textContent=reward?'+'+reward:'MAX';
+    label.style.left=(target.left+target.width/2-bounds.left)+'px';
+    label.style.top=(target.top+target.height/2-bounds.top)+'px';overlay.appendChild(label);
+    const rising=label.animate([{transform:'translate(-50%,0)',opacity:0},
+      {transform:'translate(-50%,-10px)',opacity:1,offset:.2},{transform:'translate(-50%,-38px)',opacity:0}],
+      {duration:900,easing:'ease-out',fill:'forwards'});
+    await rising.finished.catch(()=>{});
+  } finally {
+    if(!revealed)lootPending-=reward;
+    lootFlights--;overlay.remove();refreshNav();
+  }
+}
+
 function refreshNav() {
-  const balance=updateMoji(), available=!!store.player && (!!store.draft||balance>=EGG_COST), btn=$("generateButton");
+  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||balance>=EGG_COST), btn=$("generateButton");
   btn.classList.toggle("available",available);
   btn.disabled=!available;
   btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":`エモジンを生成、${EGG_COST}モジ`);
@@ -1374,6 +1479,7 @@ function drawWorldFrame(time) {
 }
 function worldLoop(time) {
   const dt=Math.min(.1,(time-priorFrame)/1000||0);priorFrame=time;
+  tickLoot(dt);
   const visible=!document.hidden&&!playback&&$("legendScreen").classList.contains("hidden")&&$("revealScreen").classList.contains("hidden");
   if(visible&&time-worldFrame>65){drawWorldFrame(time);worldFrame=time;}
   if(visible&&!modalKind&&!reduced()&&!revivalPlaying){
@@ -2322,7 +2428,7 @@ async function init() {
 }
 // Updating is deferred until local writes finish and the owner is back in town.
 window.EmojinCanReload=()=>!!store && !busy && !playback && (!modalKind || modalKind==='オーナー認証') && !modalClosing
-  && !revivalPlaying && !store.draft && cloud.canReload
+  && !revivalPlaying && !store.draft && !lootFlights && cloud.canReload
   && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')
   && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','popoverHost','detailHost']
     .every(id=>$(id).classList.contains('hidden'));

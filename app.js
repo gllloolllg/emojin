@@ -964,8 +964,24 @@ async function showArchive(status="active") {
     <div class="archive-tabs" role="tablist">${tabs.map((t,i)=>`<button class="archive-tab ${i===index?"selected":""}" role="tab" tabindex="${i===index?0:-1}" aria-selected="${i===index}" aria-controls="pane-${t.key}" data-archive-tab="${t.key}">${t.name}</button>`).join("")}</div>
     <div class="archive-viewport"><div class="archive-track" style="transform:translateX(-${index*100}%)">${panes}</div></div>`,
     "エモジンを閲覧",{panelClass:"archive-panel",hideClose:true});
-  $("modalHost").querySelector(".archive-panel").dataset.activeTab=tabs[index].key;
+  switchArchiveTab($("modalHost").querySelector(".archive-panel"),tabs[index].key);
 }
+
+function switchArchiveTab(panel,key) {
+  if(!panel)return;
+  const keys=['active','legend','dead'],index=keys.indexOf(key);if(index<0)return;
+  panel.dataset.activeTab=key;
+  panel.querySelector('.archive-track').style.transform=`translateX(-${index*100}%)`;
+  panel.querySelectorAll('.archive-tab').forEach(button=>{
+    const selected=button.dataset.archiveTab===key;
+    button.classList.toggle('selected',selected);button.setAttribute('aria-selected',String(selected));
+    button.tabIndex=selected?0:-1;
+  });
+  panel.querySelectorAll('.archive-pane').forEach((pane,i)=>{
+    pane.inert=i!==index;pane.setAttribute('aria-hidden',String(i!==index));
+  });
+}
+
 function showAuthChoice(){
   openModal(`<div class="register-brand">エモジン</div>
     <div class="auth-actions"><button class="primary-button" id="authRegister" type="button">オーナー登録</button>
@@ -1201,6 +1217,7 @@ function renderCity() {
       el.dataset.signature=signature;el.className=`resident ${my(e)?"mine":""} ${e.poisoned?"poisoned":""} ${e.cursedSlots.length?"cursed":""}`;
       el.innerHTML=`<span class="resident-emoji">${e.emoji}</span><span class="status-marks">${statusMarks(e)}</span>${e.stars===maxStars?star(e.stars):""}<span class="resident-name">${esc(e.name)}</span>`;
       el.setAttribute("aria-label",`${e.name}、${e.stars}戦、オーナー ${e.ownerName}`);
+      fitResidentName(el);
     }
     old.delete(e.id);
     if(!wander.has(e.id))wander.set(e.id,spawnPosition(e.id));
@@ -1297,12 +1314,26 @@ function spawnPosition(id) {
   const {x,y}=best;
   return {x,y,targetX:x,targetY:y,wait:performance.now()+6000+rng()*20000,moving:false,velocity:14+rng()*10};
 }
-function positionResident(el,p) { el.style.left=(p.x*100)+"%";el.style.top=(p.y*100)+"%"; }
+function fitResidentName(el) {
+  const label=el.querySelector('.resident-name');if(!label)return;
+  label.style.fontSize='';
+  const natural=label.offsetWidth,available=Math.max(40,(canvasW||390)-16);
+  if(natural>available)label.style.fontSize=(parseFloat(getComputedStyle(label).fontSize)*available/natural)+'px';
+  el.dataset.nameWidth=String(label.offsetWidth);
+}
+function positionResident(el,p) {
+  el.style.left=(p.x*100)+'%';el.style.top=(p.y*100)+'%';
+  const width=Number(el.dataset.nameWidth||0),w=canvasW||390,center=p.x*w;
+  const shifted=E.clamp(center,width/2+8,w-width/2-8)-center;
+  const label=el.querySelector('.resident-name');if(label)label.style.left=`calc(50% + ${shifted}px)`;
+}
 function nextTarget(p) {
   const b=worldBounds(),angle=rng()*Math.PI*2,distance=45+rng()*110;
   p.targetX=E.clamp(p.x+Math.cos(angle)*distance/(canvasW||390),b.xmin,b.xmax);
   p.targetY=E.clamp(p.y+Math.sin(angle)*distance/(canvasH||844),b.ymin,b.ymax);
   p.moving=true;
+  p.travelStyle=["stroll","hop-walk","glide"][E.index(rng,3)];
+  p.travelSpeed=p.velocity*(rng()<.2?1.8:1);
 }
 
 let traffic=[];
@@ -1310,6 +1341,7 @@ function drawCity() {
   const c=$("cityCanvas"),w=$("cityScreen").clientWidth,h=$("cityScreen").clientHeight;
   if(!w||!h)return;
   canvasW=w;canvasH=h;
+  for(const el of $("residents").children)fitResidentName(el);
   const bounds=worldBounds();
   for(const p of wander.values()){
     p.x=E.clamp(p.x,bounds.xmin,bounds.xmax);p.y=E.clamp(p.y,bounds.ymin,bounds.ymax);
@@ -1345,14 +1377,15 @@ function worldLoop(time) {
     for(const el of $("residents").children){
       const p=wander.get(el.dataset.id);if(!p)continue;
       if(p.moving){
-        const dx=p.targetX-p.x,dy=p.targetY-p.y,d=Math.hypot(dx*canvasW,dy*canvasH),step=p.velocity*dt;
-        if(d<=step){p.x=p.targetX;p.y=p.targetY;p.moving=false;p.wait=time+8000+rng()*25000;moving--;}
+        el.classList.add(p.travelStyle||"stroll");
+        const dx=p.targetX-p.x,dy=p.targetY-p.y,d=Math.hypot(dx*canvasW,dy*canvasH),step=(p.travelSpeed||p.velocity)*dt;
+        if(d<=step){p.x=p.targetX;p.y=p.targetY;p.moving=false;p.wait=time+8000+rng()*25000;moving--;el.classList.remove("stroll","hop-walk","glide");}
         else{p.x+=dx/d*step;p.y+=dy/d*step;}
         positionResident(el,p);
       }else if(time>=p.wait&&moving<Math.max(2,Math.ceil(wander.size*.28))){
         p.wait=time+8000+rng()*25000;
-        if(rng()<.28){
-          const cl=rng()<.4?"spin":"wiggle";el.classList.add(cl);setTimeout(()=>el.classList.remove(cl),1550);
+        if(rng()<.4){
+          const cl=["spin","wiggle","hop","nod","stretch","sway","float"][E.index(rng,7)];el.classList.add(cl);setTimeout(()=>el.classList.remove(cl),1550);
         }else{
           nextTarget(p);
           const occupied=[...wander.values()].some(q=>q!==p&&Math.hypot((q.x-p.targetX)*canvasW,(q.y-p.targetY)*canvasH)<60);
@@ -1659,7 +1692,16 @@ function floatHearts(side, delta, color=PAL["neon-pink"], offsetY=0) {
   el.style.width=width+"px";el.style.setProperty("--heart-size",size+"px");
   el.innerHTML=`<span class="fx-sign">${delta>0?"+":"−"}</span>${Array.from({length:count},heartGlyph).join("")}`;
   el.style.left=E.clamp(point.x-width/2,12,host.clientWidth-width-12)+"px";
-  el.style.top=Math.max(72,point.y-77+offsetY)+"px";el.style.color=color;
+  const baseTop=E.clamp(point.y-77+offsetY,72,Math.max(72,host.clientHeight-150));
+  const bounds=host.getBoundingClientRect(),left=parseFloat(el.style.left);
+  const tiles=[...$('battleScreen').querySelectorAll('.dice-tile')].map(tile=>{
+    const r=tile.getBoundingClientRect();return {left:r.left-bounds.left,right:r.right-bounds.left,top:r.top-bounds.top,bottom:r.bottom-bounds.top};
+  });
+  // Keep the floating heart row clear of the dice throughout its upward travel.
+  const candidates=[baseTop,baseTop-75,baseTop+75,...tiles.flatMap(r=>[r.top-45,r.bottom+44])];
+  const top=candidates.find(y=>y>=72 && y<=host.clientHeight-150 && !tiles.some(r=>
+    left+width>r.left-8 && left<r.right+8 && y+36>r.top-8 && y-32<r.bottom+8));
+  el.style.top=(top??baseTop)+'px';el.style.color=color;
   host.appendChild(el);
   const duration=1000/replaySpeed;
   if(reduced()){setTimeout(()=>el.remove(),duration);return;}
@@ -1673,8 +1715,16 @@ function floatHearts(side, delta, color=PAL["neon-pink"], offsetY=0) {
   if(animation)animation.finished.then(()=>el.remove()).catch(()=>el.remove());
   else setTimeout(()=>el.remove(),duration);
 }
+function battleEffectArea(side) {
+  const host=$("battleFx"),key=String(visualMap[side]);
+  let area=host.querySelector(`[data-effect-side="${key}"]`);
+  if(!area){area=document.createElement('div');area.className='battle-effect-area';area.dataset.effectSide=key;host.appendChild(area);}
+  const r=fighterEl(side).getBoundingClientRect(),b=host.getBoundingClientRect();
+  Object.assign(area.style,{left:(r.left-b.left)+'px',top:(r.top-b.top)+'px',width:r.width+'px',height:r.height+'px'});
+  return area;
+}
 function healLight(side) {
-  const host=fighterEl(side).querySelector(".fighter-hit-area"),el=document.createElement("div");
+  const host=battleEffectArea(side),el=document.createElement("div");
   el.className="fx-heal-light";host.appendChild(el);
   if(reduced()){el.style.opacity=".22";setTimeout(()=>el.remove(),1000/replaySpeed);return;}
   const anim=animate(el,[{opacity:0},{opacity:.2,offset:.3},{opacity:.11,offset:.65},{opacity:0}],1250/replaySpeed,{easing:"ease-in-out"});
@@ -1710,7 +1760,8 @@ function hit(side,strong=false) {
   animate(el,[{transform:"translateX(0)"},{transform:`translateX(${strong?-18:-10}px) rotate(-9deg)`,offset:.2},{transform:"translateX(12px) rotate(6deg)",offset:.43},{transform:"translateX(-5px)",offset:.7},{transform:"translateX(0) rotate(0)"}],500/replaySpeed);
 }
 function defenseReaction(side, kind, amount=null) {
-  const host=fighterEl(side).querySelector(".fighter-hit-area");
+  focusBattleSlots(side,[kind]);
+  const host=battleEffectArea(side);
   host.querySelectorAll(".fx-reaction,.fx-shield").forEach(el=>el.remove());
   const el=document.createElement("div");el.className="fx-reaction "+kind;
   el.dataset.reaction=kind;
@@ -1725,6 +1776,36 @@ function defenseReaction(side, kind, amount=null) {
   ],1350/replaySpeed,{easing:"linear"});
   if(a)a.finished.then(()=>el.remove()).catch(()=>el.remove());
   else setTimeout(()=>el.remove(),1350/replaySpeed);
+}
+function clearBattleSlotFocus() {
+  [0,1].forEach(side=>{
+    dieEl(side).classList.remove('processing');
+    dieEl(side).querySelectorAll('.executing').forEach(tile=>tile.classList.remove('executing'));
+  });
+  $('battleScreen').classList.remove('slots-processing');
+}
+function focusBattleSlots(side,faces,slot=null) {
+  const dice=dieEl(side);
+  const tiles=[...dice.querySelectorAll('.dice-tile')].filter(tile=>
+    (slot===null ? faces.includes(tile.dataset.face) && !tile.classList.contains('cursed') && !tile.dataset.blocked
+      : Number(tile.dataset.slot)===slot));
+  if(!tiles.length)return;
+  $('battleScreen').classList.add('slots-processing');dice.classList.add('processing');
+  tiles.forEach(tile=>tile.classList.add('executing'));
+}
+async function playEvent(ev) {
+  clearBattleSlotFocus();
+  if(ev.type==='heal')ev.healing.forEach(h=>focusBattleSlots(h.side,['heal','fullheal']));
+  if(ev.type==='twin')focusBattleSlots(ev.side,['twin']);
+  if(ev.type==='curseBlock' || ev.type==='twinBlank')focusBattleSlots(ev.side,[],ev.slot);
+  if(ev.type==='impact'){
+    ev.attacks.forEach(a=>focusBattleSlots(a.side,['attack1','attack2','strong','ram']));
+    ev.drains.forEach(d=>focusBattleSlots(d.side,['drain']));
+  }
+  if(ev.type==='counter')ev.counters.forEach(c=>focusBattleSlots(c.side,['counter']));
+  if(ev.type==='poisonApply')ev.applications.forEach(a=>focusBattleSlots(a.side,['poison']));
+  if(ev.type==='curseApply')focusBattleSlots(ev.side,['curse']);
+  try {await renderBattleEvent(ev);} finally {clearBattleSlotFocus();}
 }
 function setCaption(text) { $("battleCaption").textContent=text; }
 function setCaptionRich(lines) {
@@ -1793,7 +1874,7 @@ async function finishCurseAnimations() {
 }
 function dieContent(roll) { return icon(roll.face)+(roll.cursed?curseMark():""); }
 function dieTile(roll) {
-  return `<div class="dice-tile ${F[roll.face].special?"special":""} ${roll.cursed?"cursed":""}" data-slot="${roll.slot}">${dieContent(roll)}</div>`;
+  return `<div class="dice-tile ${F[roll.face].special?"special":""} ${roll.cursed?"cursed":""}" data-slot="${roll.slot}" data-face="${roll.face}">${dieContent(roll)}</div>`;
 }
 
 async function rollDice(rolls,twinSide=null) {
@@ -1816,14 +1897,14 @@ async function rollDice(rolls,twinSide=null) {
     await battleWait(55);
   }
   boxes.forEach((box,i)=>{
-    box.innerHTML=dieContent(rolls[i]);
+    box.innerHTML=dieContent(rolls[i]);box.dataset.face=rolls[i].face;
     const rect=box.getBoundingClientRect(),p=$("battleFx").getBoundingClientRect();
     particles($("battleFx"),rect.left-p.left+rect.width/2,rect.top-p.top+rect.height/2,F[rolls[i].face].special?PAL["rose-light"]:PAL["accent"],10,55);
   });
   paintBattle(battleStates);
   await battleWait(BATTLE_TIMING.diceHold);
 }
-async function playEvent(ev) {
+async function renderBattleEvent(ev) {
   // 防御の事前演出と、攻撃が来なかったカウンター演出を省く
   if (ev.type === "guard" || ev.type === "counterIdle") return;
   const old=battleStates;
@@ -1837,7 +1918,7 @@ async function playEvent(ev) {
   if(ev.type==="twin"){
     setCaption(`${old[ev.side].name} \u306e\u30c4\u30a4\u30f3`);
     particles($("battleFx"),localPoint(ev.side).x,localPoint(ev.side).y,PAL.accent,18,100);
-    await battleWait(600);await rollDice(ev.rolls,ev.side);paintBattle(ev.state);return;
+    await battleWait(600);clearBattleSlotFocus();await rollDice(ev.rolls,ev.side);paintBattle(ev.state);return;
   }
   if(ev.type==="curseBlock"){
     queueCurseRecovery(ev.side,[ev.slot]);
@@ -1866,7 +1947,7 @@ async function playEvent(ev) {
     ev.checks.forEach(c=>{
       const el=document.createElement("div");el.className="status-die poison-wheel";
       el.innerHTML='<svg viewBox="0 0 100 100" aria-hidden="true"><path class="wheel-green" d="M50 50V5A45 45 0 1 1 11 72.5Z"/><path class="wheel-clear" d="M50 50 11 72.5A45 45 0 0 1 50 5Z"/><circle class="wheel-rim" cx="50" cy="50" r="45"/></svg><span class="wheel-pointer"></span>';
-      fighterEl(c.side).appendChild(el);wheels.push(el);
+      battleEffectArea(c.side).appendChild(el);wheels.push(el);
       animate(el.querySelector("svg"),[
         {transform:"rotate(0deg)"},
         {transform:`rotate(${c.continued?1320:1500}deg)`}
@@ -1878,7 +1959,7 @@ async function playEvent(ev) {
     setCaption(ev.checks.map(c=>`${old[c.side].name}\uff1a${c.continued?"\u6bd2\u304c\u3064\u3065\u304f":"\u6bd2\u304c\u6d88\u3048\u305f"}`).join("\n"));
     ev.checks.filter(c=>!c.continued).forEach(c=>{
       const gone=document.createElement("span");gone.className="poison-gone";gone.textContent=F.poison.icon;
-      const host=fighterEl(c.side).querySelector(".fighter-hit-area");host.appendChild(gone);
+      const host=battleEffectArea(c.side);host.appendChild(gone);
       const anim=animate(gone,[
         {transform:"translate(-50%,-50%) scale(.65)",opacity:0},
         {transform:"translate(-50%,-50%) scale(1.15)",opacity:1,offset:.26},
@@ -1998,6 +2079,7 @@ async function playEvent(ev) {
   }
 }
 async function playBattle(log,i,total) {
+  clearBattleSlotFocus();
   currentBattle=log;
   deferredCurses=[new Set(),new Set()];
   $("battleScreen").classList.remove("awaiting-next");
@@ -2067,6 +2149,7 @@ async function playUpdates(extraIds=[]) {
   if(replayCompleted)store.player.seenBattleSeq=Math.max(store.player.seenBattleSeq,maxBattle);
   advanceBattle();await hideLayer($("battleScreen"));$("battleScreen").classList.add("hidden");
   $("battleScreen").getAnimations().forEach(x=>x.cancel());
+  clearBattleSlotFocus();
   $("battleFx").innerHTML="";playback=null;currentBattle=null;
   for(const l of newLegends){
     await showLegend(l.emojin);
@@ -2148,13 +2231,7 @@ function wireEvents() {
     }
     const tab=ev.target.closest("[data-archive-tab]");
     if(tab){
-      const panel=$("modalHost").querySelector(".archive-panel"),keys=["active","legend","dead"];
-      panel.dataset.activeTab=tab.dataset.archiveTab;
-      panel.querySelector(".archive-track").style.transform=`translateX(-${keys.indexOf(tab.dataset.archiveTab)*100}%)`;
-      panel.querySelectorAll(".archive-tab").forEach(button=>{
-        const selected=button===tab;button.classList.toggle("selected",selected);
-        button.setAttribute("aria-selected",String(selected));button.tabIndex=selected?0:-1;
-      });
+      switchArchiveTab($("modalHost").querySelector(".archive-panel"),tab.dataset.archiveTab);
       return;
     }
     if(modalOptions.tapToClose&&!busy)closeModal();
@@ -2171,6 +2248,26 @@ function wireEvents() {
     const next=tabs[(tabs.indexOf(tab)+(ev.key==="ArrowRight"?1:tabs.length-1))%tabs.length];
     next.click();next.focus({preventScroll:true});
   });
+  let archiveGesture=null,suppressArchiveClickUntil=0;
+  $('modalHost').addEventListener('pointerdown',ev=>{
+    const viewport=ev.target.closest('.archive-viewport');
+    if(!viewport || !ev.isPrimary || (ev.pointerType==='mouse' && ev.button!==0))return;
+    archiveGesture={id:ev.pointerId,x:ev.clientX,y:ev.clientY,time:performance.now(),panel:viewport.closest('.archive-panel')};
+  });
+  $('modalHost').addEventListener('pointerup',ev=>{
+    const g=archiveGesture;if(!g || g.id!==ev.pointerId)return;archiveGesture=null;
+    const dx=ev.clientX-g.x,dy=ev.clientY-g.y;
+    if(!g.panel.isConnected || Math.abs(dx)<45 || Math.abs(dx)<Math.abs(dy)*1.35 || performance.now()-g.time>1200)return;
+    suppressArchiveClickUntil=performance.now()+400;
+    const keys=['active','legend','dead'],index=keys.indexOf(g.panel.dataset.activeTab);
+    switchArchiveTab(g.panel,keys[E.clamp(index+(dx<0?1:-1),0,2)]);
+  });
+  $('modalHost').addEventListener('pointercancel',()=>{archiveGesture=null;});
+  $('modalHost').addEventListener('click',ev=>{
+    if(performance.now()<suppressArchiveClickUntil && ev.target.closest('.archive-viewport')){
+      ev.preventDefault();ev.stopImmediatePropagation();
+    }
+  },true);
   $("popoverHost").addEventListener("click",()=>closePopover());
   document.addEventListener("keydown",ev=>{
     if(!$("popoverHost").classList.contains("hidden")&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat){ev.preventDefault();closePopover();return;}

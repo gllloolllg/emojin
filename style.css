@@ -538,3 +538,36 @@ button.slot:active{transform:scale(.89)}
 .revival-particles{position:absolute;inset:0;pointer-events:none}
 .revival-halo{position:absolute;width:74px;height:74px;border:1px solid var(--neon-sky);border-radius:50%;opacity:0;pointer-events:none}
 .revival-spark{position:absolute;width:4px;height:4px;border-radius:50%;pointer-events:none}
+
+/* Battle effects and executing slots stay above the battle controls. */
+.battle-fx{z-index:50}
+.battle-caption-wrap{z-index:60}
+.battle-dice.processing{z-index:45}
+.slots-processing .battle-dice .dice-tile{filter:brightness(.5) saturate(.6);transition:filter .15s,scale .15s}
+.slots-processing .battle-dice .dice-tile.executing{filter:brightness(1.2);scale:1.12;z-index:2;box-shadow:0 0 0 2px var(--text),0 0 24px var(--neon-sky)}
+/* Names remain on one line, with their full text kept inside the viewport. */
+.resident-name{display:block;position:relative;left:50%;width:max-content;max-width:none;overflow:visible;text-overflow:clip;transform:translateX(-50%);white-space:nowrap}
+/* Tabs sit below the independently scrolling lists. */
+.archive-panel{padding:54px 0 64px}
+.archive-tabs{top:auto;bottom:12px;left:13px;right:13px;height:40px;z-index:3}
+.archive-viewport{touch-action:pan-y;border-bottom:1px solid var(--line)}
+.archive-pane{touch-action:pan-y}
+/* Small variations keep the town relaxed. */
+.resident.hop .resident-emoji{animation:emojiHop 1.5s ease-in-out}
+.resident.nod .resident-emoji{animation:emojiNod 1.5s ease-in-out}
+.resident.stretch .resident-emoji{animation:emojiStretch 1.5s ease-in-out}
+.resident.sway .resident-emoji{animation:emojiSway 1.5s ease-in-out}
+.resident.float .resident-emoji{animation:emojiFloat 1.5s ease-in-out}
+.resident.stroll .resident-emoji{animation:emojiStroll .65s ease-in-out infinite}
+.resident.hop-walk .resident-emoji{animation:emojiHopWalk .75s ease-in-out infinite}
+.resident.glide .resident-emoji{animation:emojiGlide 1.6s ease-in-out infinite}
+@keyframes emojiHop{0%,100%{transform:translateY(0) scale(1)}20%,65%{transform:translateY(2px) scale(1.08,.9)}40%,80%{transform:translateY(-14px) scale(.96,1.04)}}
+@keyframes emojiNod{0%,100%{transform:rotate(0)}25%,65%{transform:rotate(12deg) translateY(3px)}45%,85%{transform:rotate(-5deg)}}
+@keyframes emojiStretch{0%,100%{transform:scale(1)}35%{transform:scale(.84,1.15)}70%{transform:scale(1.12,.92)}}
+@keyframes emojiSway{0%,100%{transform:translateX(0) rotate(0)}25%{transform:translateX(-8px) rotate(-9deg)}70%{transform:translateX(8px) rotate(9deg)}}
+@keyframes emojiFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px) rotate(4deg)}}
+@keyframes emojiStroll{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg) translateY(-2px)}}
+@keyframes emojiHopWalk{0%,100%{transform:translateY(0) scale(1.02,.98)}50%{transform:translateY(-7px) scale(.98,1.02)}}
+@keyframes emojiGlide{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-4px) rotate(2deg)}}
+
+.battle-effect-area{position:absolute;pointer-events:none}

@@ -111,6 +111,53 @@
   <div id="bootScreen" class="boot-screen" role="status" aria-label="エモジンを読み込み中"><span>エモジン</span><div class="loader" aria-hidden="true"></div><small id="bootMessage"></small><button id="bootRetry" class="primary-button hidden" type="button">再接続</button></div>
 </div>
 <script src="./app.js" defer></script>
-<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));</script>
+<script>
+/* Kept inline in index.html so there is no additional file to manage. */
+(() => {
+  if(!('serviceWorker' in navigator))return;
+  let registration, current, pending, checking=false, applying=false, controllerChanged=false;
+  function ask(type, extra={}) {
+    return new Promise((resolve,reject) => {
+      const worker=navigator.serviceWorker.controller;if(!worker){reject(Error('No controller'));return;}
+      const channel=new MessageChannel(),timer=setTimeout(()=>{channel.port1.close();reject(Error('Update check timeout'));},25000);
+      channel.port1.onmessage=event=>{clearTimeout(timer);channel.port1.close();event.data.error?reject(Error(event.data.error)):resolve(event.data);};
+      worker.postMessage({type,...extra},[channel.port2]);
+    });
+  }
+  async function applyWhenReady() {
+    if(!pending || applying || document.hidden || !window.EmojinCanReload?.())return;
+    if(!window.EmojinPrepareReload?.())return;
+    applying=true;
+    try {
+      await ask('APPLY_SHELL',{name:pending});
+      const url=new URL(location.href);url.searchParams.set('_emojin_update',pending.slice(-12));
+      location.replace(url.href);
+    } catch(error) {applying=false;window.EmojinCancelReload?.();}
+  }
+  async function check() {
+    if(checking || applying || document.hidden || !navigator.onLine)return;
+    checking=true;
+    try {
+      if(registration)await registration.update();
+      if(!navigator.serviceWorker.controller)return;
+      if(!current)current=(await ask('SHELL_STATE')).name;
+      const result=await ask('CHECK_SHELL',{current});
+      if(result.changed || controllerChanged)pending=result.name;
+    } catch(error) { /* Offline and failed checks leave the current game usable. */ }
+    finally {checking=false;applyWhenReady();if(controllerChanged&&!pending)setTimeout(check,1000);}
+  }
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    controllerChanged=true;current=null;check();
+  });
+  window.addEventListener('load',async()=>{
+    try {registration=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});await check();}
+    catch(error) {console.warn('Update check unavailable',error);}
+  });
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  window.addEventListener('pageshow',check);window.addEventListener('online',check);
+  setInterval(check,300000);setInterval(applyWhenReady,1000);
+})();
+
+</script>
 </body>
 </html>

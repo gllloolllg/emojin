@@ -571,3 +571,24 @@ button.slot:active{transform:scale(.89)}
 @keyframes emojiGlide{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-4px) rotate(2deg)}}
 
 .battle-effect-area{position:absolute;pointer-events:none}
+
+/* Double-tap zoom and long-press selection are suppressed across the game. */
+html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+/* Inputs remain editable; 16px also avoids focus-triggered zoom on iPhone. */
+#app input,#app textarea{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-size:16px}
+.archive-viewport,.archive-pane{touch-action:pan-y pinch-zoom}
+/* The legend list is a bright gold showcase. */
+.archive-panel[data-active-tab="legend"]{background:linear-gradient(135deg,#fff1b0 0%,#edbe45 28%,#ffed91 49%,#c99423 76%,#ffdf72 100%);border:2px solid #ffeaa0;box-shadow:0 0 0 3px #b87920,0 0 35px #ffcf6480;color:#493008}
+.archive-panel[data-active-tab="legend"] .archive-viewport{border-color:#a87728}
+.archive-panel[data-active-tab="legend"] .archive-pane{background:radial-gradient(ellipse at 20% 10%,#fff9d8b3,transparent 42%),radial-gradient(ellipse at 80% 70%,#ffffff66,transparent 40%)}
+.archive-panel[data-active-tab="legend"] .archive-entry{position:relative;overflow:hidden;background:linear-gradient(120deg,#684414,#a87123 45%,#684414);border:1px solid #fff0a3;box-shadow:0 3px 10px #8c5c2a50;color:#fff5cd}
+.archive-panel[data-active-tab="legend"] .archive-entry::before{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,#fff7c640 50%,transparent 65%);transform:translateX(-120%);animation:legendListShine 4.5s ease-in-out infinite;pointer-events:none}
+.archive-panel[data-active-tab="legend"] .archive-entry:nth-child(3n+2)::before{animation-delay:.7s}
+.archive-panel[data-active-tab="legend"] .archive-entry:nth-child(3n)::before{animation-delay:1.4s}
+.archive-panel[data-active-tab="legend"] .owner-line{color:#f7df9e}
+.archive-panel[data-active-tab="legend"] .star-badge{color:#ffe47e;filter:drop-shadow(0 0 4px #ffd25e)}
+.archive-panel[data-active-tab="legend"] .archive-empty{color:#684414}
+.archive-panel[data-active-tab="legend"] .archive-close{color:#5a3909}
+.archive-panel[data-active-tab="legend"] .archive-tab{background:#704b1c;color:#f3dfa8;border-color:#b48936}
+.archive-panel[data-active-tab="legend"] .archive-tab.selected{background:linear-gradient(#fff4b5,#f6cb51);color:#573808;border-color:#fff6c8;box-shadow:0 0 13px #fff4bc}
+@keyframes legendListShine{0%,30%{transform:translateX(-120%)}70%,100%{transform:translateX(120%)}}

@@ -589,6 +589,7 @@ async function createCloud() {
   return {
     get revivalPending(){return !!local.revivalPending && local.revivalPending.uid===uid;},
     completeRevival(){delete local.revivalPending;persist();},
+    get canReload(){return !local.pending.length && !flushing;},
     get uid(){return uid;},get player(){return local.player||null;},get wallet(){return local.wallet;},
     setWallet(value){local.wallet=value;persist();},
     spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
@@ -2317,6 +2318,14 @@ async function init() {
   if(store.draft){beginGeneration();return;}
   await playUpdates();
 }
+// Updating is deferred until local writes finish and the owner is back in town.
+window.EmojinCanReload=()=>!!store && !busy && !playback && (!modalKind || modalKind==='オーナー認証') && !modalClosing
+  && !revivalPlaying && !store.draft && cloud.canReload
+  && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')
+  && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','popoverHost','detailHost']
+    .every(id=>$(id).classList.contains('hidden'));
+window.EmojinPrepareReload=()=>{if(!window.EmojinCanReload())return false;busy=true;return true;};
+window.EmojinCancelReload=()=>{busy=false;refreshNav();};
 init().catch(err=>{
   console.error(err);
   $("bootMessage").textContent=err.message||"接続できませんでした。";

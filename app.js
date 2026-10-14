@@ -291,10 +291,24 @@
     };
   }
   // Shared persistence rules: browser and GAS use the same eligibility/NPC logic.
+  const DORMANCY_MS = 5 * 24 * 60 * 60 * 1000;
+  function ownerPresence(owner, now, accessed = false) {
+    const suspended = (owner.unreadBattleIds || []).length >= 7;
+    // Existing owners get their missing suspension date at the first maintenance pass.
+    const suspendedAt = suspended ? Number(owner.suspendedAt || now) : 0;
+    const lastAccessAt = accessed ? now : Number(owner.lastAccessAt || owner.createdAt || now);
+    const dormant = !accessed && suspended && now - Math.max(suspendedAt,lastAccessAt) >= DORMANCY_MS;
+    return {...owner,suspended,suspendedAt,lastAccessAt,dormant};
+  }
+  function participatingCount(all,meta) {
+    const excluded=new Set([...(meta.suspendedOwnerUids||[]),...(meta.dormantOwnerUids||[])]);
+    return all.filter(e=>e.status==='active' && (e.isNpc || e.ownerUid==='npc' || !excluded.has(e.ownerUid))).length;
+  }
+
   function eligible(emojins, owners) {
     return emojins.filter(e => e.status === 'active' &&
       (e.isNpc || e.ownerUid === 'npc' ||
-       (owners[e.ownerUid] && (owners[e.ownerUid].unreadBattleIds || []).length < 7)));
+       (owners[e.ownerUid] && !owners[e.ownerUid].dormant && (owners[e.ownerUid].unreadBattleIds || []).length < 7)));
   }
   function planBattle(all, owners, meta, inputLog) {
     const log = clone(inputLog), nextMeta = {...meta};
@@ -303,11 +317,11 @@
     nextMeta.battleSeq = log.seq;
     const ownerUpdates = {};
     log.ownerUids.forEach(uid => {
-      if (!owners[uid] || (owners[uid].unreadBattleIds || []).length >= 7) {
+      if (!owners[uid] || owners[uid].dormant || (owners[uid].unreadBattleIds || []).length >= 7) {
         throw Error('休止中のオーナーのエモジンはバトルに参加できません。');
       }
       const ids = [...new Set([...(owners[uid].unreadBattleIds || []), log.battleId])];
-      ownerUpdates[uid] = {...owners[uid], unreadBattleIds: ids, suspended: ids.length >= 7};
+      ownerUpdates[uid] = ownerPresence({...owners[uid], unreadBattleIds: ids}, Date.now());
     });
     const suspended = new Set(meta.suspendedOwnerUids || []);
     Object.entries(ownerUpdates).forEach(([uid,p]) => { if(p.suspended)suspended.add(uid);else suspended.delete(uid); });
@@ -315,7 +329,7 @@
     const updates = new Map(log.after.map(e => [e.id, e]));
     const world = all.map(e => updates.get(e.id) || e);
     const npcs = [];
-    const missing = Math.max(0, 10 - world.filter(e => e.status === 'active').length);
+    const missing = Math.max(0, 10 - participatingCount(world,nextMeta));
     const kana = Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');
     for (let i = 0; i < missing; i++) {
       const draft = createDraft(Math.random, log.battleAt);
@@ -334,7 +348,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { eligible, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { DORMANCY_MS, ownerPresence, participatingCount, eligible, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -356,7 +370,7 @@ const persist = () => localStorage.setItem(KEY, JSON.stringify(local));
 local.wallet ||= {balance:3500, updatedAt:Date.now()};
 local.pending ||= [];
 let uid = local.uid || '';
-let world = {emojins:[], battles:[], legends:[], nextSeq:1, nextLegendSeq:1, suspendedOwnerUids:[]};
+let world = {emojins:[], battles:[], legends:[], nextSeq:1, nextLegendSeq:1, suspendedOwnerUids:[],dormantOwnerUids:[]};
 let writeOperation, flushing = null;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const transient = error => /unavailable|deadline-exceeded|aborted|network-request-failed|timeout|failed to fetch|error loading dynamically imported/i.test(String(error.code || '')+' '+String(error.message || ''));
@@ -469,6 +483,30 @@ async function createCloud() {
     return cache.ready;
   }
 
+  let lastTouch=0, accessSnapshot=null;
+  async function touchAccess() {
+    if(lastTouch && Date.now()-lastTouch<300000)return null;
+    const now=Date.now();
+    const result=await F.runTransaction(db,async tx=>{
+      const ownerRef=ref('owners',uid),ownerSnap=await tx.get(ownerRef);
+      const old=data(ownerSnap);if(!old)return null;
+      const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
+      const wasDormant=!!old.dormant || (meta.dormantOwnerUids||[]).includes(uid) || E.ownerPresence(old,now).dormant;
+      const owner=E.ownerPresence(old,now,true);
+      const dormant=(meta.dormantOwnerUids||[]).filter(id=>id!==uid);
+      tx.update(ownerRef,{lastAccessAt:owner.lastAccessAt,suspendedAt:owner.suspendedAt,suspended:owner.suspended,dormant:false});
+      // Only touch global metadata when waking; the usual heartbeat writes one owner doc.
+      if(wasDormant)tx.set(metaRef,{...meta,dormantOwnerUids:dormant,revision:Number(meta.revision||0)+1});
+      return {owner,wasDormant};
+    });
+    lastTouch=now;
+    if(result){
+      accessSnapshot=result.owner;
+      if(result.wasDormant){local.revivalPending={uid};persist();}
+    }
+    return result;
+  }
+
   function compose() {
     return {version:2, player:local.player || null, wallet:local.wallet, draft:local.draft || null,
       ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
@@ -511,7 +549,7 @@ async function createCloud() {
       const plan=E.planBattle(freshPool,owners,meta,log);
       plan.emojins.forEach(e=>tx.set(ref('emojins',e.id),e));
       tx.set(logRef,{seq:plan.log.seq,ownerUids:plan.log.ownerUids,json:JSON.stringify(plan.log)});
-      Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended}));
+      Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended,suspendedAt:owner.suspendedAt,lastAccessAt:owner.lastAccessAt,dormant:owner.dormant}));
       plan.legends.forEach(l=>tx.set(ref('legends',String(l.seq)),{seq:l.seq,json:JSON.stringify(l)}));
       tx.set(metaRef,{...plan.meta,revision:Number(meta.revision||0)+1});
       return {ok:true,seq:plan.log.seq,log:plan.log,npcs:plan.npcs,legends:plan.legends};
@@ -535,19 +573,22 @@ async function createCloud() {
   async function installOwner(name,credential,registering) {
     const user=credential.user;
     if(uid && uid!==user.uid){local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];}
+    if(uid!==user.uid){lastTouch=0;accessSnapshot=null;delete local.revivalPending;}
     uid=user.uid;local.uid=uid;
     const owner=await retry(()=>F.runTransaction(db,async tx=>{
       const ownerRef=ref('owners',uid),snap=await tx.get(ownerRef);
       if(snap.exists())return snap.data();
       if(!registering)throw Error('オーナー情報がありません。登録から同じ名前とパスワードで再試行してください。');
       const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
-      const value={uid,name,createdAt:Date.now(),unreadBattleIds:[],suspended:false,
+      const value={uid,name,createdAt:Date.now(),unreadBattleIds:[],suspended:false,suspendedAt:0,dormant:false,lastAccessAt:Date.now(),
         tutorialSeen:false,seenBattleSeq:meta.battleSeq||0,seenLegendSeq:meta.legendSeq||0};
       tx.set(ownerRef,value);return value;
     }));
     local.player=owner;persist();return {uid,name:owner.name};
   }
   return {
+    get revivalPending(){return !!local.revivalPending && local.revivalPending.uid===uid;},
+    completeRevival(){delete local.revivalPending;persist();},
     get uid(){return uid;},get player(){return local.player||null;},get wallet(){return local.wallet;},
     setWallet(value){local.wallet=value;persist();},
     spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
@@ -555,8 +596,14 @@ async function createCloud() {
       if(reading)return reading;
       if(!auth.currentUser)return compose();
       reading=retry(async()=>{
+        const access=await touchAccess();
         await startWatch();
-        const owner=watchers.owner;
+        let owner=watchers.owner;
+        if(access?.owner)owner=access.owner;
+        // A delayed pre-access snapshot must not re-hide this owner's residents.
+        if(owner && accessSnapshot && Number(owner.lastAccessAt||0)<accessSnapshot.lastAccessAt) {
+          owner={...owner,lastAccessAt:accessSnapshot.lastAccessAt,suspendedAt:accessSnapshot.suspendedAt,dormant:false};
+        }
         if(!owner){delete local.player;persist();return compose();}
         // Clone watcher data: local replay acknowledgements must never mutate snapshots.
         local.player=E.clone(owner);persist();
@@ -573,7 +620,8 @@ async function createCloud() {
         }
         world={emojins:live,battles:pendingIds.filter(id=>logCache.has(id)).map(id=>logCache.get(id)),
           legends,nextSeq:Number(meta.battleSeq||0)+1,nextLegendSeq:Number(meta.legendSeq||0)+1,
-          suspendedOwnerUids:meta.suspendedOwnerUids||[]};
+          suspendedOwnerUids:meta.suspendedOwnerUids||[],
+          dormantOwnerUids:(meta.dormantOwnerUids||[]).filter(id=>id!==uid)};
         resumeWrites();return compose();
       },true).finally(()=>{reading=null;});
       return reading;
@@ -615,12 +663,12 @@ async function createCloud() {
         const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
         if(!p)throw Error('オーナー情報がありません。');
         const ids=(p.unreadBattleIds||[]).filter(id=>!battleIds.includes(id));
-        const value={...p,unreadBattleIds:ids,suspended:ids.length>=7,
+        const value={...E.ownerPresence({...p,unreadBattleIds:ids},Date.now(),true),
           seenBattleSeq:Math.max(p.seenBattleSeq||0,battleSeq||0),seenLegendSeq:Math.max(p.seenLegendSeq||0,legendSeq||0)};
         const suspended=new Set(meta.suspendedOwnerUids||[]);
         if(value.suspended)suspended.add(uid);else suspended.delete(uid);
-        tx.set(metaRef,{...meta,suspendedOwnerUids:[...suspended],revision:Number(meta.revision||0)+1});
-        tx.update(ownerRef,{unreadBattleIds:value.unreadBattleIds,suspended:value.suspended,
+        tx.set(metaRef,{...meta,suspendedOwnerUids:[...suspended],dormantOwnerUids:(meta.dormantOwnerUids||[]).filter(id=>id!==uid),revision:Number(meta.revision||0)+1});
+        tx.update(ownerRef,{unreadBattleIds:value.unreadBattleIds,suspended:value.suspended,suspendedAt:value.suspendedAt,lastAccessAt:value.lastAccessAt,dormant:false,
           seenBattleSeq:value.seenBattleSeq,seenLegendSeq:value.seenLegendSeq});return value;
       }));
       Object.assign(local.player,owner);persist();
@@ -724,13 +772,14 @@ async function syncWorld({play=false}={}) {
   const fresh=await cloud.getState();
   if(busy||playback||modalKind||!$("tutorial").classList.contains("hidden"))return;
   store=fresh;renderCity();refreshNav();
+  await showRevival();
   if(play && store.player)await playUpdates();
 }
 function reportError(error) {
   console.error(error);
   toast(error.message || '通信に失敗しました。もう一度お試しください。',5000);
 }
-function active() { return store.emojins.filter(e=>e.status==="active"); }
+function active() { return store.emojins.filter(e=>e.status==="active" && !(store.dormantOwnerUids||[]).includes(e.ownerUid)); }
 function battlePool() { return active().filter(e=>e.isNpc || !(store.suspendedOwnerUids||[]).includes(e.ownerUid)); }
 function playerName() { return store.player ? store.player.name : ""; }
 function my(e) { return e.ownerUid===cloud.uid; }
@@ -899,7 +948,7 @@ async function showArchive(status="active") {
   try {
     const archive=await cloud.getArchive();
     if(loadingRevision!==modalRevision)return;
-    store.emojins=[...active(),...archive];
+    store.emojins=[...store.emojins.filter(e=>e.status==="active"),...archive];
   } catch(error) { reportError(error);await closeModal(true);return; }
   finally { busy=false; }
   modalReturn=null;
@@ -962,6 +1011,7 @@ function showAuthForm(mode){
       await closeModal(true);
       $("bootScreen").classList.add('hidden');
       renderCity();refreshNav();
+      await showRevival();
       if(registering)showTutorial();
       else if(store.draft)beginGeneration();
       else playUpdates();
@@ -1155,10 +1205,77 @@ function renderCity() {
     old.delete(e.id);
     if(!wander.has(e.id))wander.set(e.id,spawnPosition(e.id));
     positionResident(el,wander.get(e.id));
+    if(cloud.revivalPending && my(e))el.style.opacity="0";
   }
   for(const [id,el] of old){el.remove();wander.delete(id);}
   $("emptyCity").classList.toggle("hidden",alive.length!==0);
   refreshNav();
+}
+
+/* Revival is separate from battle playback; OS motion preferences do not skip it. */
+let revivalPlaying=false;
+async function showRevival() {
+  if(!cloud.revivalPending)return;
+  const residents=[...$('residents').children].filter(el=>{
+    const e=findEmojin(el.dataset.id);return e && my(e) && e.status==='active';
+  }).sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top);
+  if(!residents.length){cloud.completeRevival();return;}
+  const previousBusy=busy;busy=true;revivalPlaying=true;
+  const overlay=document.createElement('div');overlay.className='revival-overlay';
+  overlay.innerHTML='<div class="revival-message"><span>エモジンが再び</span><span>活動を始めた</span><i></i></div><div class="revival-particles"></div>';
+  $('app').appendChild(overlay);
+  const message=overlay.querySelector('.revival-message');
+  const particlesHost=overlay.querySelector('.revival-particles');
+  const timers=[],animations=[],particles=[],prepared=[];
+  const run=(el,frames,options)=>{const animation=el.animate(frames,options);animations.push(animation);return animation;};
+  // At most 3200ms of stagger even for owners with many residents.
+  const stagger=residents.length>1?Math.min(320,3200/(residents.length-1)):0;
+  function reveal(el) {
+    el.style.opacity='1';
+    const art=el.querySelector('.resident-emoji'),name=el.querySelector('.resident-name');
+    run(art,[{opacity:0,transform:'translateY(20px) scale(.25)'},
+      {opacity:1,transform:'translateY(-5px) scale(1.14)',offset:.68},
+      {opacity:1,transform:'translateY(0) scale(1)'}],
+      {duration:1000,easing:'cubic-bezier(.2,.7,.25,1)',fill:'both'});
+    if(name)run(name,[{opacity:0,transform:'translateY(4px)'},{opacity:1,transform:'translateY(0)'}],
+      {duration:400,delay:500,fill:'both'});
+    const r=art.getBoundingClientRect(),bounds=overlay.getBoundingClientRect();
+    const x=r.left-bounds.left+r.width/2,y=r.top-bounds.top+r.height/2;
+    const halo=document.createElement('i');halo.className='revival-halo';
+    halo.style.left=x+'px';halo.style.top=y+'px';particlesHost.appendChild(halo);particles.push(halo);
+    run(halo,[{transform:'translate(-50%,-50%) scale(.25)',opacity:0},{opacity:.55,offset:.25},
+      {transform:'translate(-50%,-50%) scale(1.65)',opacity:0}],{duration:1200,fill:'both'});
+    const count=residents.length>12?8:16;
+    for(let i=0;i<count;i++){
+      const particle=document.createElement('i');particle.className='revival-spark';
+      particle.style.background=[PAL['neon-sky'],PAL['neon-green'],PAL['neon-pink']][i%3];
+      particle.style.left=x+'px';particle.style.top=y+'px';particlesHost.appendChild(particle);particles.push(particle);
+      const angle=Math.PI*2*i/count,distance=24+Math.random()*32;
+      run(particle,[{transform:'translate(0,8px) scale(.3)',opacity:0},{opacity:.9,offset:.25},
+        {transform:`translate(${Math.cos(angle)*distance}px,${Math.sin(angle)*distance-15}px) scale(.25)`,opacity:0}],
+        {duration:1100,delay:Math.random()*120,fill:'both'});
+    }
+  }
+  try {
+    residents.forEach(el=>{
+      // Cancel the normal entrance so it cannot override the revival opacity.
+      el.getAnimations().forEach(a=>a.cancel());
+      prepared.push([el,'']);el.style.opacity='0';
+    });
+    run(message,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],
+      {duration:600,easing:'ease-out',fill:'forwards'});
+    residents.forEach((el,i)=>timers.push(setTimeout(()=>reveal(el),700+i*stagger)));
+    const hold=Math.max(3500,700+Math.max(0,residents.length-1)*stagger+1400);
+    await new Promise(resolve=>setTimeout(resolve,hold));
+    const fade=run(message,[{opacity:1},{opacity:0}],{duration:650,fill:'forwards'});
+    await fade.finished.catch(()=>{});
+    cloud.completeRevival();
+  } finally {
+    timers.forEach(clearTimeout);animations.forEach(a=>a.cancel());
+    prepared.forEach(([el,opacity])=>{el.style.opacity=opacity;});
+    particles.forEach(el=>el.remove());overlay.remove();busy=previousBusy;revivalPlaying=false;
+    refreshNav();
+  }
 }
 
 /* World artwork: hand-built rooftop blocks, alleys and neon infrastructure. */
@@ -1223,7 +1340,7 @@ function worldLoop(time) {
   const dt=Math.min(.1,(time-priorFrame)/1000||0);priorFrame=time;
   const visible=!document.hidden&&!playback&&$("legendScreen").classList.contains("hidden")&&$("revealScreen").classList.contains("hidden");
   if(visible&&time-worldFrame>65){drawWorldFrame(time);worldFrame=time;}
-  if(visible&&!modalKind&&!reduced()){
+  if(visible&&!modalKind&&!reduced()&&!revivalPlaying){
     let moving=[...wander.values()].filter(p=>p.moving).length;
     for(const el of $("residents").children){
       const p=wander.get(el.dataset.id);if(!p)continue;
@@ -2097,6 +2214,7 @@ async function init() {
   animate($("bootScreen"),[{opacity:1},{opacity:0}],350);
   await delay(350);$("bootScreen").classList.add("hidden");
   if(!store.player){showAuthChoice();return;}
+  await showRevival();
   if(!store.player.tutorialSeen){showTutorial();return;}
   if(store.draft){beginGeneration();return;}
   await playUpdates();

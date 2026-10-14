@@ -530,3 +530,11 @@ button.slot:active{transform:scale(.89)}
   border-radius: 0;
   box-shadow: inset 0 0 22px rgba(255, 158, 211, .3);
 }
+/* Dormant residents return with light; the city remains visible. */
+.revival-overlay{position:fixed;inset:0;z-index:75;pointer-events:auto;isolation:isolate}
+.revival-message{position:absolute;top:37%;left:0;width:100%;text-align:center;opacity:0;pointer-events:none}
+.revival-message span{display:block;font-size:clamp(16px,5vw,22px);font-weight:800;line-height:1.7;letter-spacing:.04em;color:var(--text);text-shadow:0 2px 12px var(--bg);white-space:nowrap}
+.revival-message>i{display:block;width:36px;height:2px;margin:14px auto 0;background:var(--neon-sky)}
+.revival-particles{position:absolute;inset:0;pointer-events:none}
+.revival-halo{position:absolute;width:74px;height:74px;border:1px solid var(--neon-sky);border-radius:50%;opacity:0;pointer-events:none}
+.revival-spark{position:absolute;width:4px;height:4px;border-radius:50%;pointer-events:none}

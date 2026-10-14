@@ -592,3 +592,8 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .archive-panel[data-active-tab="legend"] .archive-tab{background:#704b1c;color:#f3dfa8;border-color:#b48936}
 .archive-panel[data-active-tab="legend"] .archive-tab.selected{background:linear-gradient(#fff4b5,#f6cb51);color:#573808;border-color:#fff6c8;box-shadow:0 0 13px #fff4bc}
 @keyframes legendListShine{0%,30%{transform:translateX(-120%)}70%,100%{transform:translateX(120%)}}
+
+/* The list title is centered across the full panel, independent of the close button. */
+.archive-heading{position:absolute;top:10px;left:0;right:0;height:38px;display:flex;align-items:center;justify-content:center;margin:0;padding:0;font-family:"Monomaniac One",sans-serif;font-size:24px;font-weight:400;line-height:1;letter-spacing:.08em;color:var(--text);pointer-events:none}
+.archive-panel[data-active-tab="legend"] .archive-heading{color:#573808;text-shadow:0 1px 0 #fff4b5}
+.archive-panel .archive-viewport{border:0}

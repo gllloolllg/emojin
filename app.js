@@ -962,6 +962,7 @@ async function showArchive(status="active") {
     return `<div class="archive-pane" role="tabpanel" id="pane-${tab.key}"><div class="archive-list">${entries||'<div class="archive-empty">エモジンはいない</div>'}</div></div>`;
   }).join("");
   openModal(`<button class="archive-close" data-close-modal="true" aria-label="閲覧を閉じる">${closeSvg()}</button>
+    <h2 class="archive-heading" aria-live="polite"></h2>
     <div class="archive-tabs" role="tablist">${tabs.map((t,i)=>`<button class="archive-tab ${i===index?"selected":""}" role="tab" tabindex="${i===index?0:-1}" aria-selected="${i===index}" aria-controls="pane-${t.key}" data-archive-tab="${t.key}">${t.name}</button>`).join("")}</div>
     <div class="archive-viewport"><div class="archive-track" style="transform:translateX(-${index*100}%)">${panes}</div></div>`,
     "エモジンを閲覧",{panelClass:"archive-panel",hideClose:true});
@@ -972,6 +973,7 @@ function switchArchiveTab(panel,key) {
   if(!panel)return;
   const keys=['active','legend','dead'],index=keys.indexOf(key);if(index<0)return;
   panel.dataset.activeTab=key;
+  panel.querySelector('.archive-heading').textContent={active:'マイエモジン',legend:'レジェンド',dead:'ボチ'}[key];
   panel.querySelector('.archive-track').style.transform=`translateX(-${index*100}%)`;
   panel.querySelectorAll('.archive-tab').forEach(button=>{
     const selected=button.dataset.archiveTab===key;

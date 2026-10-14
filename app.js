@@ -676,7 +676,7 @@ async function createCloud() {
       if(owner.suspended)world.suspendedOwnerUids.push(uid);
       return owner;
     },
-    startDraft(){if(!local.draft){this.spend(1600);local.draft=E.createDraft(Math.random,Date.now());persist();}return {draft:local.draft,wallet:local.wallet};},
+    startDraft(){if(!local.draft){this.spend(1200);local.draft=E.createDraft(Math.random,Date.now());persist();}return {draft:local.draft,wallet:local.wallet};},
     chooseSpecial({name,chosen}){
       if(!local.draft?.offers.includes(chosen))throw Error('特殊能力を選び直してください。');
       local.draft={...local.draft,name,chosen,stage:'reels'};persist();
@@ -702,7 +702,7 @@ const E = window.EmojinEngine;
 const $ = id => document.getElementById(id);
 const cloud = window.EmojinCloud;
 const HOUR = 3600000;
-const MOJI_CAP = 3000, EGG_COST = 1600, BATTLE_COST = 100;
+const MOJI_CAP = 3000, EGG_COST = 1200, BATTLE_COST = 100;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("ja", {granularity:"grapheme"}) : null;
 const chars = s => segmenter ? [...segmenter.segment(s)].map(v => v.segment) : Array.from(s);

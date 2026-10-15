@@ -604,4 +604,14 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .street-loot-item:active{filter:brightness(1.2)}
 .loot-flight-layer{position:absolute;inset:0;z-index:65;pointer-events:none;overflow:hidden}
 .loot-flying{position:absolute;font-size:25px;line-height:1;pointer-events:none;filter:drop-shadow(0 0 5px #b8e69b55)}
-.loot-reward{position:absolute;z-index:1;color:var(--neon-green);font-family:"Freckle Face",system-ui;font-size:23px;font-weight:700;line-height:1.2;white-space:nowrap;text-shadow:0 2px 4px var(--bg),0 0 10px #b8e69b88;pointer-events:none}
+.loot-reward{position:absolute;z-index:1;color:var(--neon-green);font-family:"Freckle Face",system-ui;font-size:34.5px;font-weight:700;line-height:1.2;white-space:nowrap;text-shadow:0 2px 4px var(--bg),0 0 10px #b8e69b88;pointer-events:none}
+
+/* Local hatch progress: smooth fill, no visible step dividers. */
+#generateButton .nav-icon-wrap{position:relative}
+.hatch-gauge{position:absolute;left:calc(100% + 4px);top:1px;width:9px;height:39px;overflow:hidden;border:1px solid #e6ed9b66;border-radius:5px;background:#e6ed9b16;pointer-events:none}
+.hatch-fill{position:absolute;bottom:0;left:0;width:100%;height:0;background:#e6ed9b;box-shadow:0 0 7px #e6ed9b88;transition:height .35s ease-out}
+.hatch-gauge.full{animation:hatchGlow 1.8s ease-in-out infinite alternate}
+@keyframes hatchGlow{from{box-shadow:0 0 3px #e6ed9b44}to{box-shadow:0 0 12px #e6ed9baa}}
+#generateButton.hatch-ready:not(:disabled) .nav-cost{color:var(--subtle,#958b9b);opacity:.55}
+.hatch-orb{position:absolute;z-index:90;width:30px;height:30px;border-radius:50%;background:#e6ed9b99;box-shadow:0 0 16px #e6ed9b88;pointer-events:none}
+.street-loot-item>span{display:block;pointer-events:none}

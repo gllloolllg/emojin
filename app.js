@@ -369,6 +369,8 @@ let local = parse();
 const persist = () => localStorage.setItem(KEY, JSON.stringify(local));
 local.wallet ||= {balance:3500, updatedAt:Date.now()};
 local.pending ||= [];
+local.hatch = Math.max(0,Math.min(10,Number(local.hatch)||0));
+local.hatchPending = Math.max(0,Math.min(local.hatch,Number(local.hatchPending)||0));
 let uid = local.uid || '';
 let world = {emojins:[], battles:[], legends:[], nextSeq:1, nextLegendSeq:1, suspendedOwnerUids:[],dormantOwnerUids:[]};
 let writeOperation, flushing = null;
@@ -422,6 +424,9 @@ async function flush() {
           local.pending=local.pending.filter(x=>x.id!==op.id);persist();
         }
         throw error;
+      }
+      if(op.action==='battle' && op.data.hatchReward && local.hatch<10) {
+        local.hatch++;local.hatchPending++;
       }
       local.pending=local.pending.filter(x=>x.id!==op.id);persist();
     }
@@ -512,7 +517,7 @@ async function createCloud() {
       ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
   }
   if(auth.currentUser) {
-    if(uid && uid!==auth.currentUser.uid) {local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];}
+    if(uid && uid!==auth.currentUser.uid) {local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
     uid=auth.currentUser.uid;local.uid=uid;
     local.player ||= {uid,name:'',unreadBattleIds:[],seenBattleSeq:0,seenLegendSeq:0,tutorialSeen:true};
   } else {uid='';delete local.player;local.pending=[];}
@@ -572,7 +577,7 @@ async function createCloud() {
   }
   async function installOwner(name,credential,registering) {
     const user=credential.user;
-    if(uid && uid!==user.uid){local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];}
+    if(uid && uid!==user.uid){local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
     if(uid!==user.uid){lastTouch=0;accessSnapshot=null;delete local.revivalPending;}
     uid=user.uid;local.uid=uid;
     const owner=await retry(()=>F.runTransaction(db,async tx=>{
@@ -591,6 +596,9 @@ async function createCloud() {
     completeRevival(){delete local.revivalPending;persist();},
     get canReload(){return !local.pending.length && !flushing;},
     get uid(){return uid;},get player(){return local.player||null;},get wallet(){return local.wallet;},
+    get hatch(){return local.hatch;},
+    get hatchPending(){return local.hatchPending;},
+    revealHatch(){local.hatchPending=Math.max(0,local.hatchPending-1);persist();},
     setWallet(value){local.wallet=value;persist();},
     spend(cost){local.wallet=E.accrueMoji(local.wallet,Date.now());if(local.wallet.balance<cost)throw Error(`${cost}モジ必要です。`);local.wallet.balance-=cost;persist();},
     async getState(){
@@ -677,7 +685,7 @@ async function createCloud() {
       if(owner.suspended)world.suspendedOwnerUids.push(uid);
       return owner;
     },
-    startDraft(){if(!local.draft){this.spend(1200);local.draft=E.createDraft(Math.random,Date.now());persist();}return {draft:local.draft,wallet:local.wallet};},
+    startDraft(){if(!local.draft){const free=local.hatch>=10;if(!free)this.spend(1200);local.draft={...E.createDraft(Math.random,Date.now()),payment:free?'hatch':'moji'};persist();}return {draft:local.draft,wallet:local.wallet};},
     chooseSpecial({name,chosen}){
       if(!local.draft?.offers.includes(chosen))throw Error('特殊能力を選び直してください。');
       local.draft={...local.draft,name,chosen,stage:'reels'};persist();
@@ -688,9 +696,9 @@ async function createCloud() {
     async finishDraft({draftId}){
       if(local.draft?.id!==draftId)throw Error('生成内容がありません。');
       const d=local.draft,e={...E.fromDraft(d,d.name,local.player.name,d.chosen,Date.now()),ownerUid:uid,isNpc:false};
-      await flush();local.draft=null;persist();archiveAt=0;return e;
+      await flush();if(d.payment==='hatch'){local.hatch=0;local.hatchPending=0;}local.draft=null;persist();archiveAt=0;return e;
     },
-    saveBattle(request){archiveAt=0;return enqueue('battle',{uid,battleRequest:request},'battle-'+request.battleId);}
+    saveBattle(request){archiveAt=0;return enqueue('battle',{uid,battleRequest:request,hatchReward:true},'battle-'+request.battleId);}
   };
 }
 
@@ -1231,7 +1239,7 @@ function spawnLoot(item=lootItem(),timestamp=Date.now()) {
   const position=lootPosition();if(!position)return null;
   if(!lootLayer){lootLayer=document.createElement('div');lootLayer.className='street-loot';$('cityScreen').appendChild(lootLayer);}
   const el=document.createElement('button');el.type='button';el.className='street-loot-item';
-  el.textContent=item.emoji;el.setAttribute('aria-label',`${item.name}、${item.moji}モジを拾う`);
+  const glyph=document.createElement('span');glyph.textContent=item.emoji;glyph.style.transform=`rotate(${Math.round(rng()*360)}deg)`;el.appendChild(glyph);el.setAttribute('aria-label',`${item.name}、${item.moji}モジを拾う`);
   el.style.left=position.x*100+'%';el.style.top=position.y*100+'%';
   const drop={id:++lootSerial,item,el,expires:timestamp+LOOT.lifetime,picked:false};
   el.addEventListener('click',()=>{collectLoot(drop).catch(reportError);});
@@ -1295,11 +1303,46 @@ async function collectLoot(drop) {
   }
 }
 
+let hatchAnimating=false;
+function renderHatch() {
+  const button=$('generateButton');
+  let gauge=$('hatchGauge');
+  if(!gauge){
+    gauge=document.createElement('span');gauge.id='hatchGauge';gauge.className='hatch-gauge';
+    gauge.setAttribute('role','progressbar');gauge.setAttribute('aria-label','孵化ゲージ');
+    gauge.setAttribute('aria-valuemin','0');gauge.setAttribute('aria-valuemax','10');
+    gauge.innerHTML='<span class="hatch-fill"></span>';button.querySelector('.nav-icon-wrap').appendChild(gauge);
+  }
+  const value=Math.max(0,(cloud.hatch||0)-(cloud.hatchPending||0));
+  gauge.firstElementChild.style.height=value*10+'%';gauge.setAttribute('aria-valuenow',value);
+  gauge.classList.toggle('full',value>=10);
+  button.classList.toggle('hatch-ready',(cloud.hatch||0)>=10);
+}
+async function animateHatchReward() {
+  if(hatchAnimating || !(cloud.hatchPending>0) || !lootCanPlay())return;
+  hatchAnimating=true;busy=true;refreshNav();
+  const orb=document.createElement('span');orb.className='hatch-orb';$('app').appendChild(orb);
+  try {
+    const a=$('app').getBoundingClientRect(),g=$('hatchGauge').getBoundingClientRect();
+    const x=a.width/2,y=a.height/2,dx=g.left+g.width/2-a.left-x,dy=g.top+g.height/2-a.top-y;
+    orb.style.left=x+'px';orb.style.top=y+'px';
+    await orb.animate([
+      {transform:'translate(-50%,-50%) scale(.5)',opacity:0},
+      {transform:'translate(-50%,-50%) scale(1)',opacity:.85,offset:.2},
+      {transform:`translate(calc(-50% + ${dx*.65}px),calc(-50% + ${dy*.35}px)) scale(.8)`,opacity:.8,offset:.65},
+      {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.2)`,opacity:0}
+    ],{duration:750,easing:'ease-in-out'}).finished;
+    cloud.revealHatch();refreshNav();
+    await $('hatchGauge').animate([{filter:'brightness(2.3)',boxShadow:'0 0 18px #e6ed9b'}, {filter:'brightness(1)',boxShadow:'0 0 0 transparent'}],{duration:450}).finished;
+  } catch(error){console.warn(error);}
+  finally {orb.remove();hatchAnimating=false;busy=false;refreshNav();}
+}
 function refreshNav() {
-  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||balance>=EGG_COST), btn=$("generateButton");
+  renderHatch();
+  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||cloud.hatch>=10||balance>=EGG_COST), btn=$("generateButton");
   btn.classList.toggle("available",available);
   btn.disabled=!available;
-  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":`エモジンを生成、${EGG_COST}モジ`);
+  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":(cloud.hatch>=10?"エモジンを生成、孵化ゲージを使用":`エモジンを生成、${EGG_COST}モジ`));
   btn.querySelector(".nav-cost").innerHTML =
   store.draft ? 'つづき' : `${EGG_COST} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
@@ -1480,6 +1523,7 @@ function drawWorldFrame(time) {
 function worldLoop(time) {
   const dt=Math.min(.1,(time-priorFrame)/1000||0);priorFrame=time;
   tickLoot(dt);
+  animateHatchReward();
   const visible=!document.hidden&&!playback&&$("legendScreen").classList.contains("hidden")&&$("revealScreen").classList.contains("hidden");
   if(visible&&time-worldFrame>65){drawWorldFrame(time);worldFrame=time;}
   if(visible&&!modalKind&&!reduced()&&!revivalPlaying){
@@ -1518,7 +1562,7 @@ async function beginGeneration() {
     if(store.draft.stage==="special"){showSpecial();return;}
     showName();return;
   }
-  if(updateMoji()<EGG_COST){refreshNav();return;}
+  if(cloud.hatch<10 && updateMoji()<EGG_COST){refreshNav();return;}
   busy=true;
   try{
     const result=cloud.startDraft();
@@ -2428,7 +2472,7 @@ async function init() {
 }
 // Updating is deferred until local writes finish and the owner is back in town.
 window.EmojinCanReload=()=>!!store && !busy && !playback && (!modalKind || modalKind==='オーナー認証') && !modalClosing
-  && !revivalPlaying && !store.draft && !lootFlights && cloud.canReload
+  && !revivalPlaying && !store.draft && !lootFlights && !hatchAnimating && cloud.canReload
   && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')
   && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','popoverHost','detailHost']
     .every(id=>$(id).classList.contains('hidden'));

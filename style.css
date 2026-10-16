@@ -621,12 +621,7 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 
 /* MOJI SPIN — a gold and electric-pink casino cabinet. */
 .mo-meter{height:130px}
-.moji-spin-launch{position:absolute;top:89px;left:8px;width:56px;height:56px;display:grid;place-items:center;pointer-events:auto;border-radius:50%;border: 2px solid #ffe9a6;
-  background: linear-gradient(145deg, #fff0b0, #e5bc58 55%, #b9852c);
-  box-shadow:
-    inset 0 2px 3px #ffffff88,
-    0 3px 10px #0005,
-    0 0 12px #e5bc5855;color:#ffe7aa;font-size:38px;line-height:1;padding:0;transition:transform .18s,box-shadow .18s}
+.moji-spin-launch{position:absolute;top:89px;left:14px;width:44px;height:37px;display:grid;place-items:center;pointer-events:auto;border:1px solid #edc96d88;border-radius:10px;background:linear-gradient(145deg,#59405b,#2d2537);box-shadow:0 3px 12px #0005,0 0 10px #efb95d22;color:#ffe7aa;font-size:25px;line-height:1;padding:0;transition:transform .18s,box-shadow .18s}
 .moji-spin-launch:active{transform:scale(.9)}
 .moji-spin-launch:disabled{opacity:.35}
 .moji-spin-launch.has-round{box-shadow:0 0 14px #ffe69b99}
@@ -697,3 +692,5 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 
 /* Keep the saved total from spoiling the ongoing slot presentation. */
 body.moji-spin-open .city-header .mo-reading{visibility:hidden}
+
+.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:50%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}

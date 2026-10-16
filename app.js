@@ -473,10 +473,10 @@ function authError(error) {
 async function flush() {
   if(flushing)return flushing;
   flushing=(async()=>{
-    const npcs=[];let last={};
+    const npcs=[],results={};let last={};
     while(local.pending.length) {
       const op=local.pending[0];
-      try {last=await retry(()=>writeOperation(op));npcs.push(...(last.npcs || []));}
+      try {last=await retry(()=>writeOperation(op));results[op.id]=last;npcs.push(...(last.npcs || []));}
       catch(error) {
         if(!transient(error)) {
           local.pending=local.pending.filter(x=>x.id!==op.id);persist();
@@ -486,7 +486,7 @@ async function flush() {
       local.pending=local.pending.filter(x=>x.id!==op.id);persist();
       window.dispatchEvent(new Event('emojin-wallet'));
     }
-    return {...last,npcs};
+    return {...last,npcs,results};
   })().finally(()=>{flushing=null;});
   return flushing;
 }
@@ -765,8 +765,12 @@ async function createCloud() {
     },
     async spinSlot(round){
       window.MojiSpinEngine.validateRound(round);
-      await enqueue('slotSpin',{uid,round},round.id);
-      return this.getSlotRound();
+      const result=await enqueue('slotSpin',{uid,round},round.id);
+      // The committed transaction already contains the authoritative round.
+      // Never re-read the wallet to discover a result we have just saved.
+      const saved=result.results?.[round.id] || await retry(()=>writeOperation({action:'slotSpin',data:{uid,round},id:round.id}));
+      if(!saved.record?.round)throw Error('スピン結果を確認できませんでした。');
+      return saved.record;
     },
     async finishSlot(id){
       const account=await retry(()=>F.runTransaction(db,async tx=>{
@@ -1520,11 +1524,11 @@ function refreshSlotUI(){
   const launch=$('mojiSpinButton');
   if(launch){launch.disabled=!store?.player;launch.classList.toggle('has-round',!!cloud.slotPending);}
   const session=slotSession;if(!session||!session.panel.isConnected)return;
-  if(!session.running && !session.record)session.balance=cloud.wallet.balance;
+  if(!session.running && !session.record && !session.failed)session.balance=cloud.wallet.balance;
   $('spinWallet').textContent=Math.max(0,session.balance).toLocaleString('en-US');
   $('spinWin').textContent=session.win.toLocaleString('en-US');
   const button=$('slotSpinButton');
-  button.disabled=session.loading||session.running||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
+  button.disabled=session.loading||session.running||session.failed||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
   button.textContent='SPIN';
   const close=session.panel.querySelector('.modal-close');if(close)close.disabled=session.running;
 }
@@ -1553,8 +1557,10 @@ async function showMojiSpin(){
     if(slotSession!==session||!session.panel.isConnected)return;
     session.record=record;
     if(record){session.balance=record.balanceBefore-record.round.bet;$('spinPhase').textContent='8 LINES';}
-  }catch(error){if(session.panel.isConnected)reportError(error);}
+  }catch(error){session.failed=true;if(session.panel.isConnected)reportError(error);}
   finally {session.loading=false;refreshSlotUI();}
+  // Interrupted rounds resume automatically, never on the next SPIN press.
+  if(session.record && slotSession===session && session.panel.isConnected)await runSlotSession(session,true);
 }
 function slotCells(){return [...$('spinBoard').querySelectorAll('.spin-cell')];}
 function paintSlotCell(el,id){
@@ -1622,7 +1628,7 @@ async function animateSlotWin(session,spin){
   const banner=$('spinWinBanner'),big=spin.payout>=160;
   banner.textContent=(spin.payout>=400?'MEGA WIN  ':big?'BIG WIN  ':'+')+spin.payout.toLocaleString('en-US');
   banner.classList.add('visible');if(big)banner.classList.add('big');
-  session.win+=spin.payout;session.balance+=spin.payout;refreshSlotUI();
+  session.win+=spin.payout;refreshSlotUI();
   slotConfetti(big?60:22);
   session.panel.animate([{boxShadow:'0 0 55px #ffd884aa'},{boxShadow:'0 0 45px #ed5acb88'},{boxShadow:'0 20px 80px #0009'}],{duration:1100});
   await delay(big?1700:1050);
@@ -1647,38 +1653,45 @@ async function showSlotTotal(total){
   await new Promise(resolve=>button.addEventListener('click',resolve,{once:true}));
   overlay.classList.add('hidden');overlay.innerHTML='';
 }
-async function runSlotSession(session){
-  if(slotSession!==session||session.running||session.loading||!session.panel.isConnected)return;
-  if(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET)return;
-  // This is the only outcome draw. Free-spin count and every free grid are drawn now.
-  const candidate=!session.record&&!cloud.slotPending?SLOT.createRound():null;
-  session.running=true;busy=true;
-  if(candidate){session.balance=cloud.wallet.balance-SLOT.BET;session.win=0;}
+async function runSlotSession(session,recover=false){
+  if(slotSession!==session||session.running||session.loading||session.failed||!session.panel.isConnected)return;
+  if(!recover && (session.record||cloud.slotPending||cloud.wallet.balance<SLOT.BET))return;
+  // Draw the complete paid game and every free spin exactly once, on this click.
+  const candidate=recover?null:SLOT.createRound();
+  const previous=slotCells().map(el=>el.dataset.symbol);
+  session.running=true;busy=true;session.win=0;
+  if(candidate)session.balance=cloud.wallet.balance-SLOT.BET;
   refreshSlotUI();
   try{
-    if(!session.completed){
-      session.win=0;$('spinPhase').textContent='GOOD LUCK';$('spinBet').textContent=SLOT.BET;
-      startSlotReels(session,false);
-      const record=session.record||(candidate?await cloud.spinSlot(candidate):await cloud.getSlotRound());
-      if(!record){stopSlotReels(session);session.record=null;return;}
-      session.record=record;session.balance=record.balanceBefore-record.round.bet;refreshSlotUI();
-      const round=record.round;
-      await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0]);
-      if(round.freeCount){
-        await slotFreeRoulette(round.freeCount);
-        for(let i=1;i<round.spins.length;i++){
-          $('spinPhase').textContent=`FREE SPIN  ${i} / ${round.freeCount}`;$('spinBet').textContent='0';
-          startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);await animateSlotWin(session,round.spins[i]);
-        }
-        await showSlotTotal(round.total);
+    $('spinPhase').textContent='GOOD LUCK';$('spinBet').textContent=SLOT.BET;
+    startSlotReels(session,false);
+    const record=session.record || await cloud.spinSlot(candidate);
+    if(!record?.round)throw Error('スピン結果を確認できませんでした。');
+    session.record=record;session.balance=record.balanceBefore-record.round.bet;refreshSlotUI();
+    const round=record.round;
+    await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0]);
+    if(round.freeCount){
+      await slotFreeRoulette(round.freeCount);
+      for(let i=1;i<round.spins.length;i++){
+        $('spinPhase').textContent=`FREE SPIN  ${i} / ${round.freeCount}`;$('spinBet').textContent='0';
+        startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);await animateSlotWin(session,round.spins[i]);
       }
-      session.completed=true;
+      await showSlotTotal(round.total);
     }
-    await cloud.finishSlot(session.record.round.id);
-    session.record=null;session.completed=false;session.balance=cloud.wallet.balance;
+    // Publish winnings to the visible balance only after the entire presentation.
+    session.win=round.total;session.balance=record.balanceBefore-round.bet+round.total;
+    session.completed=true;refreshSlotUI();
+    $('spinPhase').textContent='保存中…';
+    await cloud.finishSlot(round.id);
+    session.record=null;session.completed=false;
     $('spinBet').textContent=SLOT.BET;$('spinPhase').textContent='8 LINES';
     slotCells().forEach(el=>el.classList.remove('locked'));
-  }catch(error){reportError(error);$('spinPhase').textContent='TAP TO RETRY';}
+  }catch(error){
+    // Keep the presentation balance isolated from the already-settled DB balance.
+    session.failed=true;
+    if(!session.record){slotCells().forEach((el,i)=>paintSlotCell(el,previous[i]));}
+    reportError(error);$('spinPhase').textContent='通信を確認して開き直してください';
+  }
   finally {stopSlotReels(session);session.running=false;busy=false;refreshNav();refreshSlotUI();}
 }
 

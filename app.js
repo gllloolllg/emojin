@@ -1525,7 +1525,7 @@ function refreshSlotUI(){
   $('spinWin').textContent=session.win.toLocaleString('en-US');
   const button=$('slotSpinButton');
   button.disabled=session.loading||session.running||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
-  button.textContent=session.loading?'…':session.running?'SPINNING':session.completed?'RETRY':(session.record||cloud.slotPending)?'RESUME':'SPIN';
+  button.textContent='SPIN';
   const close=session.panel.querySelector('.modal-close');if(close)close.disabled=session.running;
 }
 async function showMojiSpin(){
@@ -1552,7 +1552,7 @@ async function showMojiSpin(){
     const record=await cloud.getSlotRound();
     if(slotSession!==session||!session.panel.isConnected)return;
     session.record=record;
-    if(record){session.balance=record.balanceBefore-record.round.bet;$('spinPhase').textContent='RESUME SPIN';}
+    if(record){session.balance=record.balanceBefore-record.round.bet;$('spinPhase').textContent='8 LINES';}
   }catch(error){if(session.panel.isConnected)reportError(error);}
   finally {session.loading=false;refreshSlotUI();}
 }
@@ -1568,6 +1568,7 @@ function stopSlotReels(session){
 }
 function startSlotReels(session,free){
   stopSlotReels(session);
+  session.reelStarted=performance.now();
   $('spinLines').innerHTML='';$('spinWinBanner').className='spin-win-banner';$('spinWinBanner').textContent='';
   const cells=slotCells();cells.forEach((el,i)=>{
     el.classList.remove('winning');el.classList.toggle('locked',free&&i===4);
@@ -1580,13 +1581,13 @@ function startSlotReels(session,free){
 }
 async function animateSlotSpin(session,spin){
   if(!session.timer)startSlotReels(session,spin.free);
-  await delay(420);
-  for(const index of [0,3,6,1,4,7,2,5,8]){
+  await delay(Math.max(0,1000-(performance.now()-session.reelStarted)));
+  for(const index of [0,1,2,5,8,7,6,3,4]){
     const cell=slotCells()[index];cell.classList.remove('spinning');paintSlotCell(cell,spin.cells[index]);
     if(!(spin.free&&index===4)){
-      cell.animate([{transform:'translateY(-7px) scale(.94)'},{transform:'translateY(3px) scale(1.04)',offset:.65},{transform:'translateY(0) scale(1)'}],{duration:260,easing:'ease-out'});
-      await delay(100);
+      cell.querySelector('.spin-glyph').animate([{transform:'translateY(-7px) scale(.94)'},{transform:'translateY(3px) scale(1.04)',offset:.65},{transform:'translateY(0) scale(1)'}],{duration:260,easing:'ease-out'});
     }
+    if(index!==4)await delay(100);
   }
   stopSlotReels(session);
 }
@@ -1604,12 +1605,18 @@ function slotConfetti(count=36){
 }
 async function animateSlotWin(session,spin){
   if(!spin.payout){await delay(230);return;}
-  const cells=slotCells(),svg=$('spinLines'),board=$('spinBoard').getBoundingClientRect();
+  const cells=slotCells(),svg=$('spinLines'),board=$('spinBoard');
+  svg.setAttribute('viewBox',`0 0 ${board.clientWidth} ${board.clientHeight}`);
   const colors=['#ffe397','#ff8bd4','#b9fff0','#c9adff'];
   for(const win of spin.wins){
     win.indices.forEach(i=>cells[i].classList.add('winning'));
-    const points=win.indices.map(i=>{const r=cells[i].getBoundingClientRect();return `${(r.left+r.width/2-board.left)/board.width*300},${(r.top+r.height/2-board.top)/board.height*300}`;}).join(' ');
-    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');line.setAttribute('points',points);line.style.stroke=colors[win.line%colors.length];svg.appendChild(line);
+    // Layout offsets are stable even while the reel glyph is animating.
+    const first=cells[win.indices[0]],last=cells[win.indices[2]];
+    const x1=first.offsetLeft+first.offsetWidth/2,y1=first.offsetTop+first.offsetHeight/2;
+    const x2=last.offsetLeft+last.offsetWidth/2,y2=last.offsetTop+last.offsetHeight/2;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    for(const [key,value] of Object.entries({x1,y1,x2,y2}))line.setAttribute(key,value);
+    line.style.stroke=colors[win.line%colors.length];svg.appendChild(line);
     await delay(85);
   }
   const banner=$('spinWinBanner'),big=spin.payout>=160;
@@ -1645,7 +1652,9 @@ async function runSlotSession(session){
   if(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET)return;
   // This is the only outcome draw. Free-spin count and every free grid are drawn now.
   const candidate=!session.record&&!cloud.slotPending?SLOT.createRound():null;
-  session.running=true;busy=true;refreshSlotUI();
+  session.running=true;busy=true;
+  if(candidate){session.balance=cloud.wallet.balance-SLOT.BET;session.win=0;}
+  refreshSlotUI();
   try{
     if(!session.completed){
       session.win=0;$('spinPhase').textContent='GOOD LUCK';$('spinBet').textContent=SLOT.BET;
@@ -1701,7 +1710,8 @@ async function animateHatchReward() {
       {transform:'translate(-50%,-50%) scale(1)',opacity:.85,offset:.2},
       {transform:`translate(calc(-50% + ${dx*.65}px),calc(-50% + ${dy*.35}px)) scale(.8)`,opacity:.8,offset:.65},
       {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.2)`,opacity:0}
-    ],{duration:750,easing:'ease-in-out'}).finished;
+    ],{duration:750,easing:'ease-in-out',fill:'forwards'}).finished;
+    orb.remove();
     cloud.revealHatch();refreshNav();
     await $('hatchGauge').animate([{filter:'brightness(2.3)',boxShadow:'0 0 18px #e6ed9b'}, {filter:'brightness(1)',boxShadow:'0 0 0 transparent'}],{duration:450}).finished;
   } catch(error){console.warn(error);}

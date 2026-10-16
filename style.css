@@ -608,9 +608,12 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 
 /* Local hatch progress: smooth fill, no visible step dividers. */
 #generateButton .nav-icon-wrap{position:relative}
-.hatch-gauge{position:absolute;left:calc(100% + 4px);top:1px;width:9px;height:39px;overflow:hidden;border:1px solid #e6ed9b66;border-radius:5px;background:#e6ed9b16;pointer-events:none}
+.hatch-gauge{position:absolute;left:calc(100% + 4px);top:1px;width:9px;height:39px;overflow:hidden;border:1px solid #e6ed9bcc;border-radius:5px;background:#e6ed9b38;pointer-events:none}
 .hatch-fill{position:absolute;bottom:0;left:0;width:100%;height:0;background:#e6ed9b;box-shadow:0 0 7px #e6ed9b88;transition:height .35s ease-out}
-.hatch-gauge.full{animation:hatchGlow 1.8s ease-in-out infinite alternate}
+.hatch-gauge.full .hatch-fill{background:#f5ff70}
+#generateButton:disabled{opacity:1;filter:none}
+#generateButton:disabled .egg-sign,#generateButton:disabled .nav-cost{opacity:.38;filter:grayscale(.4)}
+.hatch-gauge.full{border-color:#f5ff70;animation:hatchGlow 1.8s ease-in-out infinite alternate}
 @keyframes hatchGlow{from{box-shadow:0 0 3px #e6ed9b44}to{box-shadow:0 0 12px #e6ed9baa}}
 #generateButton.hatch-ready:not(:disabled) .nav-cost{color:var(--subtle,#958b9b);opacity:.55}
 .hatch-orb{position:absolute;z-index:90;width:30px;height:30px;border-radius:50%;background:#e6ed9b99;box-shadow:0 0 16px #e6ed9b88;pointer-events:none}
@@ -634,12 +637,12 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .spin-ornament{font-size:16px;color:var(--spin-pink);text-shadow:0 0 9px #ff82c7}
 .spin-phase{min-height:28px;padding:9px 0 6px;font-size:10px;line-height:1.2;letter-spacing:.19em;color:#f0bce4}
 .spin-machine{position:relative;padding:9px;background:linear-gradient(135deg,#f3d99c,#7d4c51 34%,#e3b66b 64%,#82524e);border-radius:17px;box-shadow:0 7px 0 #110e1c,0 9px 15px #0008,inset 0 1px 0 #fff5}
-.spin-board{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:7px;aspect-ratio:1;background:#110d1b;border:1px solid #ffe4a866;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 24px #000;}
+.spin-board{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:6px;padding:7px;aspect-ratio:1;background:#110d1b;border:1px solid #ffe4a866;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 24px #000;}
 .spin-cell{position:relative;min-width:0;min-height:0;display:grid;place-items:center;border:1px solid #b693ca4d;border-radius:9px;background:radial-gradient(ellipse at 50% 15%,#584060,#302238 70%);box-shadow:inset 0 1px 0 #e8c8f333,0 3px 5px #0009;overflow:hidden;z-index:1;}
 .spin-cell::after{content:'';position:absolute;inset:0;background:linear-gradient(#fff1,transparent 38%,transparent 70%,#0003);pointer-events:none}
 .spin-glyph{display:block;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;font-size:clamp(34px,11vw,48px);line-height:1.3;filter:drop-shadow(0 3px 3px #0005);will-change:transform}
 .spin-cell.blank .spin-glyph{opacity:0}
-.spin-cell.blank::before{content:'';width:8px;height:8px;border:1px solid #785d8099;transform:rotate(45deg);border-radius:2px;opacity:.5}
+.spin-cell.blank::before{position:absolute;left:calc(50% - 4px);top:calc(50% - 4px);content:'';width:8px;height:8px;border:1px solid #785d8099;transform:rotate(45deg);border-radius:2px;opacity:.5}
 .spin-cell.spinning .spin-glyph{filter:blur(1px);animation:slotReelMotion .14s linear infinite}
 @keyframes slotReelMotion{0%{transform:translateY(-37px);opacity:.35}50%{transform:translateY(0);opacity:1}100%{transform:translateY(37px);opacity:.35}}
 .spin-cell.locked{border-color:var(--spin-gold);box-shadow:inset 0 0 15px #eac77155,0 0 8px #f3d99077;background:radial-gradient(#805b59,#38283e)}
@@ -649,8 +652,7 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 @keyframes slotCellWin{to{background-color:#8d6a41;box-shadow:inset 0 0 24px #f9d78077,0 0 7px #ffe093}}
 @keyframes slotGlyphWin{to{transform:scale(1.14);filter:drop-shadow(0 0 7px #ffdf8b)}}
 .spin-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
-.spin-lines polyline{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 5px currentColor);stroke-dasharray:6 4;animation:spinLineWin .7s linear infinite}
-@keyframes spinLineWin{to{stroke-dashoffset:-20}}
+.spin-lines line{fill:none;stroke-width:2.5;stroke-linecap:round;filter:drop-shadow(0 0 4px #ffe39788)}
 .spin-win-banner{position:absolute;left:50%;bottom:8px;z-index:4;transform:translate(-50%,8px) scale(.8);opacity:0;pointer-events:none;background:#251528ef;border:1px solid #f1cc7b;border-radius:7px;box-shadow:0 0 17px #ff83d066;color:#ffe7a5;padding:7px 13px;font-size:19px;white-space:nowrap;transition:opacity .2s,transform .25s}
 .spin-win-banner.visible{opacity:1;transform:translate(-50%,0) scale(1)}
 .spin-win-banner.big{font-size:clamp(17px,5vw,22px);color:#fff3be;text-shadow:0 0 8px #ffbf5f;animation:slotBannerPulse .6s ease-in-out infinite alternate}

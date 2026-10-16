@@ -693,4 +693,4 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 /* Keep the saved total from spoiling the ongoing slot presentation. */
 body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 
-.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:50%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
+.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:10%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}

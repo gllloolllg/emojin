@@ -353,6 +353,64 @@
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
+/* MOJI SPIN: probabilities and payouts are intentionally fixed, not RTP-adjusted. */
+(function(root){
+'use strict';
+const CONFIG=Object.freeze({
+  lineBet:1,
+  symbols:Object.freeze([
+    {id:'wild',emoji:'🤡',weight:3,payout:400,name:'ワイルド'},
+    {id:'smile',emoji:'😄',weight:4,payout:160,name:'スマイル'},
+    {id:'gift',emoji:'🎁',weight:6,payout:80,name:'プレゼント'},
+    {id:'bell',emoji:'🔔',weight:9,payout:50,name:'ベル'},
+    {id:'melon',emoji:'🍉',weight:12,payout:30,name:'スイカ'},
+    {id:'berry',emoji:'🫐',weight:14,payout:20,name:'ブルーベリー'},
+    {id:'orange',emoji:'🍊',weight:16,payout:14,name:'オレンジ'},
+    {id:'cherry',emoji:'🍒',weight:18,payout:10,name:'チェリー'},
+    {id:'blank',emoji:'',weight:18,payout:0,name:'ブランク'}
+  ].map(Object.freeze)),
+  lines:Object.freeze([[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]].map(Object.freeze)),
+  freeCounts:Object.freeze([{count:4,weight:40},{count:5,weight:30},{count:7,weight:20},{count:10,weight:8},{count:20,weight:2}].map(Object.freeze))
+});
+const byId=Object.freeze(Object.fromEntries(CONFIG.symbols.map(s=>[s.id,s])));
+const BET=CONFIG.lineBet*CONFIG.lines.length;
+const random=()=>crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
+function weighted(items,rng){let value=rng()*100;for(const item of items){value-=item.weight;if(value<0)return item;}return items[items.length-1];}
+function evaluate(cells){
+  if(cells.length!==9||cells.some(id=>!byId[id]))throw Error('Invalid slot symbols');
+  const wins=[];
+  CONFIG.lines.forEach((indices,line)=>{
+    const symbols=indices.map(i=>cells[i]);
+    if(symbols.includes('blank'))return;
+    const match=CONFIG.symbols.filter(s=>s.payout>0&&symbols.every(id=>id==='wild'||id===s.id)).sort((a,b)=>b.payout-a.payout)[0];
+    if(match)wins.push({line,indices:[...indices],symbol:match.id,payout:match.payout*CONFIG.lineBet});
+  });
+  return {cells:[...cells],wins,payout:wins.reduce((sum,w)=>sum+w.payout,0)};
+}
+function roll(free=false,rng=random){
+  return {...evaluate(Array.from({length:9},(_,i)=>free&&i===4?'wild':weighted(CONFIG.symbols,rng).id)),free};
+}
+function createRound(rng=random){
+  const first=roll(false,rng);
+  const freeCount=first.cells[4]==='wild'?weighted(CONFIG.freeCounts,rng).count:0;
+  const spins=[first];for(let i=0;i<freeCount;i++)spins.push(roll(true,rng));
+  return {id:'slot-'+crypto.randomUUID(),version:1,bet:BET,freeCount,spins,total:spins.reduce((sum,s)=>sum+s.payout,0),createdAt:Date.now()};
+}
+function validateRound(round){
+  if(!round||round.version!==1||round.bet!==BET||!/^slot-[\w-]+$/.test(round.id)||!Array.isArray(round.spins))throw Error('スロットの抽選データが不正です。');
+  if(round.spins.length!==round.freeCount+1||!([0,...CONFIG.freeCounts.map(x=>x.count)].includes(round.freeCount)))throw Error('フリースピン回数が不正です。');
+  let total=0;
+  round.spins.forEach((spin,i)=>{
+    const result=evaluate(spin.cells);
+    if(result.payout!==spin.payout||JSON.stringify(result.wins)!==JSON.stringify(spin.wins)||spin.free!==(i>0)||(i>0&&spin.cells[4]!=='wild'))throw Error('スロットの配当データが不正です。');
+    total+=result.payout;
+  });
+  if((round.spins[0].cells[4]==='wild')!==(round.freeCount>0)||total!==round.total)throw Error('スロットの合計が不正です。');
+  return round;
+}
+root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluate,roll,createRound,validateRound});
+})(globalThis);
+
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
@@ -577,6 +635,30 @@ async function createCloud() {
     await ensureWallet();
     const result=await F.runTransaction(db,async tx=>{
       const accountRef=walletRef(),accountSnap=await tx.get(accountRef),account=accountSnap.data();
+      if(op.action==='slotSpin') {
+        const receipt=receiptRef(op.id),existing=await tx.get(receipt);
+        if(existing.exists()) {
+          const record=existing.data();
+          if(record.redirect){const original=await tx.get(receiptRef(record.redirect));return {ok:true,record:original.data(),account};}
+          return {ok:true,record,account};
+        }
+        if(account.slotRound) {
+          const active=await tx.get(receiptRef(account.slotRound));
+          if(!active.exists())throw Error('保存済みのスピンが見つかりません。');
+          tx.set(receipt,{redirect:account.slotRound,at:Date.now()});
+          return {ok:true,record:active.data(),account};
+        }
+        const round=window.MojiSpinEngine.validateRound(op.data.round);
+        const wallet=E.accrueMoji(account.wallet,Date.now());
+        if(wallet.balance<round.bet)throw Error(`${round.bet}モジ必要です。`);
+        const balanceBefore=wallet.balance;
+        // Payouts are never clipped by the passive recovery cap.
+        wallet.balance=wallet.balance-round.bet+round.total;
+        const record={round,balanceBefore,balanceAfter:wallet.balance,at:Date.now()};
+        const next=nextAccount(account,{wallet,slotRound:round.id},op.id);
+        tx.set(accountRef,next);tx.set(receipt,record);
+        return {ok:true,record,account:next};
+      }
       if(op.action==='walletReward') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists())return {...existing.data(),account};
@@ -672,6 +754,28 @@ async function createCloud() {
     revealHatch(){local.hatchPending=Math.max(0,local.hatchPending-1);persist();},
     saveDraft(value){if(value?.id===local.draft?.id){local.draft=E.clone(value);persist();}},
     addLoot(amount,id){const task=enqueue('walletReward',{uid,amount},id);task.catch(()=>resumeWrites());return task;},
+    get slotPending(){return !!local.account?.slotRound || local.pending.some(op=>op.action==='slotSpin'&&op.data.uid===uid);},
+    async getSlotRound(){
+      await ensureWallet();await flush();
+      const snap=await F.getDocFromServer(walletRef());applyAccount(snap.data());
+      const id=snap.data().slotRound;if(!id)return null;
+      const saved=await F.getDocFromServer(receiptRef(id));
+      if(!saved.exists())throw Error('保存済みのスピンが見つかりません。');
+      return saved.data();
+    },
+    async spinSlot(round){
+      window.MojiSpinEngine.validateRound(round);
+      await enqueue('slotSpin',{uid,round},round.id);
+      return this.getSlotRound();
+    },
+    async finishSlot(id){
+      const account=await retry(()=>F.runTransaction(db,async tx=>{
+        const accountRef=walletRef(),snap=await tx.get(accountRef),old=snap.data();
+        if(old.slotRound!==id)return old;
+        const next=nextAccount(old,{slotRound:null});tx.set(accountRef,next);return next;
+      }));
+      applyAccount(account);
+    },
     async getState(){
       if(reading)return reading;
       if(!auth.currentUser)return compose();
@@ -976,6 +1080,7 @@ async function closeModal(force=false) {
   if((busy&&!force)||modalClosing||!modalKind)return;
   if(!force&&!modalOptions.closable)return;
   if(!$("detailHost").classList.contains("hidden"))await closeDetailOverlay(true);
+  if(modalKind==='MOJI SPIN'){slotSession=null;document.body.classList.remove('moji-spin-open');}
   modalClosing=true;
   const rev=modalRevision,host=$("modalHost"),ret=modalReturn&&!force?modalReturn:null;
   host.classList.add("is-closing");
@@ -1317,7 +1422,7 @@ function lootItem(random=rng) {
 function lootPosition() {
   const screen=$('cityScreen').getBoundingClientRect();
   if(screen.width<80 || screen.height<160)return null;
-  const forbidden=[...$('residents').children,...$('residents').querySelectorAll('.resident-name'),$('forceBattleButton').closest('nav'),document.querySelector('.city-header'),
+  const forbidden=[...$('residents').children,...$('residents').querySelectorAll('.resident-name'),$('forceBattleButton').closest('nav'),document.querySelector('.city-header'),document.querySelector('.mo-meter'),
     ...[...streetLoot.values()].map(drop=>drop.el)].filter(Boolean).map(el=>el.getBoundingClientRect());
   for(let attempt=0;attempt<80;attempt++){
     const x=28+rng()*(screen.width-56),y=70+rng()*Math.max(0,screen.height-180);
@@ -1397,6 +1502,177 @@ async function collectLoot(drop) {
   }
 }
 
+/* MOJI SPIN presentation. Every result comes from the saved, pre-drawn round. */
+let slotSession=null;
+const SLOT=window.MojiSpinEngine;
+function installSlotButton(){
+  if(!$('mojiSpinButton')){
+    const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
+    button.type='button';button.textContent='🎰';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
+    document.querySelector('.mo-meter').appendChild(button);button.onclick=showMojiSpin;
+  }
+  if(!$('mojiSpinFonts')){
+    const link=document.createElement('link');link.id='mojiSpinFonts';link.rel='stylesheet';
+    link.href='https://fonts.googleapis.com/css2?family=Aldrich&family=Skranji:wght@700&display=swap';document.head.appendChild(link);
+  }
+}
+function refreshSlotUI(){
+  const launch=$('mojiSpinButton');
+  if(launch){launch.disabled=!store?.player;launch.classList.toggle('has-round',!!cloud.slotPending);}
+  const session=slotSession;if(!session||!session.panel.isConnected)return;
+  if(!session.running && !session.record)session.balance=cloud.wallet.balance;
+  $('spinWallet').textContent=Math.max(0,session.balance).toLocaleString('en-US');
+  $('spinWin').textContent=session.win.toLocaleString('en-US');
+  const button=$('slotSpinButton');
+  button.disabled=session.loading||session.running||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
+  button.textContent=session.loading?'…':session.running?'SPINNING':session.completed?'RETRY':(session.record||cloud.slotPending)?'RESUME':'SPIN';
+  const close=session.panel.querySelector('.modal-close');if(close)close.disabled=session.running;
+}
+async function showMojiSpin(){
+  if(busy||playback||!store.player)return;
+  document.body.classList.add('moji-spin-open');
+  const preview=['cherry','bell','gift','berry','wild','smile','melon','orange','cherry'];
+  openModal(`<div class="spin-marquee" aria-hidden="true"></div>
+    <header class="spin-heading"><span class="spin-ornament" aria-hidden="true">✦</span><h2>MOJI SPIN</h2><span class="spin-ornament" aria-hidden="true">✦</span></header>
+    <div id="spinPhase" class="spin-phase" aria-live="polite">8 LINES</div>
+    <div class="spin-machine"><div id="spinBoard" class="spin-board" role="group" aria-label="3行3列のスロット">
+      ${preview.map(id=>`<div class="spin-cell" data-symbol="${id}" aria-label="${SLOT.byId[id].name}"><span class="spin-glyph">${SLOT.byId[id].emoji}</span></div>`).join('')}
+      <svg id="spinLines" class="spin-lines" viewBox="0 0 300 300" aria-hidden="true"></svg>
+    </div><div id="spinWinBanner" class="spin-win-banner" aria-live="polite"></div></div>
+    <div class="spin-dashboard"><dl class="spin-stats"><div><dt>BET</dt><dd id="spinBet">${SLOT.BET}</dd></div><div><dt>WIN</dt><dd id="spinWin">0</dd></div></dl>
+      <div class="spin-wallet"><small>MOJI</small><strong id="spinWallet">${cloud.wallet.balance.toLocaleString('en-US')}</strong></div></div>
+    <button id="slotSpinButton" class="slot-spin-button" type="button" disabled>SPIN</button>
+    <div id="spinFx" class="spin-fx" aria-hidden="true"></div><div id="spinOverlay" class="spin-overlay hidden"></div>`,
+    'MOJI SPIN',{panelClass:'moji-spin-panel'});
+  const session={panel:$('modalHost').querySelector('.moji-spin-panel'),loading:true,running:false,record:null,completed:false,balance:cloud.wallet.balance,win:0,timer:null};
+  slotSession=session;
+  $('slotSpinButton').onclick=()=>runSlotSession(session);
+  refreshSlotUI();
+  try{
+    const record=await cloud.getSlotRound();
+    if(slotSession!==session||!session.panel.isConnected)return;
+    session.record=record;
+    if(record){session.balance=record.balanceBefore-record.round.bet;$('spinPhase').textContent='RESUME SPIN';}
+  }catch(error){if(session.panel.isConnected)reportError(error);}
+  finally {session.loading=false;refreshSlotUI();}
+}
+function slotCells(){return [...$('spinBoard').querySelectorAll('.spin-cell')];}
+function paintSlotCell(el,id){
+  const symbol=SLOT.byId[id];el.dataset.symbol=id;el.setAttribute('aria-label',symbol.name);
+  el.querySelector('.spin-glyph').textContent=symbol.emoji;
+  el.classList.toggle('blank',id==='blank');
+}
+function stopSlotReels(session){
+  clearInterval(session.timer);session.timer=null;
+  session.panel.querySelectorAll('.spin-cell').forEach(el=>el.classList.remove('spinning'));
+}
+function startSlotReels(session,free){
+  stopSlotReels(session);
+  $('spinLines').innerHTML='';$('spinWinBanner').className='spin-win-banner';$('spinWinBanner').textContent='';
+  const cells=slotCells();cells.forEach((el,i)=>{
+    el.classList.remove('winning');el.classList.toggle('locked',free&&i===4);
+    if(free&&i===4)paintSlotCell(el,'wild');else el.classList.add('spinning');
+  });
+  let tick=0;
+  session.timer=setInterval(()=>{
+    cells.forEach((el,i)=>{if(el.classList.contains('spinning'))paintSlotCell(el,SLOT.CONFIG.symbols[(tick+i*3)%SLOT.CONFIG.symbols.length].id);});tick++;
+  },70);
+}
+async function animateSlotSpin(session,spin){
+  if(!session.timer)startSlotReels(session,spin.free);
+  await delay(420);
+  for(const index of [0,3,6,1,4,7,2,5,8]){
+    const cell=slotCells()[index];cell.classList.remove('spinning');paintSlotCell(cell,spin.cells[index]);
+    if(!(spin.free&&index===4)){
+      cell.animate([{transform:'translateY(-7px) scale(.94)'},{transform:'translateY(3px) scale(1.04)',offset:.65},{transform:'translateY(0) scale(1)'}],{duration:260,easing:'ease-out'});
+      await delay(100);
+    }
+  }
+  stopSlotReels(session);
+}
+function slotConfetti(count=36){
+  const host=$('spinFx');if(!host)return;
+  const colors=['#f9df91','#ff72c7','#a5f3df','#ffffff','#bda2ff'];
+  for(let i=0;i<count;i++){
+    const p=document.createElement('i');p.style.background=colors[i%colors.length];
+    p.style.left=(20+Math.random()*60)+'%';p.style.top='37%';host.appendChild(p);
+    p.animate([{transform:'translate(0,0) rotate(0deg)',opacity:1},
+      {transform:`translate(${(Math.random()-.5)*350}px,${-100-Math.random()*100}px) rotate(${Math.random()*360}deg)`,opacity:1,offset:.4},
+      {transform:`translate(${(Math.random()-.5)*450}px,${250+Math.random()*150}px) rotate(${500+Math.random()*500}deg)`,opacity:0}
+    ],{duration:1400+Math.random()*900,easing:'cubic-bezier(.2,.5,.4,1)'}).finished.then(()=>p.remove()).catch(()=>p.remove());
+  }
+}
+async function animateSlotWin(session,spin){
+  if(!spin.payout){await delay(230);return;}
+  const cells=slotCells(),svg=$('spinLines'),board=$('spinBoard').getBoundingClientRect();
+  const colors=['#ffe397','#ff8bd4','#b9fff0','#c9adff'];
+  for(const win of spin.wins){
+    win.indices.forEach(i=>cells[i].classList.add('winning'));
+    const points=win.indices.map(i=>{const r=cells[i].getBoundingClientRect();return `${(r.left+r.width/2-board.left)/board.width*300},${(r.top+r.height/2-board.top)/board.height*300}`;}).join(' ');
+    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');line.setAttribute('points',points);line.style.stroke=colors[win.line%colors.length];svg.appendChild(line);
+    await delay(85);
+  }
+  const banner=$('spinWinBanner'),big=spin.payout>=160;
+  banner.textContent=(spin.payout>=400?'MEGA WIN  ':big?'BIG WIN  ':'+')+spin.payout.toLocaleString('en-US');
+  banner.classList.add('visible');if(big)banner.classList.add('big');
+  session.win+=spin.payout;session.balance+=spin.payout;refreshSlotUI();
+  slotConfetti(big?60:22);
+  session.panel.animate([{boxShadow:'0 0 55px #ffd884aa'},{boxShadow:'0 0 45px #ed5acb88'},{boxShadow:'0 20px 80px #0009'}],{duration:1100});
+  await delay(big?1700:1050);
+}
+async function slotFreeRoulette(count){
+  const overlay=$('spinOverlay');overlay.classList.remove('hidden');
+  const choices=SLOT.CONFIG.freeCounts.map(x=>x.count);
+  overlay.innerHTML=`<div class="spin-bonus-intro"><span class="spin-bonus-kicker">BONUS</span><h3>FREE SPINS</h3><div class="spin-wheel-wrap"><span class="spin-wheel-pointer">▼</span><div class="spin-wheel">${choices.map((n,i)=>`<span style="--angle:${i*72}deg">${n}</span>`).join('')}</div><strong id="spinFreeCount">?</strong></div></div>`;
+  const wheel=overlay.querySelector('.spin-wheel');
+  const index=choices.indexOf(count);let tick=0;
+  const timer=setInterval(()=>{$('spinFreeCount').textContent=choices[tick++%choices.length];},95);
+  try {await wheel.animate([{transform:'rotate(0deg)'},{transform:`rotate(${1800-index*72}deg)`}],{duration:3000,easing:'cubic-bezier(.12,.65,.12,1)',fill:'forwards'}).finished;}
+  finally {clearInterval(timer);}
+  $('spinFreeCount').textContent=count;slotConfetti(50);await delay(650);
+  overlay.classList.add('hidden');overlay.innerHTML='';
+}
+async function showSlotTotal(total){
+  const overlay=$('spinOverlay');overlay.classList.remove('hidden');
+  overlay.innerHTML=`<button class="spin-total" type="button" aria-label="合計${total}モジ、タップして閉じる"><span class="spin-total-stars" aria-hidden="true">✦ ✧ ✦</span><span class="spin-bonus-kicker">FREE SPINS COMPLETE</span><strong>TOTAL WIN</strong><b>${total.toLocaleString('en-US')}</b><span class="spin-total-unit">MOJI</span><small>TAP TO CONTINUE</small></button>`;
+  const button=overlay.firstElementChild;button.focus({preventScroll:true});slotConfetti(85);
+  button.querySelector('b').animate([{transform:'scale(.2)',opacity:0},{transform:'scale(1.12)',opacity:1,offset:.7},{transform:'scale(1)'}],{duration:700,easing:'ease-out'});
+  await new Promise(resolve=>button.addEventListener('click',resolve,{once:true}));
+  overlay.classList.add('hidden');overlay.innerHTML='';
+}
+async function runSlotSession(session){
+  if(slotSession!==session||session.running||session.loading||!session.panel.isConnected)return;
+  if(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET)return;
+  // This is the only outcome draw. Free-spin count and every free grid are drawn now.
+  const candidate=!session.record&&!cloud.slotPending?SLOT.createRound():null;
+  session.running=true;busy=true;refreshSlotUI();
+  try{
+    if(!session.completed){
+      session.win=0;$('spinPhase').textContent='GOOD LUCK';$('spinBet').textContent=SLOT.BET;
+      startSlotReels(session,false);
+      const record=session.record||(candidate?await cloud.spinSlot(candidate):await cloud.getSlotRound());
+      if(!record){stopSlotReels(session);session.record=null;return;}
+      session.record=record;session.balance=record.balanceBefore-record.round.bet;refreshSlotUI();
+      const round=record.round;
+      await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0]);
+      if(round.freeCount){
+        await slotFreeRoulette(round.freeCount);
+        for(let i=1;i<round.spins.length;i++){
+          $('spinPhase').textContent=`FREE SPIN  ${i} / ${round.freeCount}`;$('spinBet').textContent='0';
+          startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);await animateSlotWin(session,round.spins[i]);
+        }
+        await showSlotTotal(round.total);
+      }
+      session.completed=true;
+    }
+    await cloud.finishSlot(session.record.round.id);
+    session.record=null;session.completed=false;session.balance=cloud.wallet.balance;
+    $('spinBet').textContent=SLOT.BET;$('spinPhase').textContent='8 LINES';
+    slotCells().forEach(el=>el.classList.remove('locked'));
+  }catch(error){reportError(error);$('spinPhase').textContent='TAP TO RETRY';}
+  finally {stopSlotReels(session);session.running=false;busy=false;refreshNav();refreshSlotUI();}
+}
+
 let hatchAnimating=false;
 function renderHatch() {
   const button=$('generateButton');
@@ -1433,6 +1709,7 @@ async function animateHatchReward() {
 }
 function refreshNav() {
   renderHatch();
+  refreshSlotUI();
   const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||cloud.hatch>=10||balance>=EGG_COST), btn=$("generateButton");
   btn.classList.toggle("available",available);
   btn.disabled=!available;
@@ -2529,7 +2806,7 @@ async function init() {
   };
   document.body.classList.toggle("reduce-motion",store.reducedMotion);
   window.addEventListener('emojin-wallet',()=>{if(store){store.wallet=cloud.wallet;refreshNav();}});
-  wireEvents();drawCity();renderCity();requestAnimationFrame(worldLoop);
+  installSlotButton();wireEvents();drawCity();renderCity();requestAnimationFrame(worldLoop);
   await delay(680);
   animate($("bootScreen"),[{opacity:1},{opacity:0}],350);
   await delay(350);$("bootScreen").classList.add("hidden");

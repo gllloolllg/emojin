@@ -615,3 +615,78 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 #generateButton.hatch-ready:not(:disabled) .nav-cost{color:var(--subtle,#958b9b);opacity:.55}
 .hatch-orb{position:absolute;z-index:90;width:30px;height:30px;border-radius:50%;background:#e6ed9b99;box-shadow:0 0 16px #e6ed9b88;pointer-events:none}
 .street-loot-item>span{display:block;pointer-events:none}
+
+/* MOJI SPIN — a gold and electric-pink casino cabinet. */
+.mo-meter{height:130px}
+.moji-spin-launch{position:absolute;top:89px;left:14px;width:44px;height:37px;display:grid;place-items:center;pointer-events:auto;border:1px solid #edc96d88;border-radius:10px;background:linear-gradient(145deg,#59405b,#2d2537);box-shadow:0 3px 12px #0005,0 0 10px #efb95d22;color:#ffe7aa;font-size:25px;line-height:1;padding:0;transition:transform .18s,box-shadow .18s}
+.moji-spin-launch:active{transform:scale(.9)}
+.moji-spin-launch:disabled{opacity:.35}
+.moji-spin-launch.has-round{box-shadow:0 0 14px #ffe69b99}
+.moji-spin-panel{--spin-gold:#f4d98e;--spin-pink:#fa73c7;--spin-mint:#b5f4df;position:relative;isolation:isolate;width:min(390px,calc(100vw - 22px));max-height:calc(100dvh - 30px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;padding:30px 22px 22px;border:2px solid #d6ac61;border-radius:24px;color:#fff1cf;background:radial-gradient(ellipse at 50% -15%,#913e85aa,transparent 55%),linear-gradient(145deg,#39233e,#1b1528 65%,#302039);box-shadow:0 0 0 5px #2b1d32,0 0 0 6px #eac97944,0 20px 80px #000b,0 0 55px #c54c9622;font-family:'Aldrich',sans-serif;text-align:center;scrollbar-width:none}
+.moji-spin-panel::before{content:'';position:absolute;inset:7px;border:1px solid #f3d38555;border-radius:16px;pointer-events:none;z-index:-1}
+.moji-spin-panel .modal-close{top:10px;left:auto;right:10px;width:27px;height:27px;color:#ffe5a5;z-index:12}
+.moji-spin-panel .modal-close:disabled{opacity:.25;cursor:default}
+.moji-spin-panel button,.moji-spin-panel strong,.moji-spin-panel b,.moji-spin-panel dt,.moji-spin-panel dd{font-family:'Aldrich',sans-serif}
+.spin-marquee{height:5px;position:absolute;top:12px;left:34px;right:34px;background:radial-gradient(circle,#ffeeb3 0 2px,transparent 2.7px) 0 0/15px 5px;filter:drop-shadow(0 0 4px #fbd570);opacity:.9;animation:spinMarquee 1.1s ease-in-out infinite alternate}
+@keyframes spinMarquee{to{filter:drop-shadow(0 0 7px #ff9cde);opacity:.55}}
+.spin-heading{display:flex;align-items:center;justify-content:center;gap:9px;margin:5px 0 0}
+.spin-heading h2{font-family:'Skranji',cursive;font-size:clamp(25px,7.8vw,34px);line-height:1.12;letter-spacing:.015em;white-space:nowrap;margin:0;color:#ffe8a5;text-shadow:0 2px 0 #8b562d,0 4px 0 #402033,0 0 20px #ff67c677}
+.spin-ornament{font-size:16px;color:var(--spin-pink);text-shadow:0 0 9px #ff82c7}
+.spin-phase{min-height:28px;padding:9px 0 6px;font-size:10px;line-height:1.2;letter-spacing:.19em;color:#f0bce4}
+.spin-machine{position:relative;padding:9px;background:linear-gradient(135deg,#f3d99c,#7d4c51 34%,#e3b66b 64%,#82524e);border-radius:17px;box-shadow:0 7px 0 #110e1c,0 9px 15px #0008,inset 0 1px 0 #fff5}
+.spin-board{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:7px;aspect-ratio:1;background:#110d1b;border:1px solid #ffe4a866;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 24px #000;}
+.spin-cell{position:relative;min-width:0;min-height:0;display:grid;place-items:center;border:1px solid #b693ca4d;border-radius:9px;background:radial-gradient(ellipse at 50% 15%,#584060,#302238 70%);box-shadow:inset 0 1px 0 #e8c8f333,0 3px 5px #0009;overflow:hidden;z-index:1;}
+.spin-cell::after{content:'';position:absolute;inset:0;background:linear-gradient(#fff1,transparent 38%,transparent 70%,#0003);pointer-events:none}
+.spin-glyph{display:block;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;font-size:clamp(34px,11vw,48px);line-height:1.3;filter:drop-shadow(0 3px 3px #0005);will-change:transform}
+.spin-cell.blank .spin-glyph{opacity:0}
+.spin-cell.blank::before{content:'';width:8px;height:8px;border:1px solid #785d8099;transform:rotate(45deg);border-radius:2px;opacity:.5}
+.spin-cell.spinning .spin-glyph{filter:blur(1px);animation:slotReelMotion .14s linear infinite}
+@keyframes slotReelMotion{0%{transform:translateY(-37px);opacity:.35}50%{transform:translateY(0);opacity:1}100%{transform:translateY(37px);opacity:.35}}
+.spin-cell.locked{border-color:var(--spin-gold);box-shadow:inset 0 0 15px #eac77155,0 0 8px #f3d99077;background:radial-gradient(#805b59,#38283e)}
+.spin-cell.locked::before{content:'✦';position:absolute;right:4px;top:1px;color:#ffecad;font-size:10px}
+.spin-cell.winning{border-color:#ffe7a4;animation:slotCellWin .65s ease-in-out infinite alternate;z-index:2}
+.spin-cell.winning .spin-glyph{animation:slotGlyphWin .65s ease-in-out infinite alternate}
+@keyframes slotCellWin{to{background-color:#8d6a41;box-shadow:inset 0 0 24px #f9d78077,0 0 7px #ffe093}}
+@keyframes slotGlyphWin{to{transform:scale(1.14);filter:drop-shadow(0 0 7px #ffdf8b)}}
+.spin-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
+.spin-lines polyline{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 5px currentColor);stroke-dasharray:6 4;animation:spinLineWin .7s linear infinite}
+@keyframes spinLineWin{to{stroke-dashoffset:-20}}
+.spin-win-banner{position:absolute;left:50%;bottom:8px;z-index:4;transform:translate(-50%,8px) scale(.8);opacity:0;pointer-events:none;background:#251528ef;border:1px solid #f1cc7b;border-radius:7px;box-shadow:0 0 17px #ff83d066;color:#ffe7a5;padding:7px 13px;font-size:19px;white-space:nowrap;transition:opacity .2s,transform .25s}
+.spin-win-banner.visible{opacity:1;transform:translate(-50%,0) scale(1)}
+.spin-win-banner.big{font-size:clamp(17px,5vw,22px);color:#fff3be;text-shadow:0 0 8px #ffbf5f;animation:slotBannerPulse .6s ease-in-out infinite alternate}
+@keyframes slotBannerPulse{to{box-shadow:0 0 25px #f9d89099}}
+.spin-dashboard{display:flex;justify-content:space-between;align-items:flex-end;padding:23px 4px 17px;gap:12px}
+.spin-stats{margin:0;display:grid;gap:8px;min-width:99px}
+.spin-stats>div{display:flex;justify-content:space-between;align-items:baseline;gap:20px}
+.spin-stats dt{font-size:11px;letter-spacing:.08em;color:#bda4bf}
+.spin-stats dd{margin:0;font-size:19px;line-height:1;color:#ffe6a2;font-variant-numeric:tabular-nums}
+.spin-stats>div:last-child dd{color:var(--spin-mint)}
+.spin-wallet{text-align:right;min-width:0}
+.spin-wallet small{display:block;font-size:10px;letter-spacing:.13em;margin-bottom:5px;color:#bda4bf}
+.spin-wallet strong{display:block;font-weight:400;font-size:clamp(22px,6.6vw,30px);line-height:1;font-variant-numeric:tabular-nums;color:#fff0cc;text-shadow:0 0 12px #f2ce8855}
+.slot-spin-button{display:block;width:100%;min-height:53px;border-radius:11px;border:1px solid #fff0bc;background:linear-gradient(#ffe6a2,#dfb65f);box-shadow:0 5px 0 #805129,0 8px 18px #0007,inset 0 1px 0 #ffff;color:#332139;font-size:22px;font-weight:400;letter-spacing:.18em;padding:12px 10px 11px;transition:transform .15s,filter .15s}
+.slot-spin-button:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px 0 #805129}
+.slot-spin-button:disabled{background:linear-gradient(#68516c,#493a50);border-color:#8c6e96;color:#c3a9c3;box-shadow:0 4px 0 #2c2132;opacity:.65}
+.spin-fx{position:absolute;inset:0;z-index:20;overflow:hidden;pointer-events:none;border-radius:22px}
+.spin-fx i{position:absolute;width:6px;height:11px;border-radius:1px;pointer-events:none}
+.spin-overlay{position:absolute;inset:0;z-index:15;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at center,#58254ef7,#1a1227fa);border-radius:22px;backdrop-filter:blur(4px)}
+.spin-bonus-intro{width:100%;text-align:center}
+.spin-bonus-kicker{display:block;font-size:11px;letter-spacing:.15em;color:var(--spin-pink);margin-bottom:8px}
+.spin-bonus-intro h3{margin:0;font-family:'Aldrich',sans-serif;font-size:30px;color:#ffe8a4;text-shadow:0 0 20px #edb46688}
+.spin-wheel-wrap{position:relative;width:228px;height:228px;margin:30px auto 0;display:grid;place-items:center;max-width:100%;aspect-ratio:1}
+.spin-wheel{position:absolute;inset:0;border-radius:50%;border:4px solid #f4d78e;box-shadow:0 0 0 5px #6c4059,0 0 35px #ff75c85c;background:conic-gradient(from -36deg,#86507c 0 72deg,#4d366c 72deg 144deg,#7c4064 144deg 216deg,#3e5b68 216deg 288deg,#726044 288deg 360deg)}
+.spin-wheel span{position:absolute;left:50%;top:50%;width:46px;margin-left:-23px;margin-top:-15px;font-size:25px;color:#ffe8a8;transform:rotate(var(--angle)) translateY(-80px) rotate(calc(-1 * var(--angle)));text-shadow:0 2px 4px #0007}
+.spin-wheel-pointer{position:absolute;z-index:2;left:50%;top:-20px;transform:translateX(-50%);font-size:29px;line-height:1;color:#fff0b4;filter:drop-shadow(0 0 5px #ffb353)}
+#spinFreeCount{z-index:1;display:grid;place-items:center;width:88px;height:88px;border:2px solid #ffe3a2;border-radius:50%;font-size:39px;color:#fff0c4;background:#2a1a35;box-shadow:0 0 17px #0007}
+.spin-total{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;width:100%;min-height:100%;padding:20px 0;color:#fff1c3;background:transparent;border:0;cursor:pointer}
+.spin-total-stars{font-size:38px;letter-spacing:.1em;color:#ffda80;animation:totalStars 1s ease-in-out infinite alternate}
+@keyframes totalStars{to{transform:scale(1.12);filter:drop-shadow(0 0 12px #ffbb43)}}
+.spin-total strong{font-family:'Aldrich',sans-serif;font-size:32px;text-shadow:0 0 20px #ffd67b66}
+.spin-total b{font-size:clamp(40px,14vw,65px);font-weight:400;letter-spacing:-.05em;line-height:1.15;text-shadow:0 0 20px #f3ba5b88,0 3px 0 #b65e45}
+.spin-total-unit{color:var(--spin-gold);font-size:15px;letter-spacing:.28em}
+.spin-total small{margin-top:22px;color:#cfb4d7;font-size:10px;letter-spacing:.12em}
+@media(max-width:350px){.moji-spin-panel{padding:28px 15px 18px}.spin-heading{gap:5px}.spin-heading h2{font-size:27px}.spin-board{gap:4px;padding:5px}.spin-glyph{font-size:35px}.spin-wheel-wrap{width:210px;height:210px}.spin-wheel span{transform:rotate(var(--angle)) translateY(-72px) rotate(calc(-1 * var(--angle)))}}
+@media(max-height:650px){.moji-spin-panel{padding-top:24px;padding-bottom:17px;width:min(340px,calc(100vw - 22px))}.spin-heading h2{font-size:27px}.spin-phase{padding-top:6px}.spin-dashboard{padding-top:16px;padding-bottom:12px}.slot-spin-button{min-height:45px;padding:8px;font-size:20px}.spin-glyph{font-size:35px}}
+
+/* Keep the saved total from spoiling the ongoing slot presentation. */
+body.moji-spin-open .city-header .mo-reading{visibility:hidden}

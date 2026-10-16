@@ -679,7 +679,7 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .spin-wheel{position:absolute;inset:0;border-radius:50%;border:4px solid #f4d78e;box-shadow:0 0 0 5px #6c4059,0 0 35px #ff75c85c;background:conic-gradient(from -36deg,#86507c 0 72deg,#4d366c 72deg 144deg,#7c4064 144deg 216deg,#3e5b68 216deg 288deg,#726044 288deg 360deg)}
 .spin-wheel span{position:absolute;left:50%;top:50%;width:46px;margin-left:-23px;margin-top:-15px;font-size:25px;color:#ffe8a8;transform:rotate(var(--angle)) translateY(-80px) rotate(calc(-1 * var(--angle)));text-shadow:0 2px 4px #0007}
 .spin-wheel-pointer{position:absolute;z-index:2;left:50%;top:-20px;transform:translateX(-50%);font-size:29px;line-height:1;color:#fff0b4;filter:drop-shadow(0 0 5px #ffb353)}
-#spinFreeCount{z-index:1;display:grid;place-items:center;width:88px;height:88px;border:2px solid #ffe3a2;border-radius:50%;font-size:39px;color:#fff0c4;background:#2a1a35;box-shadow:0 0 17px #0007}
+
 .spin-total{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;width:100%;min-height:100%;padding:20px 0;color:#fff1c3;background:transparent;border:0;cursor:pointer}
 .spin-total-stars{font-size:38px;letter-spacing:.1em;color:#ffda80;animation:totalStars 1s ease-in-out infinite alternate}
 @keyframes totalStars{to{transform:scale(1.12);filter:drop-shadow(0 0 12px #ffbb43)}}
@@ -693,4 +693,16 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 /* Keep the saved total from spoiling the ongoing slot presentation. */
 body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 
-.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:10%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
+.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:50%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
+
+/* Free-spin entry and persistent countdown. */
+.spin-wheel-wrap{padding:0;background:transparent;color:inherit;cursor:pointer}
+.spin-wheel-wrap:disabled{opacity:1}
+.spin-wheel-hint{display:block;margin-top:26px;font-size:11px;letter-spacing:.16em;color:#f4d98e}
+.spin-remaining{position:absolute;right:3px;bottom:2px;z-index:5;min-width:25px;height:27px;display:grid;place-items:center;padding:1px 4px;border:1px solid #ffe9a6;border-radius:8px;background:#38213df2;color:#fff1a6;font-family:'Aldrich',sans-serif;font-size:20px;line-height:1;text-shadow:0 0 8px #ffd35d;pointer-events:none}
+.spin-cell:has(.spin-remaining){z-index:4}
+.spin-count-flight{position:fixed;z-index:10000;transform:translate(-50%,-50%);font-family:'Aldrich',sans-serif;font-size:72px;line-height:1;font-weight:700;color:#fff0a6;text-shadow:0 0 18px #ffbe4a,0 3px 0 #9b5436;pointer-events:none}
+.spin-cell.bonus-trigger{z-index:6;border-color:#fff4ab;animation:slotWildArrival .25s ease-in-out infinite alternate}
+.spin-cell.bonus-trigger .spin-glyph{animation:slotWildGlyph .25s ease-in-out infinite alternate}
+@keyframes slotWildArrival{to{box-shadow:inset 0 0 30px #ffe48baa,0 0 18px #ffe48b;background:#7b4f61}}
+@keyframes slotWildGlyph{to{transform:scale(1.22);filter:drop-shadow(0 0 10px #ffde78)}}

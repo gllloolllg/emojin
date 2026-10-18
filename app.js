@@ -1530,6 +1530,7 @@ function refreshSlotUI(){
   const button=$('slotSpinButton');
   button.disabled=session.loading||session.running||session.failed||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
   button.textContent='SPIN';
+  const odds=$('slotOddsButton');if(odds)odds.disabled=session.running||session.loading;
   const close=session.panel.querySelector('.modal-close');if(close)close.disabled=session.running;
 }
 async function showMojiSpin(){
@@ -1538,7 +1539,8 @@ async function showMojiSpin(){
   const preview=['cherry','bell','gift','berry','wild','smile','melon','orange','cherry'];
   openModal(`<div class="spin-marquee" aria-hidden="true"></div>
     <header class="spin-heading"><span class="spin-ornament" aria-hidden="true">✦</span><h2>MOJI SPIN</h2><span class="spin-ornament" aria-hidden="true">✦</span></header>
-    <div id="spinPhase" class="spin-phase" aria-live="polite">8 LINES</div>
+    <div id="spinPhase" class="spin-phase" hidden></div>
+    <div class="spin-tools"><button id="slotOddsButton" class="spin-odds-button" type="button">配当表</button></div>
     <div class="spin-machine"><div id="spinBoard" class="spin-board" role="group" aria-label="3行3列のスロット">
       ${preview.map(id=>`<div class="spin-cell" data-symbol="${id}" aria-label="${SLOT.byId[id].name}"><span class="spin-glyph">${SLOT.byId[id].emoji}</span></div>`).join('')}
       <svg id="spinLines" class="spin-lines" viewBox="0 0 300 300" aria-hidden="true"></svg>
@@ -1551,6 +1553,7 @@ async function showMojiSpin(){
   const session={panel:$('modalHost').querySelector('.moji-spin-panel'),loading:true,running:false,record:null,completed:false,balance:cloud.wallet.balance,win:0,timer:null};
   slotSession=session;
   $('slotSpinButton').onclick=()=>runSlotSession(session);
+  $('slotOddsButton').onclick=showSlotOdds;
   refreshSlotUI();
   try{
     const record=await cloud.getSlotRound();
@@ -1561,6 +1564,25 @@ async function showMojiSpin(){
   finally {session.loading=false;refreshSlotUI();}
   // Interrupted rounds resume automatically, never on the next SPIN press.
   if(session.record && slotSession===session && session.panel.isConnected)await runSlotSession(session,true);
+}
+function showSlotOdds(){
+  if(!slotSession || slotSession.running || slotSession.loading || document.querySelector('.spin-odds-dialog'))return;
+  const dialog=document.createElement('dialog');dialog.className='spin-odds-dialog';
+  dialog.setAttribute('aria-labelledby','slotOddsTitle');
+  const symbols=SLOT.CONFIG.symbols.filter(symbol=>symbol.payout>0);
+  dialog.innerHTML=`<button class="spin-odds-close" type="button" aria-label="配当表を閉じる">×</button>
+    <h3 id="slotOddsTitle">配当表</h3><p class="spin-odds-note">1ラインに3つ揃うと当選</p>
+    <div class="spin-odds-grid">${symbols.map(symbol=>`<div class="spin-odds-item"><span class="spin-odds-symbol"><span>${symbol.emoji}</span>${symbol.id==='wild'?'<small>WILD</small>':''}</span><strong>× ${symbol.payout}</strong></div>`).join('')}</div>
+    <p class="spin-odds-note">倍率は1ラインのBETに対する配当です。<br>WILDは他の絵柄の代わりになります。<br>複数ラインの配当は合算されます。</p>
+    <div class="spin-odds-free"><div class="spin-odds-trigger" role="img" aria-label="3行3列の中央にワイルド">${Array.from({length:9},(_,i)=>`<span>${i===4?'🤡':''}</span>`).join('')}</div><strong>Free Spin</strong><p>通常スピンで中央に🤡が止まると突入</p></div>`;
+  dialog.querySelector('.spin-odds-close').onclick=()=>dialog.close();
+  dialog.addEventListener('click',event=>{
+    event.stopPropagation();
+    if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}
+  });
+  dialog.addEventListener('keydown',event=>event.stopPropagation());
+  dialog.addEventListener('close',()=>{dialog.remove();$('slotOddsButton')?.focus({preventScroll:true});},{once:true});
+  document.body.appendChild(dialog);dialog.showModal();
 }
 function slotCells(){return [...$('spinBoard').querySelectorAll('.spin-cell')];}
 function paintSlotCell(el,id){

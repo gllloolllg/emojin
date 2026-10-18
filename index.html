@@ -35,7 +35,14 @@
     </header>
     <div id="emptyCity" class="empty-city hidden">すこし静かな街。</div>
     <nav class="bottom-nav" aria-label="メニュー">
-      <button id="forceBattleButton" class="nav-action" aria-label="強制バトル、100モジ"><span class="nav-icon-wrap"><span class="nav-icon" aria-hidden="true">⚔️</span></span><span class="nav-cost">100 <small>モジ</small></span></button>
+      <div class="nav-battle">
+        <button id="battleMenuToggle" class="battle-menu-toggle" type="button" aria-label="バトルメニューを開く" aria-haspopup="menu" aria-expanded="false" aria-controls="battleMenu" disabled><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M3 13 12 3l9 10Z"/></svg></button>
+        <div id="battleMenu" class="battle-menu hidden" role="menu" aria-label="バトルの種類">
+          <button id="challengeBattleButton" class="battle-menu-item" type="button" role="menuitem" aria-label="チャレンジバトル、200モジ" title="チャレンジバトル" disabled><span class="nav-icon-wrap battle-menu-icon" aria-hidden="true"><span class="nav-icon">⚔️</span><span class="battle-menu-badge battle-menu-star">★</span></span><span class="nav-cost">200 <small>モジ</small></span></button>
+          <button id="myBattleButton" class="battle-menu-item" type="button" role="menuitem" aria-label="マイエモジンバトル、200モジ" title="マイエモジンバトル" disabled><span class="nav-icon-wrap battle-menu-icon" aria-hidden="true"><span class="nav-icon">⚔️</span><span class="battle-menu-badge">👤</span></span><span class="nav-cost">200 <small>モジ</small></span></button>
+        </div>
+        <button id="forceBattleButton" class="nav-action" aria-label="強制バトル、100モジ"><span class="nav-icon-wrap"><span class="nav-icon" aria-hidden="true">⚔️</span></span><span class="nav-cost">100 <small>モジ</small></span></button>
+      </div>
       <button id="generateButton" class="generate-button" aria-label="エモジンを生成、1200モジ"><span class="nav-icon-wrap"><span class="egg-sign" aria-hidden="true">&#129370;</span></span><span class="nav-cost">1200 <small>モジ</small></span></button>
       <button id="browseButton" class="nav-action" aria-label="エモジンを閲覧"><span class="nav-icon-wrap"><svg class="nav-browse-icon" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="7" width="18" height="21" rx="2"/><path d="M10 4h17v20M9 13h10M9 18h10M9 23h7"/></svg></span><span class="nav-cost nav-cost-spacer" aria-hidden="true">&nbsp;</span></button>
     </nav>

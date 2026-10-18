@@ -386,6 +386,22 @@ button.slot:active{transform:scale(.89)}
 .nav-browse-icon{width:30px;height:30px;fill:none;stroke:var(--neon-sky);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
 .nav-cost{height:17px;line-height:17px;font-size:14px;color:var(--muted);font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:.03em;font-family: "Freckle Face", system-ui;}
 .nav-cost small{font-size:12px;font-weight:500;font-family: "Monomaniac One", sans-serif;}
+.nav-battle{position:relative;flex:1;min-width:0;height:69px}
+.nav-battle::after{content:"";position:absolute;right:0;top:15px;bottom:15px;width:1px;background:var(--line);pointer-events:none}
+.nav-battle #forceBattleButton{width:100%}
+.nav-battle #forceBattleButton::after{display:none}
+.battle-menu-toggle{position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);width:44px;height:28px;padding:6px 12px;border:1px solid var(--line);border-radius:7px 7px 3px 3px;background:var(--panel);color:var(--muted)}
+.battle-menu-toggle svg{display:block;width:100%;height:100%;fill:currentColor}
+.battle-menu-toggle[aria-expanded="true"]{color:var(--neon-green);background:var(--panel-light)}
+.battle-menu{position:absolute;left:0;bottom:calc(100% + 40px);width:160px;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 8px 25px #0006;transform-origin:30px bottom;z-index:1}
+.battle-menu-item{display:flex;align-items:center;gap:16px;width:100%;min-height:58px;padding:7px 10px;background:transparent;border-radius:5px;text-align:left}
+.battle-menu-item+.battle-menu-item{border-top:1px solid var(--line)}
+.battle-menu-item:not(:disabled):hover{background:var(--panel-light)}
+.battle-menu-item:not(:disabled) .nav-cost{color:var(--neon-green)}
+.battle-menu-item:disabled{opacity:.38;filter:grayscale(.4)}
+.battle-menu-icon{position:relative;flex:none}
+.battle-menu-badge{position:absolute;right:-2px;top:0;font-size:16px;line-height:1.2;filter:drop-shadow(0 1px 2px var(--panel))}
+.battle-menu-star{color:var(--yellow);font-size:20px}
 .generate-button .egg-sign{font-size:35px;line-height:1.03}
 .generate-button .nav-cost{color:var(--text)}
 .generate-button.available{background:transparent}

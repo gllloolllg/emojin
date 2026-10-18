@@ -310,6 +310,31 @@
       (e.isNpc || e.ownerUid === 'npc' ||
        (owners[e.ownerUid] && !owners[e.ownerUid].dormant && (owners[e.ownerUid].unreadBattleIds || []).length < 7)));
   }
+  const BATTLE_MODES = Object.freeze({
+    forced:Object.freeze({cost:100,hatch:1}),
+    challenge:Object.freeze({cost:200,hatch:2}),
+    mine:Object.freeze({cost:200,hatch:2})
+  });
+  function battleMode(mode='forced') {
+    if(!Object.hasOwn(BATTLE_MODES,mode))throw Error('バトルの種類が不正です。');
+    return BATTLE_MODES[mode];
+  }
+  function battleAnchors(pool,mode,ownerUid,residents=pool) {
+    battleMode(mode);
+    if(mode==='forced')return pool;
+    if(mode==='mine')return pool.filter(e=>!e.isNpc && e.ownerUid===ownerUid);
+    // Use the same leaders as the town's star badges, including ties at zero.
+    const maxStars=Math.max(0,...residents.map(e=>e.stars));
+    return pool.filter(e=>e.stars===maxStars);
+  }
+  function selectBattlePair(pool,mode,ownerUid,residents=pool,rng=Math.random) {
+    const anchors=battleAnchors(pool,mode,ownerUid,residents);
+    if(pool.length<2 || !anchors.length)return [];
+    if(mode==='forced')return sample(pool,2,rng);
+    const first=anchors[index(rng,anchors.length)];
+    const others=pool.filter(e=>e.id!==first.id);
+    return others.length?[first,others[index(rng,others.length)]]:[];
+  }
   function planBattle(all, owners, meta, inputLog) {
     const log = clone(inputLog), nextMeta = {...meta};
     log.seq = Number(meta.battleSeq || 0) + 1;
@@ -348,7 +373,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { DORMANCY_MS, ownerPresence, participatingCount, eligible, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -688,8 +713,10 @@ async function createCloud() {
       const req=op.data.battleRequest,logRef=ref('battles',req.battleId);
       const existing=await tx.get(logRef);
       if(existing.exists())return {ok:true,seq:existing.data().seq,log:JSON.parse(existing.data().json),account,npcs:[]};
+      const mode=req.mode||'forced',rules=E.battleMode(mode);
+      if(mode!=='forced' && op.data.walletVersion!==2)throw Error('バトルの支払い情報が不正です。');
       const wallet=E.accrueMoji(account.wallet,Date.now());
-      if(op.data.walletVersion===2 && wallet.balance<100)throw Error('100モジ必要です。');
+      if(op.data.walletVersion===2 && wallet.balance<rules.cost)throw Error(`${rules.cost}モジ必要です。`);
       const pairSnaps=await Promise.all(req.ids.map(id=>tx.get(ref('emojins',id))));
       const pair=pairSnaps.map(data);
       const version=e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots];
@@ -699,11 +726,20 @@ async function createCloud() {
       const ownerIds=[...new Set(pair.filter(e=>!e.isNpc && e.ownerUid!=='npc').map(e=>e.ownerUid))];
       const ownerSnaps=await Promise.all(ownerIds.map(id=>tx.get(ref('owners',id))));
       const owners=Object.fromEntries(ownerIds.map((id,i)=>[id,data(ownerSnaps[i])]));
-      const log=E.battle(pair[0],pair[1],E.seeded(req.seed),req.at);log.battleId=req.battleId;
       const freshPool=(await activeDocs()).docs.map(s=>s.data());
+      if(mode!=='forced') {
+        const dormant=new Set(meta.dormantOwnerUids||[]);
+        const excluded=new Set([...(meta.suspendedOwnerUids||[]),...dormant]);
+        const residents=freshPool.filter(e=>e.isNpc || !dormant.has(e.ownerUid));
+        const pool=residents.filter(e=>e.isNpc || !excluded.has(e.ownerUid));
+        if(!pool.some(e=>e.id===pair[1].id) || !E.battleAnchors(pool,mode,uid,residents).some(e=>e.id===pair[0].id)) {
+          throw Error(mode==='challenge'?'チャンピオンが変わったか、バトルに参加できません。もう一度お試しください。':'マイエモジンがバトルに参加できません。');
+        }
+      }
+      const log=E.battle(pair[0],pair[1],E.seeded(req.seed),req.at);log.battleId=req.battleId;
       const plan=E.planBattle(freshPool,owners,meta,log);
-      if(op.data.walletVersion===2)wallet.balance-=100;
-      const next=nextAccount(account,{wallet,hatch:op.data.hatchReward?Math.min(10,account.hatch+1):account.hatch},op.id);
+      if(op.data.walletVersion===2)wallet.balance-=rules.cost;
+      const next=nextAccount(account,{wallet,hatch:op.data.hatchReward?Math.min(10,account.hatch+rules.hatch):account.hatch},op.id);
       plan.emojins.forEach(e=>tx.set(ref('emojins',e.id),e));
       tx.set(logRef,{seq:plan.log.seq,ownerUids:plan.log.ownerUids,json:JSON.stringify(plan.log)});
       Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended,suspendedAt:owner.suspendedAt,lastAccessAt:owner.lastAccessAt,dormant:owner.dormant}));
@@ -912,7 +948,7 @@ const E = window.EmojinEngine;
 const $ = id => document.getElementById(id);
 const cloud = window.EmojinCloud;
 const HOUR = 3600000;
-const MOJI_CAP = 3000, EGG_COST = 1200, BATTLE_COST = 100;
+const MOJI_CAP = 3000, EGG_COST = 1200, BATTLE_COST = E.BATTLE_MODES.forced.cost;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("ja", {granularity:"grapheme"}) : null;
 const chars = s => segmenter ? [...segmenter.segment(s)].map(v => v.segment) : Array.from(s);
@@ -1063,6 +1099,7 @@ async function hideLayer(host, panel=null) {
 }
 
 function openModal(html, kind, {closable=true,panelClass="",focus=null,tapToClose=false,hideClose=false}={}) {
+  closeBattleMenu();
   closePopover(true);
   if(modalKind===null)oldFocus=document.activeElement;
   modalRevision++;modalClosing=false;modalOptions={closable,tapToClose};modalKind=kind;
@@ -1414,6 +1451,7 @@ const streetLoot=new Map();
 let lootLayer,lootElapsed=0,lootSerial=0,lootFlights=0,lootPending=0;
 function lootCanPlay() {
   return !!store?.player && !document.hidden && !busy && !playback && !modalKind
+    && $('battleMenu').classList.contains('hidden')
     && !modalClosing && !revivalPlaying && !store.draft
     && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','detailHost','popoverHost']
       .every(id=>$(id).classList.contains('hidden'));
@@ -1791,6 +1829,13 @@ function refreshNav() {
   btn.querySelector(".nav-cost").innerHTML =
   store.draft ? 'つづき' : `${EGG_COST} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
+  const menuBlocked=!store.player||busy||!!playback||!!modalKind||modalClosing||revivalPlaying||!!store.draft;
+  $('battleMenuToggle').disabled=menuBlocked;
+  if(menuBlocked)closeBattleMenu();
+  const pool=battlePool(),residents=active();
+  for(const [mode,id] of [['challenge','challengeBattleButton'],['mine','myBattleButton']]) {
+    $(id).disabled=menuBlocked||balance<E.battleMode(mode).cost||pool.length<2||!E.battleAnchors(pool,mode,cloud.uid,residents).length;
+  }
   $("moBalance").textContent=balance.toLocaleString("ja-JP");
   const height=38*Math.min(balance,MOJI_CAP)/MOJI_CAP;
   $("moFluid").setAttribute("y",String(45-height));$("moFluid").setAttribute("height",String(height));
@@ -2182,20 +2227,39 @@ async function showBattleCutin(loading=Promise.resolve()) {
     host.classList.add("hidden");
   }
 }
-async function forceBattle() {
+function closeBattleMenu(restoreFocus=false) {
+  const menu=$('battleMenu'),toggle=$('battleMenuToggle');
+  if(menu.classList.contains('hidden'))return;
+  menu.classList.add('hidden');
+  toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','バトルメニューを開く');
+  if(restoreFocus)toggle.focus({preventScroll:true});
+}
+function toggleBattleMenu() {
+  if(!$('battleMenu').classList.contains('hidden')){closeBattleMenu();return;}
+  if(busy||playback||modalKind||!store?.player)return;
+  $('battleMenu').classList.remove('hidden');
+  $('battleMenuToggle').setAttribute('aria-expanded','true');
+  $('battleMenuToggle').setAttribute('aria-label','バトルメニューを閉じる');
+  animate($('battleMenu'),[{transform:'translateY(10px) scale(.96)',opacity:0},{transform:'translateY(0) scale(1)',opacity:1}],180);
+}
+async function forceBattle(mode='forced') {
   if(busy||playback||!store.player)return;
+  const rules=E.battleMode(mode);
+  closeBattleMenu();
   busy=true;
   let battleId;
   try {
-    if(battlePool().length<2||updateMoji()<BATTLE_COST){refreshNav();return;}
+    if(battlePool().length<2||updateMoji()<rules.cost||!E.battleAnchors(battlePool(),mode,cloud.uid,active()).length){refreshNav();return;}
     const {fresh,saved,log}=await showBattleCutin((async()=>{
       const fresh=await cloud.getState();
       store=fresh;renderCity();refreshNav();
       if(battlePool().length<2)throw Error('バトルに参加できるエモジンが2体必要です。');
-      if(updateMoji()<BATTLE_COST)throw Error('100モジ必要です。');
-      const pair=E.sample(battlePool(),2,Math.random),seed=crypto.getRandomValues(new Uint32Array(1))[0],at=Date.now();
+      if(updateMoji()<rules.cost)throw Error(`${rules.cost}モジ必要です。`);
+      const pair=E.selectBattlePair(battlePool(),mode,cloud.uid,active());
+      if(pair.length!==2)throw Error(mode==='challenge'?'チャンピオンがバトルに参加できません。':'マイエモジンがバトルに参加できません。');
+      const seed=crypto.getRandomValues(new Uint32Array(1))[0],at=Date.now();
       const preview=E.battle(pair[0],pair[1],E.seeded(seed),at);
-      const request={battleId:preview.battleId,ids:pair.map(e=>e.id),seed,at,
+      const request={battleId:preview.battleId,mode,ids:pair.map(e=>e.id),seed,at,
         expected:preview.before.map(e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots])};
       const saved=await cloud.saveBattle(request);
       return {fresh,saved,log:saved.log||preview};
@@ -2763,7 +2827,27 @@ async function showLegend(e) {
 
 function wireEvents() {
   $("generateButton").onclick=beginGeneration;
-  $("forceBattleButton").onclick=forceBattle;
+  $("forceBattleButton").onclick=()=>forceBattle();
+  $('battleMenuToggle').onclick=toggleBattleMenu;
+  $('challengeBattleButton').onclick=()=>forceBattle('challenge');
+  $('myBattleButton').onclick=()=>forceBattle('mine');
+  document.addEventListener('pointerdown',ev=>{
+    if(!ev.target.closest('.nav-battle'))closeBattleMenu();
+  });
+  document.addEventListener('focusin',ev=>{
+    if(!ev.target.closest('.nav-battle'))closeBattleMenu();
+  });
+  document.querySelector('.nav-battle').addEventListener('keydown',ev=>{
+    if(!['ArrowUp','ArrowDown','Home','End'].includes(ev.key))return;
+    if($('battleMenuToggle').disabled)return;
+    ev.preventDefault();
+    if($('battleMenu').classList.contains('hidden'))toggleBattleMenu();
+    const items=[...$('battleMenu').querySelectorAll('button:not(:disabled)')];
+    if(!items.length)return;
+    const current=items.indexOf(document.activeElement);
+    const next=ev.key==='Home'?0:ev.key==='End'?items.length-1:current<0?(ev.key==='ArrowUp'?items.length-1:0):(current+(ev.key==='ArrowUp'?-1:1)+items.length)%items.length;
+    items[next].focus({preventScroll:true});
+  });
   $("browseButton").onclick=()=>{if(!busy&&!playback&&store.player)showArchive("active");};
   $("unreadButton").onclick=()=>playUpdates();
   $("revealContinue").onclick=finishReveal;
@@ -2843,6 +2927,7 @@ function wireEvents() {
   },true);
   $("popoverHost").addEventListener("click",()=>closePopover());
   document.addEventListener("keydown",ev=>{
+    if(ev.key==='Escape'&&!$('battleMenu').classList.contains('hidden')){ev.preventDefault();closeBattleMenu(true);return;}
     if(!$("popoverHost").classList.contains("hidden")&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat){ev.preventDefault();closePopover();return;}
     if(!$("detailHost").classList.contains("hidden")&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat&&!document.activeElement?.closest("button")){ev.preventDefault();closeDetailOverlay();return;}
     if(modalOptions.tapToClose&&modalKind&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat&&!document.activeElement?.closest("button")){ev.preventDefault();closeModal();return;}
@@ -2891,7 +2976,7 @@ async function init() {
   await playUpdates();
 }
 // Updating is deferred until local writes finish and the owner is back in town.
-window.EmojinCanReload=()=>!!store && !busy && !playback && (!modalKind || modalKind==='オーナー認証') && !modalClosing
+window.EmojinCanReload=()=>!!store && !busy && !playback && $('battleMenu').classList.contains('hidden') && (!modalKind || modalKind==='オーナー認証') && !modalClosing
   && !revivalPlaying && !store.draft && !lootFlights && !hatchAnimating && cloud.canReload
   && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')
   && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','popoverHost','detailHost']

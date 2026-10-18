@@ -60,9 +60,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);out
 .empty-city{position:absolute;top:43%;left:0;right:0;text-align:center;z-index:4;line-height:2;font-size:16px;color:var(--muted)}
 .star-badge{display:inline-block;width:44px;height:44px;flex-shrink:0;vertical-align:middle}
 .star-badge svg{width:100%;height:100%;overflow:visible}
-.star-badge polygon{fill:var(--bg);stroke:var(--yellow);stroke-width:3.5;stroke-linejoin:round}
-.star-badge text{font:800 28px -apple-system,BlinkMacSystemFont,sans-serif;fill:var(--yellow);text-anchor:middle}
-.star-badge.legend polygon{fill:#4E4337;stroke:var(--yellow)}
+.star-badge polygon{fill:var(--yellow);stroke:var(--yellow);stroke-width:3.5;stroke-linejoin:round}
+.star-badge text{font:800 28px -apple-system,BlinkMacSystemFont,sans-serif;fill:#000;text-anchor:middle}
 .owner-line{font-size:11px;color:var(--muted);letter-spacing:.035em}
 .modal-host,.popover-host{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;isolation:isolate}
 .modal-backdrop{position:absolute;inset:0;background:var(--backdrop)}

@@ -28,6 +28,12 @@
   };
   const EMOJIS = ["🦐","🐙","🍙","🤖","👾","💩","🐸","🦖","🦕","🌷","🍄","🦆","🦀","🍋","🍞","🥑","🐌","👻","🗿","🦑","🐧","🐼","🦊","🦋","🐢","🦔","🐟","🐳","🌵","🍆","🥕","🍥","🍣","🍔","🍟","🍩","🍮","🧀","🧊","🚽","🛸","🚀","🧸","🪩","🦷","🧠","🫀","🪼","🦎","🐣","🦭","🐈","🍤","🥦","🍑","🌝","🥸","🤡","👹","👺","👽","👄","💃","🕺","🛌","🐒","🦍","🦧","🐕","🐩","🐺","🦝","🐈‍⬛","🐅","🐆","🐴","🫎","🫏","🐎","🦓","🦌","🦬","🐃","🐄","🐖","🐗","🐑","🐫","🦙","🦒","🐘","🦣","🦏","🦛","🐀","🐇","🐿️","🦫","🦇","🐨","🦥","🦦","🦨","🦘","🦡","🐓","🐤","🐦","🕊️","🦅","🦢","🦉","🦤","🪶","🦩","🦚","🦜","🪽","🐦‍⬛","🪿","🐦‍🔥","🐊","🐍","🐉","🐬","🫍","🐠","🐡","🦈","🐚","🪸","🦞","🦪","🐛","🐜","🐝","🪲","🐞","🦗","🦟","🪰","💐","🌸","🌹","🌻","🌱","🌴","🍀","🍁","🍇","🍈","🍉","🍊","🍌","🍍","🍎","🍒","🍓","🥝","🥔","🌽","🌶️","🫑","🧄","🥜","🫛","🥐","🥖","🥨","🥞","🍖","🍕","🌭","🍳","🍱","🍜","🍡","🍦","🍪","🎂","🍫","🍬","🍭","🍼","☕","🍾","🍷","🍺","🧋","🔪","🏺","🎃","🎄","🎈","🎉","🎎","🎁","⚾","🏀","🏈","🥊","⛳","⛸️","🤿","🥌","🔫","🎱","🪄","🎮","🎴","🧞‍♂️","🧟","🫈","🌍","🗾","🧭","🌋","🪵","🗼","🗽","🎡","🚂","🚃","🚑","🚒","🚓","🚚","🏍️","🛵","🛺","🚲","🛴","🛢️","⛽","🛞","🚨","🪂","🚁","🌪️","🕶️","👘","👛","⛑️","📢","🎸","💴","✒️","📌","🔨","🚬","🪬"];
 
+  const INITIAL_MOJI = 2000;
+  const GENERATION_COSTS = Object.freeze([100,200,400,800,1000,1200]);
+  function generationCost(emojins,ownerUid) {
+    const count=emojins.filter(e=>e.status==='active' && !e.isNpc && e.ownerUid===ownerUid).length;
+    return GENERATION_COSTS[Math.min(count,GENERATION_COSTS.length-1)];
+  }
   function accrueMoji(wallet, timestamp) {
     const balance = Math.max(0, Math.floor(wallet.balance));
     let updatedAt = Math.min(timestamp, wallet.updatedAt);
@@ -373,7 +379,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -450,7 +456,7 @@ const KEY = 'emojin.firestore.v1.' + FIREBASE_CONFIG.projectId;
 const parse = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
 let local = parse();
 const persist = () => localStorage.setItem(KEY, JSON.stringify(local));
-local.wallet ||= {balance:3500, updatedAt:Date.now()};
+local.wallet ||= {balance:window.EmojinEngine.INITIAL_MOJI, updatedAt:Date.now()};
 local.pending ||= [];
 local.hatch = Math.max(0,Math.min(10,Number(local.hatch)||0));
 local.hatchPending = Math.max(0,Math.min(local.hatch,Number(local.hatchPending)||0));
@@ -600,7 +606,7 @@ async function createCloud() {
       ...world,reducedMotion:localStorage.getItem('emojin.online.reducedMotion')==='true'};
   }
   if(auth.currentUser) {
-    if(local.uid && local.uid!==auth.currentUser.uid) {delete local.account;local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
+    if(local.uid && local.uid!==auth.currentUser.uid) {delete local.account;local.wallet={balance:E.INITIAL_MOJI,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
     uid=auth.currentUser.uid;local.uid=uid;
     local.player ||= {uid,name:'',unreadBattleIds:[],seenBattleSeq:0,seenLegendSeq:0,tutorialSeen:true};
   } else {uid='';delete local.player;local.pending=[];}
@@ -637,7 +643,7 @@ async function createCloud() {
       if(snap.exists())return snap.data();
       // Import only once, and only from the device that already belongs to this owner.
       const migrate=local.uid===ownerUid;
-      const value={uid:ownerUid,wallet:migrate?local.wallet:{balance:3500,updatedAt:Date.now()},
+      const value={uid:ownerUid,wallet:migrate?local.wallet:{balance:E.INITIAL_MOJI,updatedAt:Date.now()},
         hatch:migrate?local.hatch:0,draft:migrate&&local.draft?{...local.draft,paid:true}:null,
         revision:1,recentOperations:[]};
       tx.set(accountRef,value);return value;
@@ -766,17 +772,21 @@ async function createCloud() {
   }
   async function installOwner(name,credential,registering) {
     const user=credential.user;
-    if(local.uid && local.uid!==user.uid){delete local.account;local.wallet={balance:3500,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
+    if(local.uid && local.uid!==user.uid){delete local.account;local.wallet={balance:E.INITIAL_MOJI,updatedAt:Date.now()};local.draft=null;local.pending=[];local.hatch=0;local.hatchPending=0;}
     if(uid!==user.uid){lastTouch=0;accessSnapshot=null;delete local.revivalPending;}
     uid=user.uid;local.uid=uid;
     const owner=await retry(()=>F.runTransaction(db,async tx=>{
       const ownerRef=ref('owners',uid),snap=await tx.get(ownerRef);
       if(snap.exists())return snap.data();
       if(!registering)throw Error('オーナー情報がありません。登録から同じ名前とパスワードで再試行してください。');
+      const accountRef=walletRef(),accountSnap=await tx.get(accountRef);
       const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
       const value={uid,name,createdAt:Date.now(),unreadBattleIds:[],suspended:false,suspendedAt:0,dormant:false,lastAccessAt:Date.now(),
         tutorialSeen:false,seenBattleSeq:meta.battleSeq||0,seenLegendSeq:meta.legendSeq||0};
-      tx.set(ownerRef,value);return value;
+      tx.set(ownerRef,value);
+      // New owners start with the current grant, never a stale pre-login wallet.
+      if(!accountSnap.exists())tx.set(accountRef,{uid,wallet:{balance:E.INITIAL_MOJI,updatedAt:Date.now()},hatch:0,draft:null,revision:1,recentOperations:[]});
+      return value;
     }));
     local.player=owner;persist();await ensureWallet();return {uid,name:owner.name};
   }
@@ -911,9 +921,16 @@ async function createCloud() {
         const accountRef=walletRef(),snap=await tx.get(accountRef),old=snap.data();
         if(old.draft)return old;
         const wallet=E.accrueMoji(old.wallet,Date.now()),free=old.hatch>=10;
-        if(!free && wallet.balance<1200)throw Error('1200モジ必要です。');
-        if(!free)wallet.balance-=1200;
-        const value=nextAccount(old,{wallet,draft:{...candidate,payment:free?'hatch':'moji',paid:true}});
+        let cost=0;
+        if(!free) {
+          // Creation and battles update meta; reading it makes population changes retry this reservation.
+          await tx.get(metaRef);
+          const emojins=(await activeDocs()).docs.map(s=>s.data());
+          cost=E.generationCost(emojins,uid);
+          if(wallet.balance<cost)throw Error(`${cost}モジ必要です。`);
+          wallet.balance-=cost;
+        }
+        const value=nextAccount(old,{wallet,draft:{...candidate,payment:free?'hatch':'moji',cost,paid:true}});
         tx.set(accountRef,value);return value;
       }));
       applyAccount(account);local.draft=E.clone(account.draft);persist();
@@ -948,7 +965,7 @@ const E = window.EmojinEngine;
 const $ = id => document.getElementById(id);
 const cloud = window.EmojinCloud;
 const HOUR = 3600000;
-const MOJI_CAP = 3000, EGG_COST = 1200, BATTLE_COST = E.BATTLE_MODES.forced.cost;
+const MOJI_CAP = 3000, BATTLE_COST = E.BATTLE_MODES.forced.cost;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("ja", {granularity:"grapheme"}) : null;
 const chars = s => segmenter ? [...segmenter.segment(s)].map(v => v.segment) : Array.from(s);
@@ -1822,12 +1839,13 @@ async function animateHatchReward() {
 function refreshNav() {
   renderHatch();
   refreshSlotUI();
-  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||cloud.hatch>=10||balance>=EGG_COST), btn=$("generateButton");
+  const cost=E.generationCost(store.emojins,cloud.uid);
+  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||cloud.hatch>=10||balance>=cost), btn=$("generateButton");
   btn.classList.toggle("available",available);
   btn.disabled=!available;
-  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":(cloud.hatch>=10?"エモジンを生成、孵化ゲージを使用":`エモジンを生成、${EGG_COST}モジ`));
+  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":(cloud.hatch>=10?"エモジンを生成、孵化ゲージを使用":`エモジンを生成、${cost}モジ`));
   btn.querySelector(".nav-cost").innerHTML =
-  store.draft ? 'つづき' : `${EGG_COST} <small>モジ</small>`;
+  store.draft ? 'つづき' : `${cost} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
   const menuBlocked=!store.player||busy||!!playback||!!modalKind||modalClosing||revivalPlaying||!!store.draft;
   $('battleMenuToggle').disabled=menuBlocked;
@@ -2030,7 +2048,7 @@ async function beginGeneration() {
     if(store.draft.stage==="special"){showSpecial();return;}
     showName();return;
   }
-  if(cloud.hatch<10 && updateMoji()<EGG_COST){refreshNav();return;}
+  if(cloud.hatch<10 && updateMoji()<E.generationCost(store.emojins,cloud.uid)){refreshNav();return;}
   busy=true;
   const reservation=cloud.startDraft().then(result=>({result}),error=>({error}));
   try {await showReveal('',reservation);}

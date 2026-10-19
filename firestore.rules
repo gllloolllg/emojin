@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function ready() {
+      let gate = get(/databases/$(database)/documents/config/battle).data;
+      return gate.rulesVersion == 4 && gate.maintenance == false;
+    }
+    // Only the IAM-authorized migration/scheduler can alter rollout gates/backups.
+    match /config/{id} { allow read: if signedIn(); allow write: if false; }
+    match /migrationBackups/{id} { allow read, write: if false; }
+    match /owners/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid && request.resource.data.uid == uid;
+      allow update: if signedIn() && request.resource.data.uid == resource.data.uid
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'unreadBattleIds','suspended','seenBattleSeq','seenLegendSeq','tutorialSeen',
+          'suspendedAt','lastAccessAt','dormant'
+        ]);
+      allow delete: if false;
+    }
+    match /wallets/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && ready() && request.auth.uid == uid && request.resource.data.uid == uid;
+      allow delete: if false;
+      match /operations/{id} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && ready() && request.auth.uid == uid;
+        allow update, delete: if false;
+      }
+    }
+    match /meta/{id} { allow read: if signedIn(); allow write: if signedIn() && ready(); }
+    function validRecord(d) {
+      return d.rulesVersion == 4 && d.defeats is int && d.defeats >= 0 && d.defeats <= 3
+        && d.stars is int && d.stars >= 0 && d.stars <= 50
+        && d.maxHp is int && d.maxHp >= 5 && d.maxHp <= 8 && d.currentHp == d.maxHp
+        && d.poisoned == false && d.cursedSlots == [] && d.recordVersion is int
+        && ((d.status == 'dead' && d.defeats == 3)
+          || (d.status == 'legend' && d.defeats < 3 && d.stars == 50)
+          || (d.status == 'active' && d.defeats < 3 && d.stars < 50));
+    }
+    function matchWrite(d, id) {
+      let log = getAfter(/databases/$(database)/documents/battles/$(d.lastBattleId)).data;
+      return log.rulesVersion == 4 && ((log.emojinIds[0] == id && log.after[0] == d)
+        || (log.emojinIds[1] == id && log.after[1] == d));
+    }
+    function npcWrite(d,id) {
+      let log = getAfter(/databases/$(database)/documents/battles/$(d.lastBattleId)).data;
+      return d.isNpc == true && d.ownerUid == 'npc' && d.stars == 0 && d.defeats == 0
+        && d.recordVersion == 0 && log.rulesVersion == 4
+        && id.matches(d.lastBattleId + '-npc-[0-9]+');
+    }
+    match /emojins/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && ready() && validRecord(request.resource.data)
+        && request.resource.data.id == id
+        && ((request.resource.data.ownerUid == request.auth.uid && request.resource.data.isNpc == false
+          && request.resource.data.stars == 0 && request.resource.data.defeats == 0 && request.resource.data.recordVersion == 0
+          && get(/databases/$(database)/documents/wallets/$(request.auth.uid)).data.draft.id == id)
+          || npcWrite(request.resource.data,id));
+      allow update: if signedIn() && ready() && resource.data.status == 'active'
+        && validRecord(request.resource.data)
+        && request.resource.data.id == resource.data.id && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.maxHp == resource.data.maxHp
+        && request.resource.data.recordVersion == resource.data.recordVersion + 1
+        && request.resource.data.defeats >= resource.data.defeats
+        && request.resource.data.stars >= resource.data.stars
+        && matchWrite(request.resource.data,id);
+      allow delete: if false;
+    }
+    match /battles/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && ready() && request.resource.data.rulesVersion == 4
+        && request.resource.data.emojinIds.size() == 2 && request.resource.data.after.size() == 2
+        && request.resource.data.emojinIds[0] != request.resource.data.emojinIds[1]
+        && request.resource.data.after[0].lastBattleId == id && request.resource.data.after[1].lastBattleId == id
+        && validRecord(request.resource.data.after[0]) && validRecord(request.resource.data.after[1])
+        && getAfter(/databases/$(database)/documents/emojins/$(request.resource.data.emojinIds[0])).data == request.resource.data.after[0]
+        && getAfter(/databases/$(database)/documents/emojins/$(request.resource.data.emojinIds[1])).data == request.resource.data.after[1];
+      allow update, delete: if false;
+    }
+    match /legends/{id} { allow read: if signedIn(); allow create: if signedIn() && ready(); allow update, delete: if false; }
+  }
+}

@@ -18,7 +18,7 @@
     heal: { icon: "🧪", name: "回復", text: "♡を1回復し、毒を解除。呪いを1スロット解除する。", color: "mint" },
     guard: { icon: "🛡️", name: "防御", text: "攻撃ダメージを1軽減。毒・吸血などのダメージは防げない。", color: "blue" },
     counter: { icon: "↩️", name: "カウンター", text: "攻撃ダメージを無効にし、同じ量のダメージを相手に与える。", color: "blue" },
-    poison: { icon: "🦠", name: "毒", text: "相手を毒にする。毒はバトル開始時に1ダメージを受ける。1/3で解除。", color: "green", special: true },
+    poison: { icon: "🦠", name: "毒", text: "相手を毒にする。次のターン開始時に1ダメージ。1/3で解除。", color: "green", special: true },
     strong: { icon: "💥", value: 3, name: "強攻撃", text: "相手に3ダメージ。攻撃として扱う。", color: "amber", special: true },
     drain: { icon: "🦇", value: 2, name: "吸血", text: "相手の♡を最大2奪い、その分だけ回復する。", color: "pink", special: true },
     ram: { icon: "🦬", value: 4, name: "体当たり", text: "相手に4ダメージ自分にも2ダメージ。攻撃扱いなのでカウンターを食らうと最悪。", color: "amber", special: true },
@@ -28,6 +28,7 @@
   };
   const EMOJIS = ["🦐","🐙","🍙","🤖","👾","💩","🐸","🦖","🦕","🌷","🍄","🦆","🦀","🍋","🍞","🥑","🐌","👻","🗿","🦑","🐧","🐼","🦊","🦋","🐢","🦔","🐟","🐳","🌵","🍆","🥕","🍥","🍣","🍔","🍟","🍩","🍮","🧀","🧊","🚽","🛸","🚀","🧸","🪩","🦷","🧠","🫀","🪼","🦎","🐣","🦭","🐈","🍤","🥦","🍑","🌝","🥸","🤡","👹","👺","👽","👄","💃","🕺","🛌","🐒","🦍","🦧","🐕","🐩","🐺","🦝","🐈‍⬛","🐅","🐆","🐴","🫎","🫏","🐎","🦓","🦌","🦬","🐃","🐄","🐖","🐗","🐑","🐫","🦙","🦒","🐘","🦣","🦏","🦛","🐀","🐇","🐿️","🦫","🦇","🐨","🦥","🦦","🦨","🦘","🦡","🐓","🐤","🐦","🕊️","🦅","🦢","🦉","🦤","🪶","🦩","🦚","🦜","🪽","🐦‍⬛","🪿","🐦‍🔥","🐊","🐍","🐉","🐬","🫍","🐠","🐡","🦈","🐚","🪸","🦞","🦪","🐛","🐜","🐝","🪲","🐞","🦗","🦟","🪰","💐","🌸","🌹","🌻","🌱","🌴","🍀","🍁","🍇","🍈","🍉","🍊","🍌","🍍","🍎","🍒","🍓","🥝","🥔","🌽","🌶️","🫑","🧄","🥜","🫛","🥐","🥖","🥨","🥞","🍖","🍕","🌭","🍳","🍱","🍜","🍡","🍦","🍪","🎂","🍫","🍬","🍭","🍼","☕","🍾","🍷","🍺","🧋","🔪","🏺","🎃","🎄","🎈","🎉","🎎","🎁","⚾","🏀","🏈","🥊","⛳","⛸️","🤿","🥌","🔫","🎱","🪄","🎮","🎴","🧞‍♂️","🧟","🫈","🌍","🗾","🧭","🌋","🪵","🗼","🗽","🎡","🚂","🚃","🚑","🚒","🚓","🚚","🏍️","🛵","🛺","🚲","🛴","🛢️","⛽","🛞","🚨","🪂","🚁","🌪️","🕶️","👘","👛","⛑️","📢","🎸","💴","✒️","📌","🔨","🚬","🪬"];
 
+  const RULES_VERSION = 4, MAX_TURNS = 10;
   const INITIAL_MOJI = 2000;
   const GENERATION_COSTS = Object.freeze([100,200,400,800,1000,1200]);
   function generationCost(emojins,ownerUid) {
@@ -66,18 +67,20 @@
   function createDraft(rng = Math.random, now = Date.now()) {
     return {
       id: id("e"), emoji: EMOJIS[index(rng, EMOJIS.length)],
-      maxHp: 5 + index(rng, 6),
+      rulesVersion: RULES_VERSION,
+      maxHp: 5 + index(rng, 4),
       basicSlots: Array.from({ length: 5 }, () => weightedBasic(rng)),
       offers: sample(SPECIAL, 2, rng), createdAt: now, name: "", chosen: null, stage: "name"
     };
   }
   function fromDraft(draft, name, ownerName, chosen, now = Date.now()) {
+    draft=normalizeDraft(draft);
     if (!draft.offers.includes(chosen)) throw new Error("Invalid special ability.");
     return {
       id: draft.id, emoji: draft.emoji, name, ownerName,
-      currentHp: draft.maxHp, maxHp: draft.maxHp,
+      currentHp: clamp(draft.maxHp,5,8), maxHp: clamp(draft.maxHp,5,8),
       slots: [...draft.basicSlots, chosen], poisoned: false, cursedSlots: [],
-      stars: 0, status: "active", createdAt: now, endedAt: null
+      stars: 0, defeats: 0, rulesVersion: RULES_VERSION, recordVersion: 0, status: "active", createdAt: now, endedAt: null
     };
   }
   function validate(e) {
@@ -86,6 +89,7 @@
     if (!Number.isInteger(e.maxHp) || e.maxHp < 1 || !Number.isFinite(e.currentHp) || e.currentHp <= 0) throw new Error("Invalid HP.");
     if (!Number.isInteger(e.stars) || e.stars < 0 || e.stars >= 50) throw new Error("Invalid stars.");
     if ((e.cursedSlots || []).some(s => !Number.isInteger(s) || s < 0 || s > 5)) throw new Error("Invalid curse.");
+    if(e.rulesVersion===RULES_VERSION && (!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=3||e.maxHp<5||e.maxHp>8))throw Error('Invalid match record.');
   }
 
   /*
@@ -93,9 +97,9 @@
    * A/B ordering never decides who gets to attack.
    * The returned log is authoritative; the UI MUST NOT re-roll when replaying.
    */
-  function battle(inputA, inputB, rng = Math.random, now = Date.now()) {
-    validate(inputA); validate(inputB);
-    if (inputA.id === inputB.id) throw new Error("An emojin cannot battle itself.");
+  // This phase resolver preserves the v3 turn order and skill arithmetic.
+  // It never awards records, retires a resident, refills NPCs or writes data.
+  function resolveTurn(inputA, inputB, rng = Math.random) {
     const states = [clone(inputA), clone(inputB)];
     const before = clone(states);
     const events = [];
@@ -243,22 +247,65 @@
       }
     });
 
-    const deadIds = [], legendIds = [];
-    states.forEach(s => {
-      s.currentHp = clamp(s.currentHp, 0, s.maxHp);
-      if (s.currentHp === 0) {
-        s.status = "dead"; s.endedAt = now; deadIds.push(s.id);
-      } else {
-        s.stars += 1;
-        if (s.stars >= 50) { s.stars = 50; s.status = "legend"; s.endedAt = now; legendIds.push(s.id); }
-      }
+    states.forEach(s => { s.currentHp = clamp(s.currentHp, 0, s.maxHp); });
+    return {before,after:stateList(),rolls,events};
+  }
+
+  function migrateActive(e) {
+    if(e.status !== 'active' || e.rulesVersion === RULES_VERSION)return clone(e);
+    if(Number(e.rulesVersion||3)>RULES_VERSION)throw Error('Future rules version');
+    if(!Number.isInteger(e.maxHp)||e.maxHp<5||e.maxHp>10)throw Error('Unsupported legacy maximum HP');
+    const maxHp=clamp(e.maxHp,5,8);
+    return {...clone(e),maxHp,currentHp:maxHp,poisoned:false,cursedSlots:[],
+      defeats:Number(e.defeats||0),rulesVersion:RULES_VERSION,recordVersion:Number(e.recordVersion||0)};
+  }
+  function normalizeDraft(draft) {
+    if(draft && Number(draft.rulesVersion||3)>RULES_VERSION)throw Error('Future draft rules version');
+    if(draft && (!Number.isInteger(draft.maxHp)||draft.maxHp<5||draft.maxHp>10))throw Error('Invalid draft maximum HP');
+    return draft ? {...clone(draft),maxHp:clamp(draft.maxHp,5,8),rulesVersion:RULES_VERSION} : null;
+  }
+  function recordVersion(e) {
+    return [e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots,e.defeats||0,e.rulesVersion||3,e.recordVersion||0];
+  }
+  function battleDocument(log) {
+    return {rulesVersion:RULES_VERSION,seq:log.seq,ownerUids:log.ownerUids,
+      emojinIds:log.before.map(e=>e.id),after:log.after,json:JSON.stringify(log)};
+  }
+  function battle(inputA,inputB,rng=Math.random,now=Date.now(),battleId=id('b')) {
+    let states=[inputA,inputB].map(migrateActive);
+    states.forEach(validate);
+    if(states[0].id===states[1].id)throw Error('An emojin cannot battle itself.');
+    states=states.map(e=>({...e,currentHp:e.maxHp,poisoned:false,cursedSlots:[]}));
+    const before=clone(states),events=[],turns=[];
+    for(let turn=1;turn<=MAX_TURNS;turn++) {
+      events.push({type:'turnStart',turn,state:clone(states)});
+      const phase=resolveTurn(states[0],states[1],rng);
+      events.push(...phase.events.map(event=>({...event,turn})));
+      states=phase.after;
+      turns.push({turn,rolls:phase.rolls,after:clone(states)});
+      events.push({type:'turnEnd',turn,state:clone(states)});
+      if(states.some(e=>e.currentHp===0))break;
+    }
+    const hp=states.map(e=>e.currentHp),zero=hp.map(n=>n===0);
+    const kind=zero.every(Boolean)?'double-knockout':zero.some(Boolean)?'knockout':hp[0]===hp[1]?'draw':'hp';
+    const winner=kind==='draw'||kind==='double-knockout'?null:(hp[0]>hp[1]?0:1);
+    const result={kind,winner,remainingHp:hp,turns:turns.length};
+    const awards=states.map((e,side)=>({side,stars:kind==='draw'?1:winner===side?(kind==='knockout'?3:2):0,
+      defeats:kind==='double-knockout'||(winner!==null && winner!==side)?1:0}));
+    const deadIds=[],legendIds=[];
+    states.forEach((e,side)=>{
+      e.stars=Math.min(50,e.stars+awards[side].stars);
+      e.defeats=Number(e.defeats||0)+awards[side].defeats;
+      if(e.defeats>=3){e.status='dead';e.endedAt=now;deadIds.push(e.id);}
+      else if(e.stars>=50){e.status='legend';e.endedAt=now;legendIds.push(e.id);}
+      e.rulesVersion=RULES_VERSION;e.recordVersion=Number(e.recordVersion||0)+1;e.lastBattleId=battleId;
     });
-    emit("finish", { deadIds, legendIds });
-    return {
-      rulesVersion: 3, battleId: id("b"), battleAt: now, emojinAId: inputA.id, emojinBId: inputB.id,
-      ownerNames: [...new Set([inputA.ownerName,inputB.ownerName])],
-      before, after: stateList(), rolls, events, deadIds, legendIds
-    };
+    // The final combat state retains KO HP; only persisted residents reset between matches.
+    const finalState=clone(states);
+    const after=states.map(e=>({...e,currentHp:e.maxHp,poisoned:false,cursedSlots:[]}));
+    events.push({type:'finish',turn:turns.length,state:finalState,awards,result,deadIds,legendIds});
+    return {rulesVersion:RULES_VERSION,battleId,battleAt:now,emojinAId:inputA.id,emojinBId:inputB.id,
+      ownerNames:[...new Set([inputA.ownerName,inputB.ownerName])],before,after,finalState,turns,events,awards,result,deadIds,legendIds};
   }
 
   function forced(emojins, rng = Math.random, now = Date.now()) {
@@ -341,7 +388,7 @@
     const others=pool.filter(e=>e.id!==first.id);
     return others.length?[first,others[index(rng,others.length)]]:[];
   }
-  function planBattle(all, owners, meta, inputLog) {
+  function planBattle(all, owners, meta, inputLog, rng = Math.random) {
     const log = clone(inputLog), nextMeta = {...meta};
     log.seq = Number(meta.battleSeq || 0) + 1;
     log.ownerUids = [...new Set(log.before.filter(e => !e.isNpc && e.ownerUid !== 'npc').map(e => e.ownerUid))];
@@ -352,7 +399,7 @@
         throw Error('休止中のオーナーのエモジンはバトルに参加できません。');
       }
       const ids = [...new Set([...(owners[uid].unreadBattleIds || []), log.battleId])];
-      ownerUpdates[uid] = ownerPresence({...owners[uid], unreadBattleIds: ids}, Date.now());
+      ownerUpdates[uid] = ownerPresence({...owners[uid], unreadBattleIds: ids}, log.battleAt);
     });
     const suspended = new Set(meta.suspendedOwnerUids || []);
     Object.entries(ownerUpdates).forEach(([uid,p]) => { if(p.suspended)suspended.add(uid);else suspended.delete(uid); });
@@ -363,12 +410,12 @@
     const missing = Math.max(0, 10 - participatingCount(world,nextMeta));
     const kana = Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');
     for (let i = 0; i < missing; i++) {
-      const draft = createDraft(Math.random, log.battleAt);
-      npcs.push({id:draft.id, emoji:draft.emoji,
-        name:Array.from({length:3}, () => kana[index(Math.random,kana.length)]).join('')+'ン',
+      const draft = createDraft(rng, log.battleAt);
+      npcs.push({id:log.battleId+'-npc-'+i, emoji:draft.emoji,
+        name:Array.from({length:3}, () => kana[index(rng,kana.length)]).join('')+'ン',
         ownerName:'NPC', ownerUid:'npc', isNpc:true, currentHp:draft.maxHp, maxHp:draft.maxHp,
         slots:[...draft.basicSlots,'attack1'], poisoned:false, cursedSlots:[], stars:0,
-        status:'active', createdAt:log.battleAt, endedAt:null});
+        defeats:0,rulesVersion:RULES_VERSION,recordVersion:0,lastBattleId:log.battleId,status:'active', createdAt:log.battleAt, endedAt:null});
     }
     const legends = [];
     (log.legendIds || []).forEach(id => {
@@ -379,7 +426,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { RULES_VERSION, MAX_TURNS, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -509,7 +556,7 @@ async function flush() {
       const op=local.pending[0];
       try {last=await retry(()=>writeOperation(op));results[op.id]=last;npcs.push(...(last.npcs || []));}
       catch(error) {
-        if(!transient(error)) {
+        if(!transient(error) && error.code!=='rules-transition') {
           local.pending=local.pending.filter(x=>x.id!==op.id);persist();
         }
         throw error;
@@ -549,6 +596,12 @@ async function createCloud() {
   const decodeLog=s=>JSON.parse(s.data().json);
   let reading=null, archiveCache=null, archiveAt=0;
   const activeDocs=()=>F.getDocsFromServer(activeQuery);
+  async function requireMatchRules(tx) {
+    const snap=await tx.get(ref('config','battle')),gate=snap.exists()?snap.data():{};
+    if(gate.rulesVersion!==E.RULES_VERSION || gate.maintenance!==false) {
+      throw Object.assign(Error('バトル方式の切り替え中です。しばらくしてから開き直してください。'),{code:'rules-transition'});
+    }
+  }
   // One live subscription per collection/doc; no full-world polling every minute.
   let watchers=null;
   const logCache=new Map();
@@ -617,6 +670,9 @@ async function createCloud() {
     if(!initial && local.account?.uid===uid && Number(value.revision)<Number(local.account.revision))return;
     const prior=local.account?.uid===uid?local.account.hatch:value.hatch;
     local.account=E.clone(value);
+    if(value.draft && local.draft?.id===value.draft.id) {
+      local.draft={...local.draft,maxHp:value.draft.maxHp,rulesVersion:value.draft.rulesVersion};
+    }
     local.hatch=value.hatch||0;
     if(!initial && local.hatch>prior)local.hatchPending=Math.min(local.hatch,(local.hatchPending||0)+local.hatch-prior);
     local.hatchPending=Math.min(local.hatch,local.hatchPending||0);
@@ -641,6 +697,7 @@ async function createCloud() {
     walletReady=retry(()=>F.runTransaction(db,async tx=>{
       const snap=await tx.get(accountRef);
       if(snap.exists())return snap.data();
+      await requireMatchRules(tx);
       // Import only once, and only from the device that already belongs to this owner.
       const migrate=local.uid===ownerUid;
       const value={uid:ownerUid,wallet:migrate?local.wallet:{balance:E.INITIAL_MOJI,updatedAt:Date.now()},
@@ -651,6 +708,7 @@ async function createCloud() {
       if(uid!==ownerUid)return;
       applyAccount(value,true);
       if(value.draft && local.draft?.id!==value.draft.id)local.draft=E.clone(value.draft);
+      else if(value.draft)local.draft={...local.draft,maxHp:value.draft.maxHp,rulesVersion:value.draft.rulesVersion};
       if(!value.draft && !local.draft?.chosen)local.draft=null;
       persist();
       if(walletStop)walletStop();
@@ -679,6 +737,7 @@ async function createCloud() {
           tx.set(receipt,{redirect:account.slotRound,at:Date.now()});
           return {ok:true,record:active.data(),account};
         }
+        await requireMatchRules(tx);
         const round=window.MojiSpinEngine.validateRound(op.data.round);
         const wallet=E.accrueMoji(account.wallet,Date.now());
         if(wallet.balance<round.bet)throw Error(`${round.bet}モジ必要です。`);
@@ -693,6 +752,7 @@ async function createCloud() {
       if(op.action==='walletReward') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists())return {...existing.data(),account};
+        await requireMatchRules(tx);
         const wallet=E.accrueMoji(account.wallet,Date.now());
         const reward=Math.max(0,Math.min(op.data.amount,3000-wallet.balance));
         wallet.balance+=reward;
@@ -705,6 +765,7 @@ async function createCloud() {
       if(op.action==='createEmojin') {
         const candidate=op.data.emojin,eRef=ref('emojins',candidate.id),existing=await tx.get(eRef);
         if(existing.exists())return {ok:true,emojin:existing.data(),account,npcs:[]};
+        await requireMatchRules(tx);
         const draft=account.draft;
         if(!draft || draft.id!==candidate.id)throw Error('生成内容が更新されています。アプリを開き直してください。');
         if(!draft.offers.includes(op.data.chosen || candidate.slots[5]))throw Error('特殊能力を選び直してください。');
@@ -719,16 +780,21 @@ async function createCloud() {
       const req=op.data.battleRequest,logRef=ref('battles',req.battleId);
       const existing=await tx.get(logRef);
       if(existing.exists())return {ok:true,seq:existing.data().seq,log:JSON.parse(existing.data().json),account,npcs:[]};
+      await requireMatchRules(tx);
+      if(req.rulesVersion!==E.RULES_VERSION) {
+        return {ok:true,cancelled:true,account,npcs:[]};
+      }
       const mode=req.mode||'forced',rules=E.battleMode(mode);
       if(mode!=='forced' && op.data.walletVersion!==2)throw Error('バトルの支払い情報が不正です。');
       const wallet=E.accrueMoji(account.wallet,Date.now());
       if(op.data.walletVersion===2 && wallet.balance<rules.cost)throw Error(`${rules.cost}モジ必要です。`);
       const pairSnaps=await Promise.all(req.ids.map(id=>tx.get(ref('emojins',id))));
       const pair=pairSnaps.map(data);
-      const version=e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots];
+      const version=E.recordVersion;
       if(pair.some((e,i)=>!e || e.status!=='active' || JSON.stringify(version(e))!==JSON.stringify(req.expected[i]))) {
         throw Error('別のバトルで状態が変わりました。画面を更新してください。');
       }
+      if(pair.some(e=>e.rulesVersion!==E.RULES_VERSION))throw Error('エモジンの移行が完了していません。');
       const ownerIds=[...new Set(pair.filter(e=>!e.isNpc && e.ownerUid!=='npc').map(e=>e.ownerUid))];
       const ownerSnaps=await Promise.all(ownerIds.map(id=>tx.get(ref('owners',id))));
       const owners=Object.fromEntries(ownerIds.map((id,i)=>[id,data(ownerSnaps[i])]));
@@ -742,18 +808,25 @@ async function createCloud() {
           throw Error(mode==='challenge'?'チャンピオンが変わったか、バトルに参加できません。もう一度お試しください。':'マイエモジンがバトルに参加できません。');
         }
       }
-      const log=E.battle(pair[0],pair[1],E.seeded(req.seed),req.at);log.battleId=req.battleId;
-      const plan=E.planBattle(freshPool,owners,meta,log);
+      const log=E.battle(pair[0],pair[1],E.seeded(req.seed),req.at,req.battleId);
+      log.seed=req.seed;log.source=req.mode||'forced';
+      const plan=E.planBattle(freshPool,owners,meta,log,E.seeded(req.seed^0x4e5043));
       if(op.data.walletVersion===2)wallet.balance-=rules.cost;
       const next=nextAccount(account,{wallet,hatch:op.data.hatchReward?Math.min(10,account.hatch+rules.hatch):account.hatch},op.id);
       plan.emojins.forEach(e=>tx.set(ref('emojins',e.id),e));
-      tx.set(logRef,{seq:plan.log.seq,ownerUids:plan.log.ownerUids,json:JSON.stringify(plan.log)});
+      tx.set(logRef,E.battleDocument(plan.log));
       Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended,suspendedAt:owner.suspendedAt,lastAccessAt:owner.lastAccessAt,dormant:owner.dormant}));
       plan.legends.forEach(l=>tx.set(ref('legends',String(l.seq)),{seq:l.seq,json:JSON.stringify(l)}));
       tx.set(metaRef,{...plan.meta,revision:Number(meta.revision||0)+1});tx.set(accountRef,next);
       return {ok:true,seq:plan.log.seq,log:plan.log,npcs:plan.npcs,legends:plan.legends,account:next};
     });
-    applyAccount(result.account);return result;
+    applyAccount(result.account);
+    if(result.cancelled) {
+      local.upgradeNotice='旧方式の未保存バトルは未課金で取り消しました。';
+      local.cancelledOperations=[...(local.cancelledOperations||[]).filter(item=>item.id!==op.id),{...op,reason:local.upgradeNotice}].slice(-64);
+      persist();window.dispatchEvent(new Event('emojin-operation-cancelled'));
+    }
+    return result;
   };
   // Pending operations keep their IDs, so retrying a completed write cannot duplicate it.
   let retryWrites=null;
@@ -779,6 +852,7 @@ async function createCloud() {
       const ownerRef=ref('owners',uid),snap=await tx.get(ownerRef);
       if(snap.exists())return snap.data();
       if(!registering)throw Error('オーナー情報がありません。登録から同じ名前とパスワードで再試行してください。');
+      await requireMatchRules(tx);
       const accountRef=walletRef(),accountSnap=await tx.get(accountRef);
       const metaSnap=await tx.get(metaRef),meta=data(metaSnap)||defaultMeta();
       const value={uid,name,createdAt:Date.now(),unreadBattleIds:[],suspended:false,suspendedAt:0,dormant:false,lastAccessAt:Date.now(),
@@ -791,6 +865,7 @@ async function createCloud() {
     local.player=owner;persist();await ensureWallet();return {uid,name:owner.name};
   }
   return {
+    takeUpgradeNotice(){const message=local.upgradeNotice;delete local.upgradeNotice;persist();return message;},
     get revivalPending(){return !!local.revivalPending && local.revivalPending.uid===uid;},
     completeRevival(){delete local.revivalPending;persist();},
     get canReload(){return !local.pending.length && !flushing;},
@@ -822,6 +897,7 @@ async function createCloud() {
       const account=await retry(()=>F.runTransaction(db,async tx=>{
         const accountRef=walletRef(),snap=await tx.get(accountRef),old=snap.data();
         if(old.slotRound!==id)return old;
+        await requireMatchRules(tx);
         const next=nextAccount(old,{slotRound:null});tx.set(accountRef,next);return next;
       }));
       applyAccount(account);
@@ -833,6 +909,7 @@ async function createCloud() {
         await ensureWallet();
         const canonicalDraft=local.account?.draft;
         if(canonicalDraft && canonicalDraft.id!==local.draft?.id)local.draft=E.clone(canonicalDraft);
+        else if(canonicalDraft)local.draft={...local.draft,maxHp:canonicalDraft.maxHp,rulesVersion:canonicalDraft.rulesVersion};
         else if(!canonicalDraft && !local.draft?.chosen)local.draft=null;
         const access=await touchAccess();
         await startWatch();
@@ -919,6 +996,7 @@ async function createCloud() {
       const candidate=E.createDraft(Math.random,Date.now());
       const account=await retry(()=>F.runTransaction(db,async tx=>{
         const accountRef=walletRef(),snap=await tx.get(accountRef),old=snap.data();
+        await requireMatchRules(tx);
         if(old.draft)return old;
         const wallet=E.accrueMoji(old.wallet,Date.now()),free=old.hatch>=10;
         let cost=0;
@@ -1002,6 +1080,7 @@ function advanceBattle() {
 }
 async function waitForBattleContinue(last) {
   if (playback && playback.skip) throw new Error("SKIP");
+  $("skipButton").disabled = true;
   $("battleNext").setAttribute("aria-label", last ? "\u8857\u3078" : "\u6b21\u306e\u30d0\u30c8\u30eb");
   $("battleScreen").classList.add("awaiting-next");
   $("battleNext").classList.remove("hidden"); $("battleNext").disabled = false;
@@ -1068,7 +1147,11 @@ async function battleWait(ms) {
   if(playback && playback.skip) throw new Error("SKIP");
 }
 function star(n, legend=false) {
-  return `<span class="star-badge ${legend?"legend":""}" role="img" aria-label="${n}戦生存"><svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,6 62,35 94,38 69,59 77,91 50,74 23,91 31,59 6,38 38,35"></polygon><text x="50" y="61">${Number(n)}</text></svg></span>`;
+  return `<span class="star-badge ${legend?"legend":""}" role="img" aria-label="星 ${n}"><svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,5 66,31 95,37 76,59 79,91 50,77 21,91 24,59 5,37 34,31"></polygon><text x="50" y="63">${Number(n)}</text></svg></span>`;
+}
+function recordBadge(e) {
+  const defeats=Math.max(0,Math.min(3,Number(e.defeats||0)));
+  return `<span class="record-badge">${star(e.stars,e.status==='legend')}<span class="defeat-record" role="img" aria-label="敗北 ${defeats} / 3">${[0,1,2].map(i=>`<span class="defeat-skull ${i<defeats?'earned':''}" aria-hidden="true">💀</span>`).join('')}</span></span>`;
 }
 const HEART_PATH = "M12 21S3 15.8 3 8.8C3 3.7 9.5 2.6 12 7c2.5-4.4 9-3.3 9 1.8 0 7-9 12.2-9 12.2z";
 function heartSvg(className="heart filled") {
@@ -1196,7 +1279,7 @@ async function closeDetailOverlay(immediate=false) {
 function showDetail(e, ret=null) {
   const tag=my(e)?"マイ エモジン":"";
   const when=e.status==="dead"?`🪦 ${dateText(e.endedAt)}`:e.status==="legend"?`🏆 ${dateText(e.endedAt)}`:"";
-  const content=`<div class="detail-star">${star(e.stars,e.status==="legend")}</div>
+  const content=`<div class="detail-star">${recordBadge(e)}</div>
     <h2 class="detail-name">${esc(e.name)}</h2><div class="my-tag">${tag}</div>
     ${emojiVisual(e)}<div class="hp-detail">${hearts(e)}</div>
     <div class="slots-row">${slotRow(e)}</div>
@@ -1223,7 +1306,7 @@ async function showArchive(status="active") {
   const panes=tabs.map(tab=>{
     const emojins=store.emojins.filter(e=>e.status===tab.key&&(tab.key!=="active"||my(e))&&(tab.key!=="dead"||!e.isNpc))
       .sort((a,b)=>tab.key==="active"?b.createdAt-a.createdAt:b.endedAt-a.endedAt);
-    const entries=emojins.map(e=>`<button class="archive-entry" data-emojin-id="${e.id}" data-return-status="${tab.key}"><span class="archive-emoji">${e.emoji}</span><span><h3>${esc(e.name)}</h3><span class="owner-line">${tab.key==="active"?`HP ${e.currentHp} / ${e.maxHp}`:`オーナー：${esc(e.ownerName)}`}</span></span>${star(e.stars,tab.key==="legend")}<span class="archive-arrow">${nextSvg()}</span></button>`).join("");
+    const entries=emojins.map(e=>`<button class="archive-entry" data-emojin-id="${e.id}" data-return-status="${tab.key}"><span class="archive-emoji">${e.emoji}</span><span><h3>${esc(e.name)}</h3><span class="owner-line">${tab.key==="active"?`HP ${e.currentHp} / ${e.maxHp}`:`オーナー：${esc(e.ownerName)}`}</span></span>${recordBadge(e)}<span class="archive-arrow">${nextSvg()}</span></button>`).join("");
     return `<div class="archive-pane" role="tabpanel" id="pane-${tab.key}"><div class="archive-list">${entries||'<div class="archive-empty">エモジンはいない</div>'}</div></div>`;
   }).join("");
   openModal(`<button class="archive-close" data-close-modal="true" aria-label="閲覧を閉じる">${closeSvg()}</button>
@@ -1317,7 +1400,8 @@ const tutorialSteps = [
     target: '#cityScreen',
     lines: [
       'のんびり暮らすエモジンたち。',
-      'でも、バトルは命がけ。'
+      'バトルは最大10ターン。',
+      '💀が3つになるとボチへ。'
     ]
   },
   {
@@ -1876,7 +1960,7 @@ function renderCity() {
     if(el.dataset.signature!==signature) {
       el.dataset.signature=signature;el.className=`resident ${my(e)?"mine":""} ${e.poisoned?"poisoned":""} ${e.cursedSlots.length?"cursed":""}`;
       el.innerHTML=`<span class="resident-emoji">${e.emoji}</span><span class="status-marks">${statusMarks(e)}</span>${e.stars===maxStars?star(e.stars):""}<span class="resident-name">${esc(e.name)}</span>`;
-      el.setAttribute("aria-label",`${e.name}、${e.stars}戦、オーナー ${e.ownerName}`);
+      el.setAttribute("aria-label",`${e.name}、星 ${e.stars}、オーナー ${e.ownerName}`);
       fitResidentName(el);
     }
     old.delete(e.id);
@@ -2200,7 +2284,7 @@ async function showReels(resumed=false) {
           el.innerHTML=icon(d.basicSlots[i]);el.classList.remove("rolling");locked.add(i);
           animate(el,[{transform:"translateY(-10px) scale(1.22)"},{transform:"translateY(2px) scale(.96)",offset:.7},{transform:"translateY(0) scale(1)"}],300);
         }
-      }else el.innerHTML=icon(E.BASIC[E.index(rng,E.BASIC.length)].id);
+      }else el.innerHTML=icon(E.BASIC[(Math.floor((performance.now()-start)/55)+i)%E.BASIC.length].id);
     });
     await delay(70);
   }
@@ -2277,8 +2361,8 @@ async function forceBattle(mode='forced') {
       if(pair.length!==2)throw Error(mode==='challenge'?'チャンピオンがバトルに参加できません。':'マイエモジンがバトルに参加できません。');
       const seed=crypto.getRandomValues(new Uint32Array(1))[0],at=Date.now();
       const preview=E.battle(pair[0],pair[1],E.seeded(seed),at);
-      const request={battleId:preview.battleId,mode,ids:pair.map(e=>e.id),seed,at,
-        expected:preview.before.map(e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots])};
+      const request={battleId:preview.battleId,rulesVersion:E.RULES_VERSION,mode,ids:pair.map(e=>e.id),seed,at,
+        expected:pair.map(E.recordVersion)};
       const saved=await cloud.saveBattle(request);
       return {fresh,saved,log:saved.log||preview};
     })());
@@ -2487,7 +2571,7 @@ function paintBattle(states) {
     fighterEl(side).classList.toggle("cursed",shown.cursedSlots.length>0);
     fighterEl(side).classList.toggle("dead",e.status==="dead");
     const info=infoEl(side);
-    info.innerHTML=`<div class="battle-info-head"><h2 class="${my(e) ? "battle-my-name" : ""}">${esc(e.name)}</h2>${star(e.stars,e.status==="legend")}</div>${hearts(e)}`;
+    info.innerHTML=`<div class="battle-info-head"><h2 class="${my(e) ? "battle-my-name" : ""}">${esc(e.name)}</h2>${recordBadge(e)}</div>${hearts(e)}`;
   });
 }
 function queueCurseRecovery(side,slots) {
@@ -2548,7 +2632,7 @@ async function rollDice(rolls,twinSide=null) {
   });
   const start=performance.now(),duration=reduced()?40:BATTLE_TIMING.roll/replaySpeed;
   while(performance.now()-start<duration) {
-    boxes.forEach((box,i)=>box.innerHTML=icon(E.BASIC[E.index(rng,E.BASIC.length)].id)+(rolls[i].cursed?curseMark():""));
+    boxes.forEach((box,i)=>box.innerHTML=icon(E.BASIC[(Math.floor((performance.now()-start)/55)+i)%E.BASIC.length].id)+(rolls[i].cursed?curseMark():""));
     await battleWait(55);
   }
   boxes.forEach((box,i)=>{
@@ -2559,7 +2643,70 @@ async function rollDice(rolls,twinSide=null) {
   paintBattle(battleStates);
   await battleWait(BATTLE_TIMING.diceHold);
 }
+function matchCaption(ev) {
+  if(ev.result.kind==='double-knockout')return '相打ち · 両者 💀＋1';
+  if(ev.result.kind==='draw')return '引き分け · 両者 ☆＋1';
+  const side=ev.result.winner;
+  return `${ev.state[side].name} の${ev.result.kind==='hp'?'判定勝ち':'勝利'} · ☆＋${ev.awards[side].stars}`;
+}
+function showMatchRewards(ev,animated) {
+  const host=$('battleRecordFx');
+  host.getAnimations({subtree:true}).forEach(a=>a.cancel());host.innerHTML='';
+  ev.awards.forEach(award=>{
+    const badge=infoEl(award.side).querySelector('.record-badge').getBoundingClientRect(),bounds=host.getBoundingClientRect();
+    const label=document.createElement('span');label.className='battle-record-reward'+(award.defeats?' skull':'');
+    label.textContent=award.stars?`☆＋${award.stars}`:'💀＋1';
+    label.style.left=(badge.left-bounds.left+badge.width/2)+'px';label.style.top=(badge.top-bounds.top-10)+'px';
+    host.appendChild(label);
+    if(animated)animate(label,[{transform:'translate(-50%,0) scale(.4)',opacity:0},{transform:'translate(-50%,-20px) scale(1.15)',opacity:1,offset:.3},{transform:'translate(-50%,-27px) scale(1)',opacity:1}],650/replaySpeed);
+  });
+}
+function setMatchEndingCaption(ev) {
+  if(ev.deadIds.length)setCaption('💀 3個 · '+ev.state.filter(e=>ev.deadIds.includes(e.id)).map(e=>e.name).join('・')+' はボチへ');
+  else if(ev.legendIds.length)setCaption('☆ 50到達 · レジェンドへ');
+}
+async function showMatchResult(ev,instant=false) {
+  $('battleScreen').dataset.phase='finish';
+  if(ev.turn)$('battleTurn').textContent=ev.turn+' / '+E.MAX_TURNS;
+  const before=ev.state.map((e,side)=>({...e,stars:currentBattle.before[side].stars,
+    defeats:currentBattle.before[side].defeats||0,status:'active'}));
+  paintBattle(instant?ev.state:before);setCaption(matchCaption(ev));showMatchRewards(ev,!instant);
+  if(instant){setMatchEndingCaption(ev);return;}
+  await battleWait(700);
+  // Assign the saved final records, never increment the database or a displayed final value.
+  paintBattle(ev.state.map(e=>({...e,status:'active'})));
+  ev.awards.forEach(award=>{
+    const target=award.stars?infoEl(award.side).querySelector('.star-badge'):
+      infoEl(award.side).querySelectorAll('.defeat-skull')[ev.state[award.side].defeats-1];
+    if(target)animate(target,[{transform:'scale(1)'},{transform:'scale(1.65)',offset:.35},{transform:'scale(1)'}],650/replaySpeed);
+  });
+  await battleWait(700);paintBattle(ev.state);
+  ev.state.forEach((e,side)=>{
+    if(e.status==='dead')animate(fighterEl(side).querySelector('.fighter-art'),
+      [{filter:'grayscale(0)',opacity:1},{filter:'grayscale(1)',opacity:.38,transform:'translateY(15px) rotate(-12deg)'}],650/replaySpeed);
+  });
+  setMatchEndingCaption(ev);
+  await battleWait(BATTLE_TIMING.resultHold);
+}
+function paintFinalBattleDice(log) {
+  // Read only saved rolls; replaying or skipping never draws another result.
+  for(const event of log.events) {
+    if(event.type==='roll')event.rolls.forEach(r=>{
+      dieEl(r.side).classList.remove('twin');dieEl(r.side).innerHTML=dieTile(r);
+    });
+    else if(event.type==='twin'){
+      dieEl(event.side).classList.add('twin');dieEl(event.side).innerHTML=event.rolls.map(dieTile).join('');
+    }
+  }
+}
 async function renderBattleEvent(ev) {
+  if(ev.type==='turnStart') {
+    if(deferredCurses.some(set=>set.size))await finishCurseAnimations();
+    $('battleTurn').textContent=ev.turn+' / '+E.MAX_TURNS;
+    deferredCurses=[new Set(),new Set()];paintBattle(ev.state);setCaption('');return;
+  }
+  if(ev.type==='turnEnd'){paintBattle(ev.state);return;}
+  if(ev.type==='finish' && ev.awards){await showMatchResult(ev);return;}
   // 防御の事前演出と、攻撃が来なかったカウンター演出を省く
   if (ev.type === "guard" || ev.type === "counterIdle") return;
   const old=battleStates;
@@ -2646,7 +2793,7 @@ async function renderBattleEvent(ev) {
   }
   if(ev.type==="impact"){
     const lines=[];
-    const counterSides=new Set((currentBattle.events.find(e=>e.type==="counter")?.counters||[]).map(c=>c.side));
+    const counterSides=new Set((currentBattle.events.find(e=>e.type==="counter" && e.turn===ev.turn)?.counters||[]).map(c=>c.side));
     ev.attacks.forEach(a=>{
       trail(a.side,a.target,a.strong||a.ram?PAL["neon-pink"]:PAL["neon-sky"]);
       if(a.reflected||counterSides.has(a.target))defenseReaction(a.target,"counter");
@@ -2741,7 +2888,8 @@ async function playBattle(log,i,total) {
   $("battleScreen").dataset.phase="entrance";
   $("battleNext").classList.add("hidden");$("battleNext").disabled=true;
   visualMap=log.before[1].ownerName===playerName()&&log.before[0].ownerName!==playerName()?[1,0]:[0,1];
-  $("battleFx").innerHTML="";
+  $("battleFx").innerHTML="";$("battleRecordFx").innerHTML="";
+  $("skipButton").disabled=false;
   [0,1].forEach(side=>{
     const el=fighterEl(side);
     el.getAnimations({subtree:true}).forEach(a=>a.cancel());
@@ -2753,6 +2901,7 @@ async function playBattle(log,i,total) {
   });
   $("battleScreen").classList.remove("hidden");
   $("battleCount").textContent=`バトル  ${i+1} / ${total}`;
+  $("battleTurn").textContent=log.rulesVersion===4?"1 / 10":"";
   $("battleProgress").style.setProperty("--progress",((i/total)*100)+"%");
   setCaption("");
   paintBattle(log.before);
@@ -2764,6 +2913,7 @@ async function playBattle(log,i,total) {
     ],900/replaySpeed);
     animate(infoEl(side),[{transform:`translateX(${visual?-45:45}px)`,opacity:0},{transform:"translateX(0)",opacity:1}],700/replaySpeed,{delay:300});
   });
+  try {
   await battleWait(BATTLE_TIMING.entrance+BATTLE_TIMING.beforeRoll);
   for(let n=0;n<log.events.length;n++){
     if(log.events[n].type==="finish" && deferredCurses.some(set=>set.size)) {
@@ -2775,6 +2925,19 @@ async function playBattle(log,i,total) {
   }
   $("battleProgress").style.setProperty("--progress",(((i+1)/total)*100)+"%");
   await waitForBattleContinue(i===total-1);
+  } catch(error) {
+    if(error.message!=='SKIP')throw error;
+    playback.skip=false;advanceBattle();
+    $('battleScreen').getAnimations({subtree:true}).forEach(a=>a.cancel());
+    $('battleFx').innerHTML='';clearBattleSlotFocus();deferredCurses=[new Set(),new Set()];
+    paintFinalBattleDice(log);
+    const finish=log.events.find(e=>e.type==='finish');
+    if(finish?.awards)await showMatchResult(finish,true);
+    else {paintBattle(finish?.state||log.after);setCaption('バトル結果');}
+    $("battleProgress").style.setProperty("--progress",(((i+1)/total)*100)+"%");
+    await waitForBattleContinue(i===total-1);
+  }
+
 }
 async function playUpdates(extraIds=[]) {
   if(!store.player||busy||playback)return;
@@ -2805,7 +2968,7 @@ async function playUpdates(extraIds=[]) {
   advanceBattle();await hideLayer($("battleScreen"));$("battleScreen").classList.add("hidden");
   $("battleScreen").getAnimations().forEach(x=>x.cancel());
   clearBattleSlotFocus();
-  $("battleFx").innerHTML="";playback=null;currentBattle=null;
+  $("battleFx").innerHTML="";$("battleRecordFx").innerHTML="";playback=null;currentBattle=null;
   for(const l of newLegends){
     await showLegend(l.emojin);
     store.player.seenLegendSeq=l.seq;
@@ -2821,7 +2984,7 @@ async function playUpdates(extraIds=[]) {
 async function showLegend(e) {
   if(!e)return;busy=true;
   $("legendHero").textContent=e.emoji;$("legendName").textContent=e.name;
-  $("legendStar").innerHTML=star(50,true);
+  $("legendStar").innerHTML=recordBadge(e);
   $("legendSlots").innerHTML=slotRow(e,false);
   $("legendOwner").textContent="オーナー："+e.ownerName;
   $("legendContinue").disabled=true;$("legendScreen").classList.remove("hidden");
@@ -2877,7 +3040,7 @@ function wireEvents() {
     if(!legendResolve)return;const fn=legendResolve;legendResolve=null;fn();
   });
   $("skipButton").onclick=ev=>{
-    ev.stopPropagation();if(playback){playback.skip=true;advanceBattle();}
+    ev.stopPropagation();if(playback&&!battleContinueResolve){playback.skip=true;advanceBattle();}
   };
   $("battleNext").onclick=ev=>{ev.stopPropagation();advanceBattle();};
   $("battleScreen").addEventListener("click",ev=>{
@@ -2983,10 +3146,12 @@ async function init() {
   };
   document.body.classList.toggle("reduce-motion",store.reducedMotion);
   window.addEventListener('emojin-wallet',()=>{if(store){store.wallet=cloud.wallet;refreshNav();}});
+  window.addEventListener('emojin-operation-cancelled',()=>{const message=cloud.takeUpgradeNotice?.();if(message)toast(message,5000);});
   installSlotButton();wireEvents();drawCity();renderCity();requestAnimationFrame(worldLoop);
   await delay(680);
   animate($("bootScreen"),[{opacity:1},{opacity:0}],350);
   await delay(350);$("bootScreen").classList.add("hidden");
+  const upgradeNotice=cloud.takeUpgradeNotice?.();if(upgradeNotice)toast(upgradeNotice,5000);
   if(!store.player){showAuthChoice();return;}
   await showRevival();
   if(!store.player.tutorialSeen){showTutorial();return;}

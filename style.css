@@ -59,9 +59,21 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);out
 .generate-button:disabled{opacity:.65}
 .empty-city{position:absolute;top:43%;left:0;right:0;text-align:center;z-index:4;line-height:2;font-size:16px;color:var(--muted)}
 .star-badge{display:inline-block;width:44px;height:44px;flex-shrink:0;vertical-align:middle}
-.star-badge svg{width:100%;height:100%;overflow:visible}
+.star-badge svg{width:100%;height:100%;overflow:hidden}
 .star-badge polygon{fill:var(--yellow);stroke:var(--yellow);stroke-width:3.5;stroke-linejoin:round}
-.star-badge text{font:800 28px -apple-system,BlinkMacSystemFont,sans-serif;fill:#000;text-anchor:middle}
+.star-badge text{font:800 35px -apple-system,BlinkMacSystemFont,sans-serif;fill:#000;text-anchor:middle}
+.record-badge{display:inline-flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;vertical-align:middle}
+.defeat-record{display:flex;gap:1px;line-height:1;font-size:14px;white-space:nowrap}
+.defeat-skull{opacity:.2;filter:grayscale(1)}
+.defeat-skull.earned{opacity:1;filter:none}
+.battle-info .record-badge{width:34px}
+.battle-info .defeat-record{font-size:10px}
+.battle-info h2{max-width:calc(100% - 37px)}
+.battle-turn{font-size:11px;opacity:.65;white-space:nowrap;margin:0 7px}
+.battle-record-reward{transform:translate(-50%,-27px);position:absolute;z-index:75;padding:5px 9px;border-radius:6px;background:var(--bg);color:var(--yellow);font-size:23px;font-weight:800;white-space:nowrap;pointer-events:none;box-shadow:0 0 14px #f1d17455}
+.battle-record-reward.skull{color:var(--text)}
+.battle-fx .battle-record-reward{z-index:75}
+.battle-record-fx{position:absolute;inset:0;z-index:80;pointer-events:none;overflow:visible}
 .owner-line{font-size:11px;color:var(--muted);letter-spacing:.035em}
 .modal-host,.popover-host{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;isolation:isolate}
 .modal-backdrop{position:absolute;inset:0;background:var(--backdrop)}
@@ -196,7 +208,7 @@ button.slot:active{transform:scale(.89)}
 .info-upper{top:16%;left:5%;width:49%;border-left:3px solid var(--neon-pink)}
 .info-lower{top:62%;right:4%;width:50%;border-right:3px solid var(--neon-sky)}
 .battle-info-head{display:flex;align-items:center;justify-content:space-between;gap:3px;margin-bottom:8px}
-.battle-info h2{font-size:15px;line-height:1.4;font-weight:750;margin:0;max-width:calc(100% - 28px);overflow-wrap:anywhere}
+.battle-info h2{font-size:15px;line-height:1.4;font-weight:750;margin:0;max-width:calc(100% - 37px);overflow-wrap:anywhere}
 .battle-info .star-badge{width:27px;height:27px}
 .battle-info .hearts{justify-content:flex-start;gap:2px}
 .battle-info .heart{width:13px;height:14px;flex-shrink:1;min-width:8px}
@@ -387,13 +399,16 @@ button.slot:active{transform:scale(.89)}
 .nav-cost small{font-size:12px;font-weight:500;font-family: "Monomaniac One", sans-serif;}
 .nav-battle{position:relative;flex:1;min-width:0;height:69px}
 .nav-battle::after{content:"";position:absolute;right:0;top:15px;bottom:15px;width:1px;background:var(--line);pointer-events:none}
-.nav-battle #forceBattleButton{width:100%}
+.nav-battle #forceBattleButton{width:calc(100% - 22px)}
 .nav-battle #forceBattleButton::after{display:none}
-.battle-menu-toggle{position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);width:44px;height:28px;padding:6px 12px;border:1px solid var(--line);border-radius:7px 7px 3px 3px;background:var(--panel);color:var(--muted)}
-.battle-menu-toggle svg{display:block;width:100%;height:100%;fill:currentColor}
-.battle-menu-toggle[aria-expanded="true"]{color:var(--neon-green);background:var(--panel-light)}
-.battle-menu{position:absolute;left:0;bottom:calc(100% + 40px);width:160px;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 8px 25px #0006;transform-origin:30px bottom;z-index:1}
-.battle-menu-item{display:flex;align-items:center;gap:16px;width:100%;min-height:58px;padding:7px 10px;background:transparent;border-radius:5px;text-align:left}
+.battle-menu-toggle{position:absolute;right:-4px;top:2px;z-index:2;width:44px;height:44px;padding:10px;border:0;border-radius:50%;background:transparent;color:var(--muted)}
+.battle-menu-toggle::before{content:"";position:absolute;inset:9px;border:1px solid var(--line);border-radius:50%;background:var(--panel-light);transition:background .18s,border-color .18s}
+.battle-menu-toggle svg{position:relative;display:block;width:24px;height:24px;fill:currentColor}
+.battle-menu-toggle:not(:disabled):hover,.battle-menu-toggle[aria-expanded="true"]{color:var(--neon-green)}
+.battle-menu-toggle[aria-expanded="true"]::before{background:var(--special);border-color:var(--neon-green)}
+.battle-menu-toggle:disabled{opacity:.35}
+.battle-menu{position:absolute;left:0;bottom:calc(100% + 8px);width:180px;padding:6px;border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:0 12px 35px #0007;transform-origin:35px bottom;z-index:3}
+.battle-menu-item{display:flex;align-items:center;gap:16px;width:100%;min-height:58px;padding:7px 10px;background:transparent;border-radius:10px;text-align:left}
 .battle-menu-item+.battle-menu-item{border-top:1px solid var(--line)}
 .battle-menu-item:not(:disabled):hover{background:var(--panel-light)}
 .battle-menu-item:not(:disabled) .nav-cost{color:var(--neon-green)}
@@ -427,7 +442,7 @@ button.slot:active{transform:scale(.89)}
 .archive-pane{height:100%;min-width:100%;overflow-y:auto;overscroll-behavior:contain;padding:16px 14px 24px;scrollbar-width:thin}
 .archive-pane .archive-entry{background:var(--bg)}
 .detail-overlay{z-index:34}
-.detail-name{margin:42px 4px 0;text-align:center}
+.detail-name{margin:64px 4px 0;text-align:center}
 .modal-close,.archive-close,.battle-next,.legend-continue{background:none;border:0;color:var(--rose-light)}
 .modal-close{display:grid;place-items:center}
 .modal-close svg,.archive-close svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round}
@@ -744,3 +759,8 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-odds-trigger span:nth-child(5){border-color:#f4d98e;background:#f4d98e12}
 .spin-odds-free>strong{font-family:'Aldrich',sans-serif;font-size:16px;font-weight:400;color:#f4d98e}
 .spin-odds-free p{margin:8px 0 0;font-size:10px;line-height:1.6;color:#bfaec3}
+
+/* Keep the three skulls directly below the legend's star, including short screens. */
+#legendStar .record-badge .star-badge{margin:0}
+#legendStar .record-badge{margin-bottom:22px}
+.archive-entry .defeat-record{font-size:11px}

@@ -1,0 +1,141 @@
+// Run only inside the Firestore Emulator; never against production.
+const {test,before,beforeEach,after}=require('node:test');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {createRequire}=require('node:module');
+const dep=process.env.RULE_TEST_DEPENDENCIES?createRequire(path.join(process.env.RULE_TEST_DEPENDENCIES,'package.json')):require;
+const {initializeTestEnvironment,assertSucceeds,assertFails}=dep('@firebase/rules-unit-testing');
+const {doc,setDoc,getDoc,writeBatch}=dep('firebase/firestore');
+if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Run with firebase emulators:exec --project demo-emojin-v4');
+const root=path.join(__dirname,'..'),ctx={};vm.createContext(ctx);
+const source=fs.readFileSync(path.join(root,'app.js'),'utf8');vm.runInContext(source.slice(0,source.indexOf('/* MOJI SPIN:')),ctx);
+const E=ctx.EmojinEngine,plain=v=>JSON.parse(JSON.stringify(v));
+const resident=(id,uid)=>({id,ownerUid:uid,ownerName:uid,isNpc:false,name:id,emoji:'🐸',maxHp:8,currentHp:8,
+ slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',createdAt:1,endedAt:null});
+let env;
+before(async()=>{env=await initializeTestEnvironment({projectId:'demo-emojin-v4',firestore:{rules:fs.readFileSync(path.join(root,'firestore.rules'),'utf8')}});});
+after(async()=>{if(env)await env.cleanup();});
+beforeEach(async()=>{
+ await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();await Promise.all([
+   setDoc(doc(db,'config/battle'),{rulesVersion:4,maintenance:false}),
+   setDoc(doc(db,'meta/game'),{battleSeq:0,legendSeq:0}),
+   setDoc(doc(db,'owners/u1'),{uid:'u1',name:'Owner',unreadBattleIds:[]}),
+   setDoc(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:1000,updatedAt:1},draft:{id:'e-new'},hatch:0,revision:1}),
+   setDoc(doc(db,'emojins/a'),resident('a','u1')),setDoc(doc(db,'emojins/b'),resident('b','u2')),
+   setDoc(doc(db,'emojins/history'),{...resident('history','u1'),status:'dead',rulesVersion:3,maxHp:10,currentHp:0})]);
+ });
+});
+function batchMatch(db,{legacy=false,badHp=false,id='b-test'}={}){
+ const a=resident('a','u1'),b=resident('b','u2'),log=E.battle(a,b,E.seeded(1),10000,id);
+ const owners={u1:{uid:'u1',name:'Owner',unreadBattleIds:[]},u2:{uid:'u2',name:'Other',unreadBattleIds:[]}};
+ const plan=E.planBattle([a,b],owners,{battleSeq:0,legendSeq:0},log,E.seeded(3));
+ if(badHp)plan.emojins[0].currentHp=1;
+ const batch=writeBatch(db);
+ plan.emojins.forEach(e=>batch.set(doc(db,'emojins/'+e.id),plain(e)));
+ batch.set(doc(db,'battles/'+id),legacy?{seq:1,json:JSON.stringify(plan.log)}:plain(E.battleDocument(plan.log)));
+ batch.set(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:900,updatedAt:10000},hatch:1,revision:2});
+ return batch;
+}
+test('valid complete match with reset HP, skulls, NPC refill and own wallet is allowed',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertSucceeds(batchMatch(db).commit());
+ assert.equal((await getDoc(doc(db,'battles/b-test'))).data().rulesVersion,4);
+});
+test('old client batch cannot update records or spend moji',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{legacy:true}).commit());
+ assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
+});
+test('non-reset HP and orphan NPC writes are denied',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{badHp:true}).commit());
+ await assertFails(setDoc(doc(db,'emojins/npc'),{...resident('npc','npc'),isNpc:true,lastBattleId:'missing'}));
+});
+test('new owner creation is private and requires the reserved draft',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertSucceeds(setDoc(doc(db,'emojins/e-new'),resident('e-new','u1')));
+ await assertFails(setDoc(doc(db,'emojins/not-reserved'),resident('not-reserved','u1')));
+ await assertFails(setDoc(doc(db,'emojins/other'),resident('other','u2')));
+});
+test('authentication, wallet privacy and owner identity restrictions remain',async()=>{
+ const anon=env.unauthenticatedContext().firestore(),other=env.authenticatedContext('u2').firestore(),own=env.authenticatedContext('u1').firestore();
+ await assertFails(getDoc(doc(anon,'emojins/a')));await assertFails(getDoc(doc(other,'wallets/u1')));
+ await assertFails(setDoc(doc(own,'owners/u1'),{uid:'u1',name:'Changed',unreadBattleIds:[]}));
+});
+test('gates and backups are admin-only; archived history remains readable and immutable',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertFails(setDoc(doc(db,'config/battle'),{rulesVersion:4,maintenance:false}));
+ await assertFails(getDoc(doc(db,'migrationBackups/anything')));
+ await assertSucceeds(getDoc(doc(db,'emojins/history')));
+ await assertFails(setDoc(doc(db,'emojins/history'),resident('history','u1')));
+});
+test('maintenance prevents new financial/game mutations, while reads and acknowledgements work',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'config/battle'),{rulesVersion:4,maintenance:true}));
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db).commit());
+ await assertSucceeds(getDoc(doc(db,'wallets/u1')));
+ await assertSucceeds(setDoc(doc(db,'owners/u1'),{uid:'u1',name:'Owner',unreadBattleIds:['b-test']}));
+});
+test('saved match cannot be committed a second time',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertSucceeds(batchMatch(db).commit());await assertFails(batchMatch(db).commit());
+});
+test('competing clients with the same old inputs cannot both commit',async()=>{
+ const one=env.authenticatedContext('u1').firestore(),two=env.authenticatedContext('u1').firestore();
+ const results=await Promise.allSettled([batchMatch(one,{id:'b-one'}).commit(),batchMatch(two,{id:'b-two'}).commit()]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal((await getDoc(doc(one,'emojins/a'))).data().recordVersion,1);
+ assert.equal((await getDoc(doc(one,'wallets/u1'))).data().wallet.balance,900);
+});
+
+// Execute the unchanged synchronous GAS REST adapter against the local emulator.
+// Admin auth here represents GAS IAM; client-rule permissions are tested separately above.
+function gasRuntime() {
+ const {spawnSync}=require('node:child_process');
+ const host=process.env.FIRESTORE_EMULATOR_HOST;
+ assert.match(host,/^(127\.0\.0\.1|localhost):\d+$/);
+ const productionPrefix='https://firestore.googleapis.com/v1/projects/demo-emojin-v4/databases/(default)/documents';
+ const c={console,PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'demo-emojin-v4'})},
+  ScriptApp:{getOAuthToken:()=> 'owner'},Utilities:{sleep:()=>{}},UrlFetchApp:{fetch:(url,options)=>{
+   assert.ok(url.startsWith(productionPrefix),'Only the demo project is allowed');
+   const local='http://'+host+'/v1/projects/demo-emojin-v4/databases/(default)/documents'+url.slice(productionPrefix.length);
+   const args=['--silent','--show-error','--noproxy','127.0.0.1,localhost','--max-time','10',
+    '--request',(options.method||'get').toUpperCase(),'--header','Authorization: Bearer owner',
+    '--header','Content-Type: application/json','--write-out','\n%{http_code}'];
+   if(options.payload)args.push('--data-binary',options.payload);
+   args.push(local);
+   const result=spawnSync('curl',args,{encoding:'utf8',maxBuffer:20*1024*1024});
+   assert.equal(result.status,0,result.stderr+' '+local);
+   const split=result.stdout.lastIndexOf('\n'),body=result.stdout.slice(0,split),status=Number(result.stdout.slice(split+1));
+   return {getResponseCode:()=>status,getContentText:()=>body};
+  }}};
+ vm.createContext(c);
+ for(const file of ['Engine.gs','Code.gs','Migration.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
+ return c;
+}
+test('GAS REST scheduler commits a complete match with real Firestore transactions and resumes idempotently',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();await setDoc(doc(db,'meta/game'),{battleSeq:0,legendSeq:0,hour:99});
+  await setDoc(doc(db,'owners/u2'),{uid:'u2',name:'Other',unreadBattleIds:[]});
+ });
+ const gas=gasRuntime(),store=gas.firestore_();let result;
+ for(let i=0;i<10;i++){result=gas.scheduledStep_(store,100);if(result.done)break;}
+ assert.equal(result.done,true);assert.equal(store.get('meta/game').battleSeq,1);
+ const saved=store.query('battles');assert.equal(saved.length,1);
+ const log=JSON.parse(saved[0].data.json);assert.equal(log.rulesVersion,4);assert.ok(log.turns.length<=10);
+ assert.equal(store.query('emojins',null,true).length,10);
+ for(const e of log.after){const value=store.get('emojins/'+e.id);assert.equal(value.currentHp,value.maxHp);assert.equal(value.recordVersion,1);}
+ for(const uid of log.ownerUids)assert.deepEqual(plain(store.get('owners/'+uid).unreadBattleIds),[log.battleId]);
+ gas.scheduledStep_(store,100);assert.equal(store.query('battles').length,1);
+});
+test('GAS REST migration previews, backs up, migrates drafts and preserves post-migration skulls on rerun',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();await setDoc(doc(db,'config/battle'),{rulesVersion:4,maintenance:true});
+  await setDoc(doc(db,'emojins/a'),{...resident('a','u1'),rulesVersion:3,maxHp:9,currentHp:1,stars:12,poisoned:true,cursedSlots:[0]});
+  await setDoc(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:1000,updatedAt:1},hatch:7,revision:1,draft:{id:'draft',maxHp:10,paid:true,cost:1200}});
+ });
+ const gas=gasRuntime(),store=gas.firestore_();assert.equal(gas.previewV4Migration().emojinCount,1);
+ assert.equal(store.get('emojins/a').maxHp,9);assert.equal(store.query('migrationBackups').length,0);
+ const result=gas.migrateToV4();assert.equal(result.changed,1);assert.equal(result.drafts,1);
+ assert.equal(store.get('emojins/a').maxHp,8);assert.equal(store.get('emojins/a').stars,12);
+ assert.equal(store.get('emojins/a').currentHp,8);assert.equal(store.get('emojins/a').poisoned,false);
+ assert.equal(store.get('wallets/u1').draft.maxHp,8);assert.equal(store.get('wallets/u1').wallet.balance,1000);
+ assert.equal(store.get('wallets/u1').hatch,7);assert.equal(store.query('migrationBackups').length,2);
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/a'),plain({...store.get('emojins/a'),defeats:2})));
+ assert.equal(gas.migrateToV4().changed,0);assert.equal(store.get('emojins/a').defeats,2);
+ assert.equal(store.get('emojins/history').maxHp,10);
+ gas.finishV4Migration();assert.equal(store.get('config/battle').maintenance,false);
+});

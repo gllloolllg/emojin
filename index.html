@@ -36,7 +36,7 @@
     <div id="emptyCity" class="empty-city hidden">すこし静かな街。</div>
     <nav class="bottom-nav" aria-label="メニュー">
       <div class="nav-battle">
-        <button id="battleMenuToggle" class="battle-menu-toggle" type="button" aria-label="バトルメニューを開く" aria-haspopup="menu" aria-expanded="false" aria-controls="battleMenu" disabled><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M3 13 12 3l9 10Z"/></svg></button>
+        <button id="battleMenuToggle" class="battle-menu-toggle" type="button" aria-label="バトルメニューを開く" aria-haspopup="menu" aria-expanded="false" aria-controls="battleMenu" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
         <div id="battleMenu" class="battle-menu hidden" role="menu" aria-label="バトルの種類">
           <button id="challengeBattleButton" class="battle-menu-item" type="button" role="menuitem" aria-label="チャレンジバトル、200モジ" title="チャレンジバトル" disabled><span class="nav-icon-wrap battle-menu-icon" aria-hidden="true"><span class="nav-icon">⚔️</span><span class="battle-menu-badge battle-menu-star">★</span></span><span class="nav-cost">200 <small>モジ</small></span></button>
           <button id="myBattleButton" class="battle-menu-item" type="button" role="menuitem" aria-label="マイエモジンバトル、200モジ" title="マイエモジンバトル" disabled><span class="nav-icon-wrap battle-menu-icon" aria-hidden="true"><span class="nav-icon">⚔️</span><span class="battle-menu-badge">👤</span></span><span class="nav-cost">200 <small>モジ</small></span></button>
@@ -57,6 +57,7 @@
     <div class="battle-axis" aria-hidden="true"></div>
     <header class="battle-header">
       <span id="battleCount">バトル</span>
+      <span id="battleTurn" class="battle-turn" aria-label="ターン"></span>
       <div class="battle-controls">
         <button id="speedButton" aria-label="再生速度を変更">1×</button>
         <button id="skipButton">スキップ <span>≫</span></button>
@@ -73,6 +74,7 @@
     <div id="info0" class="battle-info info-lower"></div>
     <div id="die0" class="battle-dice die-lower"></div>
     <div id="battleFx" class="battle-fx" aria-hidden="true"></div>
+    <div id="battleRecordFx" class="battle-record-fx" aria-hidden="true"></div>
     <div class="battle-caption-wrap"><div id="battleCaption" class="battle-caption" role="status"></div><div id="battleProgress" class="battle-progress"></div><button id="battleNext" class="battle-next hidden" aria-label="次のバトル" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div>
   </section>
 

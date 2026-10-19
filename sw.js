@@ -46,7 +46,9 @@ async function clean(active) {
 }
 self.addEventListener('install', event => event.waitUntil((async () => {
   const shell = await snapshot(); await stage(shell,true);
-  installingShell = shell.name; await pointer('installed',shell.name); await self.skipWaiting();
+  installingShell = shell.name; await pointer('installed',shell.name);
+  // Updates wait until the old worker has no clients. Do not interrupt another tab's match/save.
+  if(!self.registration.active)await self.skipWaiting();
 })()));
 self.addEventListener('activate', event => event.waitUntil((async () => {
   const name = installingShell || await pointer('installed');

@@ -5,6 +5,7 @@ const {join}=require('node:path');
 const vm=require('node:vm');
 const {webcrypto}=require('node:crypto');
 const source=readFileSync(join(__dirname,'..','app.js'),'utf8');
+const gateSource=source.slice(source.indexOf('  async function requireMatchRules('),source.indexOf('  // One live subscription'));
 const engine={crypto:webcrypto};vm.createContext(engine);
 vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),engine);
 const E=engine.EmojinEngine,clone=value=>JSON.parse(JSON.stringify(value));
@@ -14,6 +15,7 @@ function database({count=0,balance=2000,hatch=0,draft=null,retryCount=null,owner
  const documents=new Map();let population=emojins(count),retryPending=retryCount!==null;
  if(owner)documents.set('owners/me',{uid:'me',name:'Owner',createdAt:Date.now(),unreadBattleIds:[]});
  if(account)documents.set('wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch,draft,revision:1,recentOperations:[]});
+ documents.set('config/battle',{rulesVersion:4,maintenance:false});
  documents.set('meta/game',{battleSeq:0,legendSeq:0,revision:1});
  const snap=path=>({exists:()=>documents.has(path),data:()=>documents.has(path)?clone(documents.get(path)):undefined});
  const sandbox={E,crypto:webcrypto,uid:'me',local:{uid:'me',wallet:{balance:legacy,updatedAt:Date.now()},hatch:0,pending:[]},
@@ -37,8 +39,8 @@ function database({count=0,balance=2000,hatch=0,draft=null,retryCount=null,owner
  const nextAccount=source.slice(source.indexOf('  function nextAccount('),source.indexOf('  function ensureWallet('));
  const ensureWallet=source.slice(source.indexOf('  function ensureWallet('),source.indexOf('  writeOperation=async op=>{'));
  const start=source.indexOf('    async startDraft(){'),end=source.indexOf('    chooseSpecial(',start);
- const installStart=source.indexOf('  async function installOwner('),installEnd=source.indexOf('  return {\n    get revivalPending',installStart);
- vm.runInContext('let walletReady=null,walletUid="",walletStop=null;\n'+nextAccount+ensureWallet+source.slice(installStart,installEnd)+'\nglobalThis.cloud={'+source.slice(start,end)+'};',sandbox);
+ const installStart=source.indexOf('  async function installOwner('),installEnd=source.indexOf('  return {\n',installStart);
+ vm.runInContext('let walletReady=null,walletUid="",walletStop=null;\n'+gateSource+nextAccount+ensureWallet+source.slice(installStart,installEnd)+'\nglobalThis.cloud={'+source.slice(start,end)+'};',sandbox);
  return {sandbox,read:path=>documents.has(path)?clone(documents.get(path)):undefined,
   start:()=>sandbox.cloud.startDraft(),install:()=>sandbox.installOwner('Owner',{user:{uid:'me'}},true),ensure:()=>sandbox.ensureWallet()};
 }
@@ -91,4 +93,11 @@ test('fresh browser local wallet starts at 2000',()=>{
  const sandbox={crypto:webcrypto,localStorage:{getItem:()=>null}};sandbox.window=sandbox;vm.createContext(sandbox);
  vm.runInContext(source.slice(0,source.indexOf('async function createCloud()')),sandbox);
  assert.equal(vm.runInContext('local.wallet.balance',sandbox),2000);
+});
+test('same-id migrated draft refreshes HP while retaining local name/choice/stage',async()=>{
+ const db=database({draft:{id:'reserved',maxHp:8,rulesVersion:4,offers:['poison','curse']}});
+ db.sandbox.local.draft={id:'reserved',maxHp:10,name:'My name',chosen:'poison',stage:'reels'};
+ await db.ensure();assert.equal(db.sandbox.local.draft.maxHp,8);
+ assert.equal(db.sandbox.local.draft.name,'My name');assert.equal(db.sandbox.local.draft.chosen,'poison');
+ assert.equal(db.sandbox.local.draft.stage,'reels');
 });

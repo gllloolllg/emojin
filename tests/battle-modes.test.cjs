@@ -7,6 +7,7 @@ const {join}=require('node:path');
 const vm=require('node:vm');
 const {webcrypto}=require('node:crypto');
 const source=readFileSync(join(__dirname,'..','app.js'),'utf8');
+const gateSource=source.slice(source.indexOf('  async function requireMatchRules('),source.indexOf('  // One live subscription'));
 const context={crypto:webcrypto};
 vm.createContext(context);
 vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),context);
@@ -14,7 +15,7 @@ const E=context.EmojinEngine;
 const clone=value=>JSON.parse(JSON.stringify(value));
 const resident=(id,ownerUid,stars=0)=>({
   id,ownerUid,stars,ownerName:ownerUid,isNpc:ownerUid==='npc',emoji:'🐸',name:id,
-  currentHp:10,maxHp:10,slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],
+  currentHp:8,maxHp:8,defeats:0,rulesVersion:4,recordVersion:0,slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],
   status:'active',createdAt:Date.now(),endedAt:null
 });
 
@@ -48,12 +49,12 @@ test('zero-star ties, absent owners, lone residents and suspended champions',()=
   assert.equal(E.selectBattlePair([a,b],'mine','me',[a,b,champion]).length,2);
   assert.throws(()=>E.battleMode('__proto__'),/不正/);
 });
-test('new mode selection does not alter forced or hourly combat rules',()=>{
+test('forced and hourly modes both use match rules v4',()=>{
   const pool=[resident('a','me'),resident('b','other')];
   assert.equal(E.selectBattlePair(pool,'forced','me',pool,E.seeded(1)).length,2);
   assert.equal(E.forced(pool,E.seeded(1)).battles.length,1);
   assert.equal(E.hourly(pool,E.seeded(1)).battles.length,1);
-  assert.equal(E.battle(pool[0],pool[1],E.seeded(1)).rulesVersion,3);
+  assert.equal(E.battle(pool[0],pool[1],E.seeded(1)).rulesVersion,4);
 });
 
 function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
@@ -61,13 +62,14 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
   let documents=new Map();
   const put=(path,value)=>documents.set(path,clone(value));
   put('wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch,revision:1,recentOperations:[]});
+  put('config/battle',{rulesVersion:4,maintenance:false});
   put('meta/game',{battleSeq:0,legendSeq:0,...meta});
   for(const e of pool){
     put('emojins/'+e.id,e);
     if(!e.isNpc)put('owners/'+e.ownerUid,{uid:e.ownerUid,unreadBattleIds:[],lastAccessAt:Date.now()});
   }
   const snap=path=>({exists:()=>documents.has(path),data:()=>documents.has(path)?clone(documents.get(path)):undefined});
-  const sandbox={E,uid:'me',db:{},auth:{currentUser:{uid:'me'}},
+  const sandbox={local:{},window:{dispatchEvent:()=>{}},Event:class{},persist:()=>{},E,uid:'me',db:{},auth:{currentUser:{uid:'me'}},
     ref:(collection,id)=>collection+'/'+id,metaRef:'meta/game',walletRef:()=> 'wallets/me',
     receiptRef:id=>'wallets/me/operations/'+id,
     data:s=>s.exists()?s.data():null,defaultMeta:()=>({}),ensureWallet:async()=>{},applyAccount:()=>{},
@@ -89,14 +91,14 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
   vm.createContext(sandbox);
   const nextAccount=source.slice(source.indexOf('  function nextAccount('),source.indexOf('  function ensureWallet('));
   const writeOperation=source.slice(source.indexOf('  writeOperation=async op=>{'),source.indexOf('  // Pending operations keep their IDs'));
-  vm.runInContext(nextAccount+'\n'+writeOperation,sandbox);
+  vm.runInContext(gateSource+'\n'+nextAccount+'\n'+writeOperation,sandbox);
   return {
-    read:path=>clone(documents.get(path)),put,
+    read:path=>clone(documents.get(path)),put,local:sandbox.local,
     operation(mode='forced',ids=mode==='mine'?['mine','champ']:['champ','mine']){
       const pair=ids.map(id=>documents.get('emojins/'+id));
       return {id:'battle-test',action:'battle',data:{uid:'me',hatchReward:true,walletVersion:2,battleRequest:{
-        battleId:'test',mode,ids,seed:1,at:Date.now(),
-        expected:pair.map(e=>[e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots])}}};
+        battleId:'test',rulesVersion:4,mode,ids,seed:1,at:Date.now(),
+        expected:pair.map(E.recordVersion)}}};
     },
     run:op=>sandbox.writeOperation(op)
   };
@@ -133,7 +135,7 @@ test('stale pair, changed champion, wrong owner and self-battle never charge',as
     if(scenario==='self')op.data.battleRequest.ids=['champ','champ'];
     // Match versions for the ownership/self cases, so their own validation must fail.
     if(['owner','self'].includes(scenario))op.data.battleRequest.expected=op.data.battleRequest.ids.map(id=>{
-      const e=db.read('emojins/'+id);return [e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots];
+      const e=db.read('emojins/'+id);return E.recordVersion(e);
     });
     const before=db.read('wallets/me');
     await assert.rejects(db.run(op));assert.deepEqual(db.read('wallets/me'),before);
@@ -167,4 +169,16 @@ test('unknown mode and new mode without wallet version are rejected without char
 test('queued original battle without a mode still costs 100 and grants one hatch',async()=>{
   const db=database(),op=db.operation();delete op.data.battleRequest.mode;
   await db.run(op);assert.equal(db.read('wallets/me').wallet.balance,900);assert.equal(db.read('wallets/me').hatch,4);
+});
+test('old uncommitted v3 request is archived and cancelled without cost, hatch or log',async()=>{
+  const db=database({retry:true}),op=db.operation();delete op.data.battleRequest.rulesVersion;
+  const before=db.read('wallets/me');
+  const result=await db.run(op);assert.equal(result.cancelled,true);
+  assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
+  assert.equal(db.local.cancelledOperations.length,1);
+});
+test('maintenance rejects a match before changing any financial or world data',async()=>{
+  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,maintenance:true});
+  await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
+  assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
 });

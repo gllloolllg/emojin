@@ -113,8 +113,9 @@ async def main():
    assert await page.locator('#battleMenu').is_visible()
    await page.wait_for_timeout(300)
    menu_layout=await page.evaluate("""()=>{
-    const toggle=document.querySelector('#battleMenuToggle').getBoundingClientRect(),nav=document.querySelector('.bottom-nav').getBoundingClientRect(),menu=document.querySelector('#battleMenu').getBoundingClientRect();
-    return {integrated:toggle.top>=nav.top&&toggle.bottom<=nav.bottom,touch:toggle.width>=44&&toggle.height>=44,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0};
+    const button=document.querySelector('#battleMenuToggle'),toggle=button.getBoundingClientRect(),force=document.querySelector('#forceBattleButton').getBoundingClientRect(),menu=document.querySelector('#battleMenu').getBoundingClientRect();
+    const hit=(x,y)=>button.contains(document.elementFromPoint(x,y));
+    return {above:toggle.bottom<=force.top,centered:Math.abs(toggle.left+toggle.width/2-force.left-force.width/2)<1,touch:toggle.width>=64&&toggle.height>=44,separate:menu.bottom<toggle.top,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0,edges:[[toggle.left+8,toggle.top+8],[toggle.right-8,toggle.bottom-8]].every(p=>hit(...p))};
    }""")
    assert all(menu_layout.values()),menu_layout
    await page.screenshot(path='/tmp/emojin-v4-menu-'+str(WIDTH)+'.png')
@@ -131,7 +132,7 @@ async def main():
    assert any(p['id']=='old' for p in audit['paint'])
    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
    assert not errors,errors
-   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, reward before/final states, third skull, legend, speed persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, integrated touch menu')
+   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, reward before/final states, third skull, legend, speed persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, upper triangle menu with wide touch target')
    await browser.close()
  finally:server.shutdown()
 asyncio.run(main())

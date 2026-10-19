@@ -43,7 +43,8 @@ async def main():
    await ctx.add_init_script(mock)
    await ctx.route('https://**/*',lambda r:r.abort())
    served=SOURCE.replace('createCloud().then(cloud=>{','Promise.resolve(window.mockCloud).then(cloud=>{')
-   served=served.replace('const wait = ms / replaySpeed;','const wait = Math.min(ms / replaySpeed, 12);')
+   # Keep the award animation long enough for a real tap after Playwright's stability check.
+   served=served.replace('const wait = ms / replaySpeed;','const wait = Math.min(ms / replaySpeed, ms === 700 ? 200 : 12);')
    served=served.replace('function paintBattle(states) {',r'''function paintBattle(states) {
     window.audit.paint.push({id:currentBattle?.battleId,turn:document.querySelector('#battleTurn').textContent,
      states:JSON.parse(JSON.stringify(states)),rewards:document.querySelectorAll('.battle-record-reward').length});''')

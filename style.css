@@ -401,9 +401,9 @@ button.slot:active{transform:scale(.89)}
 .nav-battle::after{content:"";position:absolute;right:0;top:15px;bottom:15px;width:1px;background:var(--line);pointer-events:none}
 .nav-battle #forceBattleButton{width:100%}
 .nav-battle #forceBattleButton::after{display:none}
-.battle-menu-toggle{position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);z-index:2;display:grid;place-items:center;width:64px;height:44px;padding:10px;border:1px solid var(--neon-green);border-radius:14px 14px 8px 8px;background:var(--panel-light);color:var(--neon-green);box-shadow:0 3px 10px #0004;transition:background .18s}
-.battle-menu-toggle svg{display:block;width:24px;height:24px;fill:currentColor;transition:transform .18s}
-.battle-menu-toggle:not(:disabled):hover,.battle-menu-toggle[aria-expanded="true"]{background:var(--special)}
+.battle-menu-toggle{position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);z-index:2;display:grid;place-items:center;width:64px;height:44px;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--muted);transition:color .18s}
+.battle-menu-toggle svg{display:block;width:16px;height:16px;fill:currentColor;transition:transform .18s}
+.battle-menu-toggle:not(:disabled):hover,.battle-menu-toggle[aria-expanded="true"]{color:var(--text)}
 .battle-menu-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
 .battle-menu-toggle:disabled{opacity:.35}
 .battle-menu{position:absolute;left:0;bottom:calc(100% + 58px);width:180px;padding:6px;border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:0 12px 35px #0007;transform-origin:35px bottom;z-index:3}

@@ -73,6 +73,8 @@ SW更新時の無条件skipWaitingを廃止した。新SWは既存クライア�
 
 ## 移行対象と冪等性
 
+2026-10-19 20:54:52 JST、本番 `emojin-49855` の `previewProductionV4` をユーザーが実行。activeCount=16、emojinCount=16、hpReducedCount=10、draftCount=0、invalidCount=0。最大HP10が7体・9が3体（各8へ）、7が3体・5が3体（維持）。全16体の☆は維持し、💀は0から開始する。これは読み取り時点の対象であり、旧GAS停止後に再確認する。本番の書き込み・移行・公開はまだ実施していない。
+
 `previewV4Migration()` は書き込みなし。対象ID、変更前後maxHp、draftのあるwalletパス、件数を返す。
 
 実行対象はFirestoreのstatus activeかつrulesVersionが4でないemojins、および未正規化のwallets.draft。9/10→8、5〜8維持、星維持、defeats初期0、currentHp=maxHp、毒・呪い解除、rulesVersion4/recordVersion初期0。想定外の最大HPや将来バージョンは推測で直さずエラーにする。

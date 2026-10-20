@@ -19,7 +19,7 @@ const empty=()=>Array(9).fill('blank'),zero=()=>{const c=empty();c[4]='wild';ret
 const any=round('any',[['wild','cherry','blank','melon','blank','wild','blank','cherry','melon']]);
 const free=round('free',[
  ['melon','melon','blank','blank','wild','melon','blank','blank','melon'],
- ['blank','melon','bell','wild','wild','cherry','wild','cherry','cherry'],zero(),zero(),zero()]);
+ ['blank','melon','bell','wild','wild','cherry','wild','cherry','cherry'],zero(),zero(),zero(),zero()]);
 const none=round('none',[empty()]);
 const max=round('max',Array.from({length:21},()=>Array(9).fill('wild')));
 const legacy={crypto:crypto.webcrypto};vm.createContext(legacy);vm.runInContext(fs.readFileSync('tests/fixtures/slot-v1-engine.cjs','utf8'),legacy);
@@ -27,7 +27,7 @@ const old=legacy.MojiSpinEngine.createRound(()=>.4);old.id='slot-legacy';
 console.log(JSON.stringify({rounds:[any,free,none,max],old}));
 '''
 MOCK=r'''
-window.audit={draws:0,saves:[],finishes:[],frames:[],delays:[],animations:[]};
+window.audit={draws:0,saves:[],finishes:[],frames:[],delays:[],animations:[],rouletteSteps:[],rouletteStops:[],freeFrames:[],remaining:[]};
 window.holdSave=false;window.holdFinish=false;
 const player={uid:'me',name:'me',tutorialSeen:true,seenBattleSeq:0,seenLegendSeq:0,unreadBattleIds:[]};
 const readback=value=>Array.isArray(value)?value.map(readback):value&&typeof value==='object'
@@ -86,6 +86,22 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
   window.audit.frames.push({total:session.win,balance:session.balance,spin:structuredClone(spin),
     winning:slotCells().flatMap((el,i)=>el.classList.contains('winning')?[i]:[]),lines:svg.children.length});
   slotConfetti(big?60:22);''')
+   served=served.replace('        lastStep=step;','''
+        window.audit.rouletteSteps.push({step,index:active,time:now,transform:getComputedStyle(wheel).transform});
+        lastStep=step;''')
+   served=served.replace("else {wheel.classList.add('is-stopped');resolve();}",'''
+      else {wheel.classList.add('is-stopped');
+        audit.rouletteStops.push({target:index,elapsed:now-started});
+        if(window.holdRouletteStop)window.releaseRouletteStop=resolve;else resolve();}''')
+   served=served.replace('function setSlotFreeRemaining(count){',"function setSlotFreeRemaining(count){audit.remaining.push(count);")
+   served=served.replace('function startSlotReels(session,free){','''
+function startSlotReels(session,free){
+ if(free)audit.freeFrames.push({kind:'start',count:Number(document.querySelector('#spinRemaining').textContent)});''')
+   served=served.replace('  stopSlotReels(session);\n}\nfunction slotConfetti','''
+  stopSlotReels(session);
+  if(spin.free)audit.freeFrames.push({kind:'stop',count:Number(document.querySelector('#spinRemaining').textContent)});
+}
+function slotConfetti''')
    await ctx.route('**/app.js',lambda r:r.fulfill(status=200,content_type='application/javascript',body=served))
    page=await ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    await page.goto('http://127.0.0.1:'+str(server.server_address[1])+'/')
@@ -94,18 +110,39 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
    assert await page.locator('#spinPhase').is_hidden()
    await page.locator('#slotOddsButton').click()
    assert await page.locator('.spin-odds-dialog').is_visible()
-   assert await page.locator('.spin-odds-item strong').all_text_contents()==['× 256','× 128','× 64','× 32','× 16','× 8','× 4','× 2']
+   assert await page.locator('#slotOddsTitle').text_content()=='LINE BONUS'
+   assert await page.locator('.spin-odds-item strong').all_text_contents()==['256','128','64','32','16','8','4','2']
    assert '🍇' in ''.join(await page.locator('.spin-odds-symbol>span').all_text_contents())
+   assert await page.locator('.spin-odds-prev').is_disabled()
+   heights=[await page.locator('.spin-odds-dialog').evaluate('(el)=>el.getBoundingClientRect().height')]
+   await page.screenshot(path=f'/tmp/emojin-slot-help-line-{WIDTH}.png')
+   await page.locator('.spin-odds-next').click()
+   assert await page.locator('#slotOddsTitle').text_content()=='ANY BONUS'
+   assert await page.locator('.spin-odds-page-count').text_content()=='2 / 3'
+   heights.append(await page.locator('.spin-odds-dialog').evaluate('(el)=>el.getBoundingClientRect().height'))
    assert await page.locator('.spin-odds-scroll tbody tr').count()==7
    assert await page.locator('.spin-odds-scroll tbody tr').last.locator('td').all_text_contents()==['4,000','6,000','8,000','12,000','16,000','24,000','32,000']
    assert await page.locator('.spin-odds-scroll').evaluate('(el)=>el.scrollWidth>el.clientWidth')
-   await page.screenshot(path=f'/tmp/emojin-slot-odds-{WIDTH}.png')
-   await page.locator('.spin-odds-scroll').scroll_into_view_if_needed()
+   await page.screenshot(path=f'/tmp/emojin-slot-help-any-{WIDTH}.png')
    await page.locator('.spin-odds-scroll').evaluate('(el)=>el.scrollLeft=el.scrollWidth')
    assert await page.locator('.spin-odds-scroll').evaluate('(el)=>el.scrollLeft>0')
    assert await page.evaluate('''()=>{const d=document.querySelector('.spin-odds-dialog').getBoundingClientRect(),x=document.querySelector('.spin-odds-close').getBoundingClientRect(),s=document.querySelector('.spin-odds-scroll').getBoundingClientRect(),n=document.querySelector('.spin-odds-scroll tbody th').getBoundingClientRect();return x.top>=d.top&&x.bottom<=d.bottom&&n.left>=s.left-1&&n.right<=s.right;}''')
-   await page.screenshot(path=f'/tmp/emojin-slot-odds-any-{WIDTH}.png')
+   await page.locator('.spin-odds-next').click()
+   assert await page.locator('#slotOddsTitle').text_content()=='FREE SPIN'
+   assert await page.locator('.spin-odds-trigger span').count()==9
+   assert await page.locator('.spin-odds-trigger span').nth(4).text_content()=='🤡'
+   assert await page.locator('.spin-odds-next').is_disabled()
+   heights.append(await page.locator('.spin-odds-dialog').evaluate('(el)=>el.getBoundingClientRect().height'))
+   assert len(set(heights))==1,heights
+   assert await page.locator('.spin-odds-nav button').evaluate_all('els=>els.every(el=>{const r=el.getBoundingClientRect();return r.width>=44&&r.height>=44&&r.bottom<=innerHeight;})')
+   assert await page.locator('.spin-odds-page').evaluate_all('els=>els.filter(el=>!el.hidden).length===1')
+   await page.screenshot(path=f'/tmp/emojin-slot-help-free-{WIDTH}.png')
+   await page.locator('.spin-odds-prev').click();await page.locator('.spin-odds-prev').click()
+   assert await page.locator('#slotOddsTitle').text_content()=='LINE BONUS'
    await page.locator('.spin-odds-close').click();assert await page.locator('.moji-spin-panel').is_visible()
+   await page.locator('#slotOddsButton').click()
+   assert await page.locator('#slotOddsTitle').text_content()=='LINE BONUS'
+   await page.locator('.spin-odds-close').click()
    assert await page.locator('#spinWallet').text_content()=='2,000'
 
    # Slow settlement: the display subtracts only the bet and the reels keep turning.
@@ -135,7 +172,14 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
    assert await page.locator('#spinWin').text_content()=='40'
    assert await page.locator('#spinWallet').text_content()=='1,996'
    assert await page.locator('.spin-cell.bonus-trigger').count()==0
+   await page.evaluate('window.holdRouletteStop=true')
    await page.locator('.spin-wheel-wrap').click()
+   await page.wait_for_function('!!window.releaseRouletteStop')
+   assert await page.locator('.spin-wheel-lights path.is-lit').count()==1
+   assert await page.locator('[data-wheel-count].is-lit').text_content()=='5'
+   assert await page.locator('.spin-wheel').evaluate("el=>getComputedStyle(el).transform==='none'")
+   await page.screenshot(path=f'/tmp/emojin-slot-roulette-{WIDTH}.png')
+   await page.evaluate('holdRouletteStop=false;releaseRouletteStop()')
    await page.wait_for_selector('.spin-total')
    assert await page.locator('.spin-total b').text_content()=='140'
    assert await page.locator('#spinWin').text_content()=='140'
@@ -149,6 +193,9 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
    await page.evaluate('releaseFinish()');await idle(page)
    assert await page.locator('#spinWin').text_content()=='140'
    assert await page.locator('#spinWinLabel').text_content()=='TOTAL WIN'
+
+   assert (await page.evaluate('audit.remaining'))[:6]==[5,4,3,2,1,0]
+   assert (await page.evaluate('audit.freeFrames'))[:10]==[{'kind':kind,'count':count} for count in [4,3,2,1,0] for kind in ['start','stop']]
 
    # Next normal spin resets the label, win and all highlights before its result.
    await page.evaluate('holdSave=true;holdFinish=false;window.releaseSave=null')
@@ -208,9 +255,17 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
     assert frame['winning']==expected,(frame['winning'],expected)
     assert frame['lines']==len(frame['spin']['wins'])
    assert any(f['total']==40 for f in audit['frames']) and any(f['total']==140 for f in audit['frames'])
-   assert 3000 in audit['animations'] and 500 in audit['delays'] and 1000 in audit['delays']
+   assert 500 in audit['delays'] and 1000 in audit['delays']
+   assert len(audit['rouletteStops'])==3
+   assert all(2999<=stop['elapsed']<=3120 for stop in audit['rouletteStops']),audit['rouletteStops']
+   assert all(step['transform']=='none' for step in audit['rouletteSteps'])
+   first=audit['rouletteSteps'][:32]
+   assert [x['index'] for x in first]==[i%5 for i in range(32)]
+   intervals=[b['time']-a['time'] for a,b in zip(first,first[1:])]
+   assert sum(intervals[-4:])/4>sum(intervals[:4])/4
+
    assert not errors,errors
-   print(f'PASS {WIDTH}x{HEIGHT}: ANY-only/mixed highlights, paytable, slow save, 40+100 TOTAL WIN, final total retention/reset, v1/v2 auto-resume, no duplicate save/draw, max payout layout')
+   print(f'PASS {WIDTH}x{HEIGHT}: three equal-height help pages, fixed roulette/clockwise deceleration/3 seconds, decrement on spin start, ANY highlights, totals, v1/v2 resume, no duplicate save/draw, max payout layout')
    await browser.close()
  finally:server.shutdown()
 

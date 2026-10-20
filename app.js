@@ -1758,20 +1758,46 @@ function showSlotOdds(){
   const symbols=SLOT.CONFIG.symbols.filter(symbol=>symbol.payout>0);
   const anySymbols=Object.keys(SLOT.CONFIG.anyBonus).map(id=>SLOT.byId[id]);
   const counts=[...new Set(Object.values(SLOT.CONFIG.anyBonus).flatMap(payouts=>Object.keys(payouts).map(Number)))].sort((a,b)=>a-b);
-  dialog.innerHTML=`<div class="spin-odds-dismiss"><button class="spin-odds-close" type="button" aria-label="配当表を閉じる">×</button></div>
-    <h3 id="slotOddsTitle">配当表</h3><p class="spin-odds-note">1ラインに3つ揃うと当選</p>
-    <div class="spin-odds-grid">${symbols.map(symbol=>`<div class="spin-odds-item"><span class="spin-odds-symbol"><span>${symbol.emoji}</span>${symbol.id==='wild'?'<small>WILD</small>':''}</span><strong>× ${symbol.payout}</strong></div>`).join('')}</div>
-    <p class="spin-odds-note">倍率は1ラインのBETに対する配当です。<br>WILDは他の絵柄の代わりになります。<br>複数ラインの配当は合算されます。</p>
-    <section class="spin-odds-any"><h4>ANY BONUS</h4><p class="spin-odds-note">9マス全体の個数で当選。ライン配当に加算。<br>WILDはすべての絵柄に同時に代用されます。<br>表は左右にスクロールできます。</p>
-      <div class="spin-odds-scroll" role="region" aria-label="エニーボーナス配当表、左右にスクロールできます" tabindex="0"><table><caption>個数ごとの獲得モジ</caption><thead><tr><th scope="col">個数</th>${anySymbols.map(symbol=>`<th scope="col" aria-label="${symbol.name}">${symbol.emoji}</th>`).join('')}</tr></thead><tbody>${counts.map(count=>`<tr><th scope="row">${count}</th>${anySymbols.map(symbol=>`<td>${SLOT.CONFIG.anyBonus[symbol.id][count]?.toLocaleString('en-US')||'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-      <p class="spin-odds-note">各絵柄は該当する個数の配当だけを獲得。<br>複数絵柄は合算。追加BETなし。<br>フリースピンでも同じ配当です。</p></section>
-    <div class="spin-odds-free"><div class="spin-odds-trigger" role="img" aria-label="3行3列の中央にワイルド">${Array.from({length:9},(_,i)=>`<span>${i===4?'🤡':''}</span>`).join('')}</div><strong>Free Spin</strong><p>通常スピンで中央に🤡が止まると突入</p></div>`;
+  const titles=['LINE BONUS','ANY BONUS','FREE SPIN'];
+  dialog.innerHTML=`<button class="spin-odds-close" type="button" aria-label="遊び方を閉じる">×</button>
+    <h3 id="slotOddsTitle">${titles[0]}</h3>
+    <div class="spin-odds-pages">
+      <section class="spin-odds-page" aria-labelledby="slotOddsTitle">
+        <div class="spin-odds-grid">${symbols.map(symbol=>`<div class="spin-odds-item"><span class="spin-odds-symbol"><span>${symbol.emoji}</span>${symbol.id==='wild'?'<small>WILD</small>':''}</span><strong>${symbol.payout}</strong></div>`).join('')}</div>
+        <p class="spin-odds-note">1回${SLOT.BET}モジ、1ライン${SLOT.CONFIG.lineBet}モジ。<br>横3本・縦3本・斜め2本の計8ライン。<br>同じ絵柄が3つ揃うと当選します。<br>WILDは他の絵柄の代わりになります。<br>複数ラインは合算。ブランクを含むラインは無効。</p>
+      </section>
+      <section class="spin-odds-page" aria-labelledby="slotOddsTitle" hidden>
+        <div class="spin-odds-scroll" role="region" aria-label="エニーボーナス配当表、左右にスクロールできます" tabindex="0"><table><caption>個数ごとの獲得モジ</caption><thead><tr><th scope="col">個数</th>${anySymbols.map(symbol=>`<th scope="col" aria-label="${symbol.name}">${symbol.emoji}</th>`).join('')}</tr></thead><tbody>${counts.map(count=>`<tr><th scope="row">${count}</th>${anySymbols.map(symbol=>`<td>${SLOT.CONFIG.anyBonus[symbol.id][count]?.toLocaleString('en-US')||'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <p class="spin-odds-note">9マス全体の個数で当選し、ライン配当に加算。<br>各絵柄は該当する個数の配当だけを獲得。<br>WILDはすべての絵柄に同時に代用されます。<br>複数絵柄は合算。追加BETなし。<br>フリースピンでも同じ配当です。<br>表は左右にスクロールできます。</p>
+      </section>
+      <section class="spin-odds-page spin-odds-page-free" aria-labelledby="slotOddsTitle" hidden>
+        <div class="spin-odds-trigger" role="img" aria-label="3行3列の中央にワイルド">${Array.from({length:9},(_,i)=>`<span>${i===4?'🤡':''}</span>`).join('')}</div>
+        <p class="spin-odds-note">通常スピンで中央に🤡が止まると突入。<br>回数は${SLOT.CONFIG.freeCounts.map(x=>x.count).join('・')}回から抽選します。<br>中央のWILDを固定し、残り8マスを抽選。<br>フリースピン中のBET消費はありません。<br>再突入・回数追加はありません。<br>残り回数はスピン開始時に1減ります。</p>
+      </section>
+    </div>
+    <nav class="spin-odds-nav" aria-label="遊び方のページ"><button class="spin-odds-prev" type="button" aria-label="前のページ" disabled>◀</button><span class="spin-odds-page-count" role="status" aria-live="polite">1 / 3</span><button class="spin-odds-next" type="button" aria-label="次のページ">▶</button></nav>`;
+  const pages=[...dialog.querySelectorAll('.spin-odds-page')];
+  const prev=dialog.querySelector('.spin-odds-prev'),next=dialog.querySelector('.spin-odds-next');
+  let page=0;
+  function showPage(index){
+    page=Math.max(0,Math.min(pages.length-1,index));
+    pages.forEach((el,i)=>{el.hidden=i!==page;});
+    dialog.querySelector('#slotOddsTitle').textContent=titles[page];
+    dialog.querySelector('.spin-odds-page-count').textContent=`${page+1} / ${pages.length}`;
+    prev.disabled=page===0;next.disabled=page===pages.length-1;
+  }
+  prev.onclick=()=>showPage(page-1);next.onclick=()=>showPage(page+1);
   dialog.querySelector('.spin-odds-close').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{
     event.stopPropagation();
     if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}
   });
-  dialog.addEventListener('keydown',event=>event.stopPropagation());
+  dialog.addEventListener('keydown',event=>{
+    event.stopPropagation();
+    if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
+      event.preventDefault();showPage(page+(event.key==='ArrowRight'?1:-1));
+    }
+  });
   dialog.addEventListener('close',()=>{dialog.remove();$('slotOddsButton')?.focus({preventScroll:true});},{once:true});
   document.body.appendChild(dialog);dialog.showModal();
 }
@@ -1864,16 +1890,38 @@ async function highlightSlotWild(){
   const cell=slotCells()[4];cell.classList.add('bonus-trigger');
   try {await delay(1000);}finally{cell.classList.remove('bonus-trigger');}
 }
+async function animateSlotRoulette(wheel,index){
+  const sectors=[...wheel.querySelectorAll('[data-wheel-sector]')];
+  const numbers=[...wheel.querySelectorAll('[data-wheel-count]')];
+  const duration=3000,steps=sectors.length*6+index,started=performance.now();
+  let lastStep=-1;
+  await new Promise(resolve=>{
+    function frame(now){
+      const progress=Math.max(0,Math.min(1,(now-started)/duration));
+      const step=Math.floor(steps*(1-(1-progress)**2));
+      if(step!==lastStep){
+        const active=step%sectors.length;
+        sectors.forEach((el,i)=>el.classList.toggle('is-lit',i===active));
+        numbers.forEach((el,i)=>el.classList.toggle('is-lit',i===active));
+        lastStep=step;
+      }
+      if(progress<1)requestAnimationFrame(frame);
+      else {wheel.classList.add('is-stopped');resolve();}
+    }
+    frame(started);
+  });
+}
 async function slotFreeRoulette(count){
   const overlay=$('spinOverlay');overlay.classList.remove('hidden');
   const choices=SLOT.CONFIG.freeCounts.map(x=>x.count);
-  overlay.innerHTML=`<div class="spin-bonus-intro"><span class="spin-bonus-kicker">BONUS</span><h3>FREE SPINS</h3><button type="button" class="spin-wheel-wrap" aria-label="タップしてフリースピンのルーレットを回す"><span class="spin-wheel-pointer">▼</span><span class="spin-wheel">${choices.map((n,i)=>`<span style="--angle:${i*72}deg">${n}</span>`).join('')}</span></button><small class="spin-wheel-hint">TAP TO SPIN</small></div>`;
+  overlay.innerHTML=`<div class="spin-bonus-intro"><span class="spin-bonus-kicker">BONUS</span><h3>FREE SPINS</h3><button type="button" class="spin-wheel-wrap" aria-label="タップしてフリースピンのルーレットを回す"><span class="spin-wheel"><svg class="spin-wheel-lights" viewBox="0 0 200 200" aria-hidden="true"><defs><radialGradient id="spinWheelLight"><stop stop-color="#fff7be" stop-opacity=".9"/><stop offset="1" stop-color="#ffd665" stop-opacity=".65"/></radialGradient></defs>${choices.map((_,i)=>{const point=a=>[100+100*Math.sin(a*Math.PI/180),100-100*Math.cos(a*Math.PI/180)];const a=point(i*72-36),b=point(i*72+36);return `<path data-wheel-sector="${i}" d="M100 100L${a.join(' ')}A100 100 0 0 1 ${b.join(' ')}Z"/>`;}).join('')}</svg>${choices.map((n,i)=>`<span data-wheel-count="${i}" style="--angle:${i*72}deg">${n}</span>`).join('')}</span></button><small class="spin-wheel-hint">TAP TO SPIN</small></div>`;
   const trigger=overlay.querySelector('.spin-wheel-wrap'),wheel=overlay.querySelector('.spin-wheel');
   trigger.focus({preventScroll:true});
   await new Promise(resolve=>trigger.addEventListener('click',resolve,{once:true}));
   trigger.disabled=true;overlay.querySelector('.spin-wheel-hint').style.visibility='hidden';
   const index=choices.indexOf(count);
-  await wheel.animate([{transform:'rotate(0deg)'},{transform:`rotate(${1800-index*72}deg)`}],{duration:3000,easing:'cubic-bezier(.12,.65,.12,1)',fill:'forwards'}).finished;
+  await animateSlotRoulette(wheel,index);
+  trigger.setAttribute('aria-label',`フリースピン ${count}回`);
   await delay(500);
   const badge=setSlotFreeRemaining(count);badge.style.visibility='hidden';
   const number=document.createElement('span');number.className='spin-count-flight';number.textContent=count;number.setAttribute('aria-hidden','true');
@@ -1921,8 +1969,8 @@ async function runSlotSession(session,recover=false){
       await highlightSlotWild();
       await slotFreeRoulette(round.freeCount);
       for(let i=1;i<round.spins.length;i++){
-        $('spinPhase').textContent='FREE SPINS';setSlotFreeRemaining(round.freeCount-i+1);$('spinBet').textContent='0';
-        startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);setSlotFreeRemaining(round.freeCount-i);await animateSlotWin(session,round.spins[i],totals[i]);
+        $('spinPhase').textContent='FREE SPINS';setSlotFreeRemaining(round.freeCount-i);$('spinBet').textContent='0';
+        startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);await animateSlotWin(session,round.spins[i],totals[i]);
       }
       await showSlotTotal(round.total);
       $('spinRemaining')?.remove();

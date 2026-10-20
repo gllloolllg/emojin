@@ -706,9 +706,13 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .spin-bonus-kicker{display:block;font-size:11px;letter-spacing:.15em;color:var(--spin-pink);margin-bottom:8px}
 .spin-bonus-intro h3{margin:0;font-family:'Aldrich',sans-serif;font-size:30px;color:#ffe8a4;text-shadow:0 0 20px #edb46688}
 .spin-wheel-wrap{position:relative;width:228px;height:228px;margin:30px auto 0;display:grid;place-items:center;max-width:100%;aspect-ratio:1}
-.spin-wheel{position:absolute;inset:0;border-radius:50%;border:4px solid #f4d78e;box-shadow:0 0 0 5px #6c4059,0 0 35px #ff75c85c;background:conic-gradient(from -36deg,#86507c 0 72deg,#4d366c 72deg 144deg,#7c4064 144deg 216deg,#3e5b68 216deg 288deg,#726044 288deg 360deg)}
+.spin-wheel{position:absolute;inset:0;border-radius:50%;border:4px solid #f4d78e;overflow:hidden;box-shadow:0 0 0 5px #6c4059,0 0 35px #ff75c85c;background:conic-gradient(from -36deg,#86507c 0 72deg,#4d366c 72deg 144deg,#7c4064 144deg 216deg,#3e5b68 216deg 288deg,#726044 288deg 360deg)}
 .spin-wheel span{position:absolute;left:50%;top:50%;width:46px;margin-left:-23px;margin-top:-15px;font-size:25px;color:#ffe8a8;transform:rotate(var(--angle)) translateY(-80px) rotate(calc(-1 * var(--angle)));text-shadow:0 2px 4px #0007}
-.spin-wheel-pointer{position:absolute;z-index:2;left:50%;top:-20px;transform:translateX(-50%);font-size:29px;line-height:1;color:#fff0b4;filter:drop-shadow(0 0 5px #ffb353)}
+.spin-wheel-lights{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.spin-wheel-lights path{fill:transparent}
+.spin-wheel-lights path.is-lit{fill:url(#spinWheelLight)}
+.spin-wheel span.is-lit{color:#fffef0;text-shadow:0 0 8px #fff7be,0 0 15px #ffe196}
+.spin-wheel.is-stopped{box-shadow:0 0 0 5px #6c4059,0 0 30px #ffe19688}
 
 .spin-total{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;width:100%;min-height:100%;padding:20px 0;color:#fff1c3;background:transparent;border:0;cursor:pointer}
 .spin-total-stars{font-size:38px;letter-spacing:.1em;color:#ffda80;animation:totalStars 1s ease-in-out infinite alternate}
@@ -742,34 +746,36 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-tools{display:flex;justify-content:flex-end;padding:7px 0 8px}
 .spin-odds-button{padding:4px 10px;border:1px solid #cbb1cf55;border-radius:6px;background:transparent;color:#ccb8cf;font-size:11px;line-height:1.4;letter-spacing:.05em}
 .spin-odds-button:disabled{opacity:.3}
-.spin-odds-dialog{box-sizing:border-box;width:min(330px,calc(100vw - 32px));max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;margin:auto;padding:24px 20px 20px;border:1px solid #bda179;border-radius:18px;background:#2e2235;color:#fff0cd;box-shadow:0 16px 60px #0009;font-family:'Aldrich',system-ui,sans-serif;text-align:center}
+.spin-odds-dialog{box-sizing:border-box;width:min(330px,calc(100vw - 32px));height:min(600px,calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:hidden;margin:auto;padding:24px 20px 12px;border:1px solid #bda179;border-radius:18px;background:#2e2235;color:#fff0cd;box-shadow:0 16px 60px #0009;font-family:'Aldrich',system-ui,sans-serif;text-align:center}
+.spin-odds-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
 .spin-odds-dialog::backdrop{background:#100b18bb;backdrop-filter:blur(3px)}
-.spin-odds-dialog h3{margin:0 0 8px;font-size:19px;font-weight:500;letter-spacing:.12em}
+.spin-odds-dialog h3{margin:0;font-size:19px;font-weight:500;letter-spacing:.12em}
 .spin-odds-close{position:absolute;right:7px;top:7px;display:grid;place-items:center;width:32px;height:32px;border:0;background:transparent;color:#cfbdcc;font-size:25px;line-height:1}
-.spin-odds-dismiss{position:sticky;top:24px;height:0;z-index:2}
-.spin-odds-dismiss .spin-odds-close{right:-13px;top:-17px;border-radius:50%;background:#2e2235}
+.spin-odds-pages{min-height:0;overflow:hidden}
+.spin-odds-page{height:100%;overflow-y:auto;overscroll-behavior:contain}
+.spin-odds-page[hidden]{display:none}
+.spin-odds-page-free{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.spin-odds-nav{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #ffffff14;padding-top:6px}
+.spin-odds-nav button{width:44px;height:44px;border:0;background:transparent;color:#f4d98e;font-size:18px}
+.spin-odds-nav button:disabled{opacity:.2}
+.spin-odds-page-count{font-size:11px;color:#bfaec3;font-variant-numeric:tabular-nums}
 .spin-odds-note{margin:9px 0;color:#bfaec3;font-size:10px;line-height:1.8}
-.spin-odds-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:15px 0}
-.spin-odds-item{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:57px;padding:6px 10px;border-radius:8px;background:#ffffff06;border:1px solid #ffffff0d}
+.spin-odds-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0 0 12px}
+.spin-odds-item{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:52px;padding:6px 10px;border-radius:8px;background:#ffffff06;border:1px solid #ffffff0d}
 .spin-odds-symbol{display:flex;min-width:33px;flex-direction:column;align-items:center;justify-content:center}
 .spin-odds-symbol>span{font-size:29px;line-height:1.15;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 .spin-odds-symbol small{font-family:'Aldrich',sans-serif;color:#f4d98e;font-size:8px;line-height:1.4;letter-spacing:.08em}
 .spin-odds-item strong{font-family:'Aldrich',sans-serif;font-size:15px;font-weight:400;white-space:nowrap}
-.spin-odds-any{margin-top:16px;padding-top:15px;border-top:1px solid #ffffff14}
-.spin-odds-any h4{margin:0;font-size:16px;font-weight:400;color:#f4d98e}
 .spin-odds-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
 .spin-odds-scroll table{width:100%;min-width:410px;border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .spin-odds-scroll caption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.spin-odds-scroll th,.spin-odds-scroll td{padding:8px 5px;border-bottom:1px solid #ffffff14;text-align:center;font-weight:400}
+.spin-odds-scroll th,.spin-odds-scroll td{padding:6px 5px;border-bottom:1px solid #ffffff14;text-align:center;font-weight:400}
 .spin-odds-scroll thead th:not(:first-child){font-size:21px}
 .spin-odds-scroll tbody th{color:#f4d98e}
 .spin-odds-scroll tr>:first-child{position:sticky;left:0;z-index:1;background:#2e2235;box-shadow:1px 0 #ffffff14}
-.spin-odds-free{margin-top:16px;padding-top:15px;border-top:1px solid #ffffff14}
 .spin-odds-trigger{display:grid;grid-template-columns:repeat(3,29px);grid-template-rows:repeat(3,29px);gap:4px;justify-content:center;margin:0 auto 10px}
 .spin-odds-trigger span{display:grid;place-items:center;border:1px solid #bda3c078;border-radius:3px;font-size:23px;line-height:1}
 .spin-odds-trigger span:nth-child(5){border-color:#f4d98e;background:#f4d98e12}
-.spin-odds-free>strong{font-family:'Aldrich',sans-serif;font-size:16px;font-weight:400;color:#f4d98e}
-.spin-odds-free p{margin:8px 0 0;font-size:10px;line-height:1.6;color:#bfaec3}
 
 /* Keep the three skulls directly below the legend's star, including short screens. */
 #legendStar .record-badge .star-badge{margin:0}

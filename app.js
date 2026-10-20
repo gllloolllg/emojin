@@ -435,35 +435,66 @@
 (function(root){
 'use strict';
 const CONFIG=Object.freeze({
+  version:2,
   lineBet:1,
   symbols:Object.freeze([
-    {id:'wild',emoji:'🤡',weight:3,payout:400,name:'ワイルド'},
-    {id:'smile',emoji:'😄',weight:4,payout:160,name:'スマイル'},
-    {id:'gift',emoji:'🎁',weight:6,payout:80,name:'プレゼント'},
-    {id:'bell',emoji:'🔔',weight:9,payout:50,name:'ベル'},
-    {id:'melon',emoji:'🍉',weight:12,payout:30,name:'スイカ'},
-    {id:'berry',emoji:'🫐',weight:14,payout:20,name:'ブルーベリー'},
-    {id:'orange',emoji:'🍊',weight:16,payout:14,name:'オレンジ'},
-    {id:'cherry',emoji:'🍒',weight:18,payout:10,name:'チェリー'},
-    {id:'blank',emoji:'',weight:18,payout:0,name:'ブランク'}
+    {id:'wild',emoji:'🤡',weight:3,payout:256,name:'ワイルド'},
+    {id:'smile',emoji:'😄',weight:4,payout:128,name:'7'},
+    {id:'gift',emoji:'🎁',weight:6,payout:64,name:'BAR'},
+    {id:'bell',emoji:'🔔',weight:9,payout:32,name:'ベル'},
+    {id:'melon',emoji:'🍉',weight:11,payout:16,name:'スイカ'},
+    {id:'berry',emoji:'🍇',weight:13,payout:8,name:'グレープ'},
+    {id:'orange',emoji:'🍊',weight:15,payout:4,name:'オレンジ'},
+    {id:'cherry',emoji:'🍒',weight:18,payout:2,name:'チェリー'},
+    {id:'blank',emoji:'',weight:21,payout:0,name:'ブランク'}
   ].map(Object.freeze)),
+  anyBonus:Object.freeze(Object.fromEntries(Object.entries({
+    cherry:{4:4,5:8,6:40,7:160,8:800,9:4000},
+    orange:{4:4,5:8,6:60,7:240,8:1200,9:6000},
+    berry:{4:4,5:16,6:80,7:320,8:1600,9:8000},
+    melon:{4:8,5:24,6:120,7:480,8:2400,9:12000},
+    bell:{3:4,4:8,5:32,6:160,7:640,8:3200,9:16000},
+    gift:{3:4,4:12,5:60,6:240,7:960,8:4800,9:24000},
+    smile:{3:4,4:16,5:80,6:320,7:1280,8:8000,9:32000}
+  }).map(([id,payouts])=>[id,Object.freeze(payouts)]))),
   lines:Object.freeze([[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]].map(Object.freeze)),
   freeCounts:Object.freeze([{count:4,weight:40},{count:5,weight:30},{count:7,weight:20},{count:10,weight:8},{count:20,weight:2}].map(Object.freeze))
 });
 const byId=Object.freeze(Object.fromEntries(CONFIG.symbols.map(s=>[s.id,s])));
+// Historical payouts are used only for already-drawn v1 rounds, including offline operations.
+const LEGACY_PAYOUTS=Object.freeze({wild:400,smile:160,gift:80,bell:50,melon:30,berry:20,orange:14,cherry:10,blank:0});
+const legacySymbols=CONFIG.symbols.map(s=>({...s,payout:LEGACY_PAYOUTS[s.id]}));
 const BET=CONFIG.lineBet*CONFIG.lines.length;
 const random=()=>crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
 function weighted(items,rng){let value=rng()*100;for(const item of items){value-=item.weight;if(value<0)return item;}return items[items.length-1];}
-function evaluate(cells){
-  if(cells.length!==9||cells.some(id=>!byId[id]))throw Error('Invalid slot symbols');
+function checkCells(cells){
+  if(!Array.isArray(cells)||cells.length!==9||Array.from(cells).some(id=>!Object.hasOwn(byId,id)))throw Error('Invalid slot symbols');
+}
+function evaluateAnyBonus(cells){
+  checkCells(cells);
+  const wins=[],wildCount=cells.filter(id=>id==='wild').length;
+  for(const [symbol,payouts] of Object.entries(CONFIG.anyBonus)){
+    const indices=cells.flatMap((id,i)=>id===symbol||id==='wild'?[i]:[]);
+    const count=indices.length,payout=payouts[count]||0;
+    if(payout)wins.push({symbol,count,naturalCount:count-wildCount,wildCount,indices,payout});
+  }
+  return {wins,payout:wins.reduce((sum,w)=>sum+w.payout,0),winningCells:[...new Set(wins.flatMap(w=>w.indices))].sort((a,b)=>a-b)};
+}
+function evaluate(cells,version=CONFIG.version){
+  checkCells(cells);
+  if(version!==1&&version!==CONFIG.version)throw Error('Unsupported slot rules');
   const wins=[];
   CONFIG.lines.forEach((indices,line)=>{
     const symbols=indices.map(i=>cells[i]);
     if(symbols.includes('blank'))return;
-    const match=CONFIG.symbols.filter(s=>s.payout>0&&symbols.every(id=>id==='wild'||id===s.id)).sort((a,b)=>b.payout-a.payout)[0];
+    const match=(version===1?legacySymbols:CONFIG.symbols).filter(s=>s.payout>0&&symbols.every(id=>id==='wild'||id===s.id)).sort((a,b)=>b.payout-a.payout)[0];
     if(match)wins.push({line,indices:[...indices],symbol:match.id,payout:match.payout*CONFIG.lineBet});
   });
-  return {cells:[...cells],wins,payout:wins.reduce((sum,w)=>sum+w.payout,0)};
+  const linePayout=wins.reduce((sum,w)=>sum+w.payout,0);
+  if(version===1)return {cells:[...cells],wins,payout:linePayout};
+  const any=evaluateAnyBonus(cells);
+  const winningCells=[...new Set([...wins.flatMap(w=>w.indices),...any.winningCells])].sort((a,b)=>a-b);
+  return {cells:[...cells],wins,linePayout,anyWins:any.wins,anyPayout:any.payout,winningCells,payout:linePayout+any.payout};
 }
 function roll(free=false,rng=random){
   return {...evaluate(Array.from({length:9},(_,i)=>free&&i===4?'wild':weighted(CONFIG.symbols,rng).id)),free};
@@ -472,21 +503,31 @@ function createRound(rng=random){
   const first=roll(false,rng);
   const freeCount=first.cells[4]==='wild'?weighted(CONFIG.freeCounts,rng).count:0;
   const spins=[first];for(let i=0;i<freeCount;i++)spins.push(roll(true,rng));
-  return {id:'slot-'+crypto.randomUUID(),version:1,bet:BET,freeCount,spins,total:spins.reduce((sum,s)=>sum+s.payout,0),createdAt:Date.now()};
+  return {id:'slot-'+crypto.randomUUID(),version:CONFIG.version,bet:BET,freeCount,spins,total:spins.reduce((sum,s)=>sum+s.payout,0),createdAt:Date.now()};
+}
+function sameResult(expected,actual){
+  if(Array.isArray(expected))return Array.isArray(actual)&&expected.length===actual.length&&expected.every((value,i)=>sameResult(value,actual[i]));
+  if(expected&&typeof expected==='object'){
+    const keys=Object.keys(expected);
+    return !!actual&&typeof actual==='object'&&!Array.isArray(actual)&&keys.length===Object.keys(actual).length
+      && keys.every(key=>Object.hasOwn(actual,key)&&sameResult(expected[key],actual[key]));
+  }
+  return expected===actual;
 }
 function validateRound(round){
-  if(!round||round.version!==1||round.bet!==BET||!/^slot-[\w-]+$/.test(round.id)||!Array.isArray(round.spins))throw Error('スロットの抽選データが不正です。');
+  if(!round||![1,CONFIG.version].includes(round.version)||round.bet!==BET||!/^slot-[\w-]+$/.test(round.id)||!Array.isArray(round.spins))throw Error('スロットの抽選データが不正です。');
   if(round.spins.length!==round.freeCount+1||!([0,...CONFIG.freeCounts.map(x=>x.count)].includes(round.freeCount)))throw Error('フリースピン回数が不正です。');
   let total=0;
   round.spins.forEach((spin,i)=>{
-    const result=evaluate(spin.cells);
-    if(result.payout!==spin.payout||JSON.stringify(result.wins)!==JSON.stringify(spin.wins)||spin.free!==(i>0)||(i>0&&spin.cells[4]!=='wild'))throw Error('スロットの配当データが不正です。');
+    const result=evaluate(spin.cells,round.version);
+    if(result.payout!==spin.payout||!sameResult(result.wins,spin.wins)||spin.free!==(i>0)||(i>0&&spin.cells[4]!=='wild'))throw Error('スロットの配当データが不正です。');
+    if(round.version===CONFIG.version && ['linePayout','anyPayout','anyWins','winningCells'].some(key=>!sameResult(result[key],spin[key])))throw Error('エニーボーナスの配当データが不正です。');
     total+=result.payout;
   });
   if((round.spins[0].cells[4]==='wild')!==(round.freeCount>0)||total!==round.total)throw Error('スロットの合計が不正です。');
   return round;
 }
-root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluate,roll,createRound,validateRound});
+root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluateAnyBonus,evaluate,roll,createRound,validateRound});
 })(globalThis);
 
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
@@ -1666,6 +1707,12 @@ function refreshSlotUI(){
   if(!session.running && !session.record && !session.failed)session.balance=cloud.wallet.balance;
   $('spinWallet').textContent=Math.max(0,session.balance).toLocaleString('en-US');
   $('spinWin').textContent=session.win.toLocaleString('en-US');
+  $('spinWin').classList.toggle('long-win',session.win>=10000);
+  const wallet=$('spinWallet');wallet.style.fontSize='';
+  if(wallet.clientWidth && wallet.scrollWidth>wallet.clientWidth){
+    const size=parseFloat(getComputedStyle(wallet).fontSize)*wallet.clientWidth/wallet.scrollWidth;
+    wallet.style.fontSize=(Math.floor(size*10)/10)+'px';
+  }
   const button=$('slotSpinButton');
   button.disabled=session.loading||session.running||session.failed||(!session.record&&!cloud.slotPending&&cloud.wallet.balance<SLOT.BET);
   button.textContent='SPIN';
@@ -1684,7 +1731,7 @@ async function showMojiSpin(){
       ${preview.map(id=>`<div class="spin-cell" data-symbol="${id}" aria-label="${SLOT.byId[id].name}"><span class="spin-glyph">${SLOT.byId[id].emoji}</span></div>`).join('')}
       <svg id="spinLines" class="spin-lines" viewBox="0 0 300 300" aria-hidden="true"></svg>
     </div><div id="spinWinBanner" class="spin-win-banner" aria-live="polite"></div></div>
-    <div class="spin-dashboard"><dl class="spin-stats"><div><dt>BET</dt><dd id="spinBet">${SLOT.BET}</dd></div><div><dt>WIN</dt><dd id="spinWin">0</dd></div></dl>
+    <div class="spin-dashboard"><dl class="spin-stats"><div><dt>BET</dt><dd id="spinBet">${SLOT.BET}</dd></div><div><dt id="spinWinLabel">WIN</dt><dd id="spinWin">0</dd></div></dl>
       <div class="spin-wallet"><small>MOJI</small><strong id="spinWallet">${cloud.wallet.balance.toLocaleString('en-US')}</strong></div></div>
     <button id="slotSpinButton" class="slot-spin-button" type="button" disabled>SPIN</button>
     <div id="spinFx" class="spin-fx" aria-hidden="true"></div><div id="spinOverlay" class="spin-overlay hidden"></div>`,
@@ -1709,10 +1756,15 @@ function showSlotOdds(){
   const dialog=document.createElement('dialog');dialog.className='spin-odds-dialog';
   dialog.setAttribute('aria-labelledby','slotOddsTitle');
   const symbols=SLOT.CONFIG.symbols.filter(symbol=>symbol.payout>0);
-  dialog.innerHTML=`<button class="spin-odds-close" type="button" aria-label="配当表を閉じる">×</button>
+  const anySymbols=Object.keys(SLOT.CONFIG.anyBonus).map(id=>SLOT.byId[id]);
+  const counts=[...new Set(Object.values(SLOT.CONFIG.anyBonus).flatMap(payouts=>Object.keys(payouts).map(Number)))].sort((a,b)=>a-b);
+  dialog.innerHTML=`<div class="spin-odds-dismiss"><button class="spin-odds-close" type="button" aria-label="配当表を閉じる">×</button></div>
     <h3 id="slotOddsTitle">配当表</h3><p class="spin-odds-note">1ラインに3つ揃うと当選</p>
     <div class="spin-odds-grid">${symbols.map(symbol=>`<div class="spin-odds-item"><span class="spin-odds-symbol"><span>${symbol.emoji}</span>${symbol.id==='wild'?'<small>WILD</small>':''}</span><strong>× ${symbol.payout}</strong></div>`).join('')}</div>
     <p class="spin-odds-note">倍率は1ラインのBETに対する配当です。<br>WILDは他の絵柄の代わりになります。<br>複数ラインの配当は合算されます。</p>
+    <section class="spin-odds-any"><h4>ANY BONUS</h4><p class="spin-odds-note">9マス全体の個数で当選。ライン配当に加算。<br>WILDはすべての絵柄に同時に代用されます。<br>表は左右にスクロールできます。</p>
+      <div class="spin-odds-scroll" role="region" aria-label="エニーボーナス配当表、左右にスクロールできます" tabindex="0"><table><caption>個数ごとの獲得モジ</caption><thead><tr><th scope="col">個数</th>${anySymbols.map(symbol=>`<th scope="col" aria-label="${symbol.name}">${symbol.emoji}</th>`).join('')}</tr></thead><tbody>${counts.map(count=>`<tr><th scope="row">${count}</th>${anySymbols.map(symbol=>`<td>${SLOT.CONFIG.anyBonus[symbol.id][count]?.toLocaleString('en-US')||'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="spin-odds-note">各絵柄は該当する個数の配当だけを獲得。<br>複数絵柄は合算。追加BETなし。<br>フリースピンでも同じ配当です。</p></section>
     <div class="spin-odds-free"><div class="spin-odds-trigger" role="img" aria-label="3行3列の中央にワイルド">${Array.from({length:9},(_,i)=>`<span>${i===4?'🤡':''}</span>`).join('')}</div><strong>Free Spin</strong><p>通常スピンで中央に🤡が止まると突入</p></div>`;
   dialog.querySelector('.spin-odds-close').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{
@@ -1770,14 +1822,17 @@ function slotConfetti(count=36){
     ],{duration:1400+Math.random()*900,easing:'cubic-bezier(.2,.5,.4,1)'}).finished.then(()=>p.remove()).catch(()=>p.remove());
   }
 }
-async function animateSlotWin(session,spin){
+async function animateSlotWin(session,spin,total){
   await delay(500);
+  // Assign the sum of saved spins; replaying an animation cannot add it twice.
+  session.win=total;refreshSlotUI();
   if(!spin.payout){if(spin.free)await delay(1000);return;}
   const cells=slotCells(),svg=$('spinLines'),board=$('spinBoard');
   svg.setAttribute('viewBox',`0 0 ${board.clientWidth} ${board.clientHeight}`);
   const colors=['#ffe397','#ff8bd4','#b9fff0','#c9adff'];
+  const winningCells=spin.winningCells||[...new Set(spin.wins.flatMap(win=>win.indices))];
+  winningCells.forEach(i=>cells[i].classList.add('winning'));
   for(const win of spin.wins){
-    win.indices.forEach(i=>cells[i].classList.add('winning'));
     // Layout offsets are stable even while the reel glyph is animating.
     const first=cells[win.indices[0]],last=cells[win.indices[2]];
     let x1=first.offsetLeft+first.offsetWidth/2,y1=first.offsetTop+first.offsetHeight/2;
@@ -1792,9 +1847,9 @@ async function animateSlotWin(session,spin){
 
   }
   const banner=$('spinWinBanner'),big=spin.payout>=160;
-  banner.textContent=(spin.payout>=400?'MEGA WIN  ':big?'BIG WIN  ':'+')+spin.payout.toLocaleString('en-US');
+  banner.textContent=(spin.anyPayout&&!spin.linePayout?'ANY BONUS  ':spin.payout>=400?'MEGA WIN  ':big?'BIG WIN  ':'+')+spin.payout.toLocaleString('en-US');
+  banner.setAttribute('aria-label',`ライン ${spin.linePayout??spin.payout}、エニーボーナス ${spin.anyPayout||0}、合計 ${spin.payout}モジ`);
   banner.classList.add('visible');if(big)banner.classList.add('big');
-  session.win+=spin.payout;refreshSlotUI();
   slotConfetti(big?60:22);
   session.panel.animate([{boxShadow:'0 0 55px #ffd884aa'},{boxShadow:'0 0 45px #ed5acb88'},{boxShadow:'0 20px 80px #0009'}],{duration:1100});
   await delay(spin.free?1000:(big?1700:1050));
@@ -1848,6 +1903,7 @@ async function runSlotSession(session,recover=false){
   const candidate=recover?null:SLOT.createRound();
   const previous=slotCells().map(el=>el.dataset.symbol);
   session.running=true;busy=true;session.win=0;
+  $('spinWinLabel').textContent='WIN';$('spinWinLabel').classList.remove('is-total');
   if(candidate)session.balance=cloud.wallet.balance-SLOT.BET;
   refreshSlotUI();
   try{
@@ -1856,14 +1912,17 @@ async function runSlotSession(session,recover=false){
     const record=session.record || await cloud.spinSlot(candidate);
     if(!record?.round)throw Error('スピン結果を確認できませんでした。');
     session.record=record;session.balance=record.balanceBefore-record.round.bet;refreshSlotUI();
-    const round=record.round;
-    await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0]);
+    const round=SLOT.validateRound(record.round);
+    const totals=round.spins.map((_,i)=>round.spins.slice(0,i+1).reduce((sum,spin)=>sum+spin.payout,0));
+    await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0],totals[0]);
     if(round.freeCount){
+      $('spinWinLabel').textContent='TOTAL WIN';$('spinWinLabel').classList.add('is-total');
+      refreshSlotUI();
       await highlightSlotWild();
       await slotFreeRoulette(round.freeCount);
       for(let i=1;i<round.spins.length;i++){
         $('spinPhase').textContent='FREE SPINS';setSlotFreeRemaining(round.freeCount-i+1);$('spinBet').textContent='0';
-        startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);setSlotFreeRemaining(round.freeCount-i);await animateSlotWin(session,round.spins[i]);
+        startSlotReels(session,true);await animateSlotSpin(session,round.spins[i]);setSlotFreeRemaining(round.freeCount-i);await animateSlotWin(session,round.spins[i],totals[i]);
       }
       await showSlotTotal(round.total);
       $('spinRemaining')?.remove();

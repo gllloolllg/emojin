@@ -692,6 +692,9 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .spin-stats dt{font-size:11px;letter-spacing:.08em;color:#bda4bf}
 .spin-stats dd{margin:0;font-size:19px;line-height:1;color:#ffe6a2;font-variant-numeric:tabular-nums}
 .spin-stats>div:last-child dd{color:var(--spin-mint)}
+.spin-stats>div:last-child{gap:8px}
+.spin-stats dt.is-total{font-size:9px;letter-spacing:0;white-space:nowrap}
+.spin-stats dd.long-win{font-size:14px}
 .spin-wallet{text-align:right;min-width:0}
 .spin-wallet small{display:block;font-size:10px;letter-spacing:.13em;margin-bottom:5px;color:#bda4bf}
 .spin-wallet strong{display:block;font-weight:400;font-size:clamp(22px,6.6vw,30px);line-height:1;font-variant-numeric:tabular-nums;color:#fff0cc;text-shadow:0 0 12px #f2ce8855}
@@ -745,6 +748,8 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-odds-dialog::backdrop{background:#100b18bb;backdrop-filter:blur(3px)}
 .spin-odds-dialog h3{margin:0 0 8px;font-size:19px;font-weight:500;letter-spacing:.12em}
 .spin-odds-close{position:absolute;right:7px;top:7px;display:grid;place-items:center;width:32px;height:32px;border:0;background:transparent;color:#cfbdcc;font-size:25px;line-height:1}
+.spin-odds-dismiss{position:sticky;top:24px;height:0;z-index:2}
+.spin-odds-dismiss .spin-odds-close{right:-13px;top:-17px;border-radius:50%;background:#2e2235}
 .spin-odds-note{margin:9px 0;color:#bfaec3;font-size:10px;line-height:1.8}
 .spin-odds-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:15px 0}
 .spin-odds-item{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:57px;padding:6px 10px;border-radius:8px;background:#ffffff06;border:1px solid #ffffff0d}
@@ -752,6 +757,15 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-odds-symbol>span{font-size:29px;line-height:1.15;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 .spin-odds-symbol small{font-family:'Aldrich',sans-serif;color:#f4d98e;font-size:8px;line-height:1.4;letter-spacing:.08em}
 .spin-odds-item strong{font-family:'Aldrich',sans-serif;font-size:15px;font-weight:400;white-space:nowrap}
+.spin-odds-any{margin-top:16px;padding-top:15px;border-top:1px solid #ffffff14}
+.spin-odds-any h4{margin:0;font-size:16px;font-weight:400;color:#f4d98e}
+.spin-odds-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.spin-odds-scroll table{width:100%;min-width:410px;border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.spin-odds-scroll caption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.spin-odds-scroll th,.spin-odds-scroll td{padding:8px 5px;border-bottom:1px solid #ffffff14;text-align:center;font-weight:400}
+.spin-odds-scroll thead th:not(:first-child){font-size:21px}
+.spin-odds-scroll tbody th{color:#f4d98e}
+.spin-odds-scroll tr>:first-child{position:sticky;left:0;z-index:1;background:#2e2235;box-shadow:1px 0 #ffffff14}
 .spin-odds-free{margin-top:16px;padding-top:15px;border-top:1px solid #ffffff14}
 .spin-odds-trigger{display:grid;grid-template-columns:repeat(3,29px);grid-template-rows:repeat(3,29px);gap:4px;justify-content:center;margin:0 auto 10px}
 .spin-odds-trigger span{display:grid;place-items:center;border:1px solid #bda3c078;border-radius:3px;font-size:23px;line-height:1}

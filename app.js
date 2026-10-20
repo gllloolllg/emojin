@@ -1726,7 +1726,7 @@ async function showMojiSpin(){
   openModal(`<div class="spin-marquee" aria-hidden="true"></div>
     <header class="spin-heading"><span class="spin-ornament" aria-hidden="true">✦</span><h2>MOJI SPIN</h2><span class="spin-ornament" aria-hidden="true">✦</span></header>
     <div id="spinPhase" class="spin-phase" hidden></div>
-    <div class="spin-tools"><button id="slotOddsButton" class="spin-odds-button" type="button">配当表</button></div>
+    <div class="spin-tools"><button id="slotOddsButton" class="spin-odds-button" type="button">遊び方</button></div>
     <div class="spin-machine"><div id="spinBoard" class="spin-board" role="group" aria-label="3行3列のスロット">
       ${preview.map(id=>`<div class="spin-cell" data-symbol="${id}" aria-label="${SLOT.byId[id].name}"><span class="spin-glyph">${SLOT.byId[id].emoji}</span></div>`).join('')}
       <svg id="spinLines" class="spin-lines" viewBox="0 0 300 300" aria-hidden="true"></svg>

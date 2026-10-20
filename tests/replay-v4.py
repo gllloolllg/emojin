@@ -15,7 +15,7 @@ const e=(id,face='blank',extra={})=>({id,name:id,emoji:'🐸',ownerUid:id,ownerN
 const a=E.battle(e('skip-a','strong'),e('skip-b'),E.seeded(1),1000,'skip');
 const legacy=old.battle(e('old-a','attack1'),e('old-b'),old.seeded(1),1001);legacy.battleId='old';
 const draw=E.battle(e('draw-a'),e('draw-b'),E.seeded(1),1002,'draw');
-const award=E.battle(e('award-a','strong',{stars:49}),e('award-b','blank',{defeats:2}),E.seeded(1),1003,'award');
+const award=E.battle(e('award-a','strong',{stars:49}),e('award-b','blank',{defeats:9}),E.seeded(1),1003,'award');
 const logs=[a,legacy,draw,award].map((l,i)=>({...l,seq:i+1}));
 console.log(JSON.stringify({logs,residents:logs.flatMap(l=>l.after),legends:[{seq:1,battleSeq:4,at:1003,emojin:award.after[0]}]}));
 '''
@@ -91,7 +91,8 @@ async def main():
     return {inside:r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight,separated:record.bottom<=hp.top};})''')
    assert all(r['inside'] and r['separated'] for r in layout),layout
    skulls=page.locator('.battle-info .defeat-skull')
-   assert await skulls.count()==6
+   assert await skulls.count()==2
+   assert sorted(await page.locator('.battle-info .defeat-record').all_text_contents())==sorted(['💀×0','💀×10'])
    await page.locator('#battleNext').click()
    await page.wait_for_function("!document.querySelector('#legendScreen').classList.contains('hidden')")
    await page.wait_for_function("!document.querySelector('#legendContinue').disabled")
@@ -114,9 +115,9 @@ async def main():
    assert await page.locator('#battleMenu').is_visible()
    await page.wait_for_timeout(300)
    menu_layout=await page.evaluate("""()=>{
-    const button=document.querySelector('#battleMenuToggle'),toggle=button.getBoundingClientRect(),force=document.querySelector('#forceBattleButton').getBoundingClientRect(),menu=document.querySelector('#battleMenu').getBoundingClientRect();
+    const button=document.querySelector('#battleMenuToggle'),toggle=button.getBoundingClientRect(),force=document.querySelector('#forceBattleButton').getBoundingClientRect(),menu=document.querySelector('#battleMenu').getBoundingClientRect(),item=document.querySelector('#myBattleButton').getBoundingClientRect();
     const hit=(x,y)=>button.contains(document.elementFromPoint(x,y));
-    return {above:toggle.bottom<=force.top,centered:Math.abs(toggle.left+toggle.width/2-force.left-force.width/2)<1,touch:toggle.width>=64&&toggle.height>=44,separate:menu.bottom<toggle.top,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0,edges:[[toggle.left+8,toggle.top+8],[toggle.right-8,toggle.bottom-8]].every(p=>hit(...p))};
+    return {attached:Math.abs(toggle.bottom-force.top)<1&&Math.abs(menu.bottom-force.top)<1,centered:Math.abs(toggle.left+toggle.width/2-force.left-force.width/2)<1,touch:toggle.width>=64&&toggle.height>=44,separate:item.bottom<=toggle.top,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0,edges:[[toggle.left+8,toggle.top+8],[toggle.right-8,toggle.bottom-8]].every(p=>hit(...p))};
    }""")
    assert all(menu_layout.values()),menu_layout
    await page.screenshot(path='/tmp/emojin-v4-menu-'+str(WIDTH)+'.png')
@@ -129,11 +130,11 @@ async def main():
    assert stars[0]==49 and stars[-1]==50 and max(stars)==50
    assert any(p['rewards']>0 and p['states'][0]['stars']==50 for p in award)
    defeats=[s['defeats'] for p in award for s in p['states'] if s['id']=='award-b']
-   assert defeats[0]==2 and defeats[-1]==3 and max(defeats)==3
+   assert defeats[0]==9 and defeats[-1]==10 and max(defeats)==10
    assert any(p['id']=='old' for p in audit['paint'])
    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
    assert not errors,errors
-   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, reward before/final states, third skull, legend, speed persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, upper triangle menu with wide touch target')
+   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, counter 9 to 10, tenth skull retires, legend, speed persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, menu and triangle attached to battle button')
    await browser.close()
  finally:server.shutdown()
 asyncio.run(main())

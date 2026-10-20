@@ -1,5 +1,7 @@
 # エモジン 開発引き継ぎ・実装確認
 
+**💀10でボチ・累積カウンターと最新のメニュー配置は [TEN_DEFEATS.md](TEN_DEFEATS.md) を参照。**
+
 **MOJI SPINの2026-10-20追加仕様（新配当・ANY BONUS・スロットversion 2）は [SLOT_V2.md](SLOT_V2.md) を参照。以下の旧スロット配当表はversion 1の履歴。**
 
 **rulesVersion 4の最新仕様・GAS・ルール・移行手順は [MATCH_V4.md](MATCH_V4.md) を参照。2026-10-19再共有のFirestore版GASも照合済み。以下は主にv3時点の引き継ぎ記録で、単発バトル・即墓地・毎戦生存☆加算はv4では適用しない。v4は実装・ローカル検証中で、本番切り替え未実施。**

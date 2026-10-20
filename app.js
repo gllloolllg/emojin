@@ -28,7 +28,7 @@
   };
   const EMOJIS = ["🦐","🐙","🍙","🤖","👾","💩","🐸","🦖","🦕","🌷","🍄","🦆","🦀","🍋","🍞","🥑","🐌","👻","🗿","🦑","🐧","🐼","🦊","🦋","🐢","🦔","🐟","🐳","🌵","🍆","🥕","🍥","🍣","🍔","🍟","🍩","🍮","🧀","🧊","🚽","🛸","🚀","🧸","🪩","🦷","🧠","🫀","🪼","🦎","🐣","🦭","🐈","🍤","🥦","🍑","🌝","🥸","🤡","👹","👺","👽","👄","💃","🕺","🛌","🐒","🦍","🦧","🐕","🐩","🐺","🦝","🐈‍⬛","🐅","🐆","🐴","🫎","🫏","🐎","🦓","🦌","🦬","🐃","🐄","🐖","🐗","🐑","🐫","🦙","🦒","🐘","🦣","🦏","🦛","🐀","🐇","🐿️","🦫","🦇","🐨","🦥","🦦","🦨","🦘","🦡","🐓","🐤","🐦","🕊️","🦅","🦢","🦉","🦤","🪶","🦩","🦚","🦜","🪽","🐦‍⬛","🪿","🐦‍🔥","🐊","🐍","🐉","🐬","🫍","🐠","🐡","🦈","🐚","🪸","🦞","🦪","🐛","🐜","🐝","🪲","🐞","🦗","🦟","🪰","💐","🌸","🌹","🌻","🌱","🌴","🍀","🍁","🍇","🍈","🍉","🍊","🍌","🍍","🍎","🍒","🍓","🥝","🥔","🌽","🌶️","🫑","🧄","🥜","🫛","🥐","🥖","🥨","🥞","🍖","🍕","🌭","🍳","🍱","🍜","🍡","🍦","🍪","🎂","🍫","🍬","🍭","🍼","☕","🍾","🍷","🍺","🧋","🔪","🏺","🎃","🎄","🎈","🎉","🎎","🎁","⚾","🏀","🏈","🥊","⛳","⛸️","🤿","🥌","🔫","🎱","🪄","🎮","🎴","🧞‍♂️","🧟","🫈","🌍","🗾","🧭","🌋","🪵","🗼","🗽","🎡","🚂","🚃","🚑","🚒","🚓","🚚","🏍️","🛵","🛺","🚲","🛴","🛢️","⛽","🛞","🚨","🪂","🚁","🌪️","🕶️","👘","👛","⛑️","📢","🎸","💴","✒️","📌","🔨","🚬","🪬"];
 
-  const RULES_VERSION = 4, MAX_TURNS = 10;
+  const RULES_VERSION = 4, MAX_TURNS = 10, DEFEAT_LIMIT = 10;
   const INITIAL_MOJI = 2000;
   const GENERATION_COSTS = Object.freeze([100,200,400,800,1000,1200]);
   function generationCost(emojins,ownerUid) {
@@ -89,7 +89,7 @@
     if (!Number.isInteger(e.maxHp) || e.maxHp < 1 || !Number.isFinite(e.currentHp) || e.currentHp <= 0) throw new Error("Invalid HP.");
     if (!Number.isInteger(e.stars) || e.stars < 0 || e.stars >= 50) throw new Error("Invalid stars.");
     if ((e.cursedSlots || []).some(s => !Number.isInteger(s) || s < 0 || s > 5)) throw new Error("Invalid curse.");
-    if(e.rulesVersion===RULES_VERSION && (!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=3||e.maxHp<5||e.maxHp>8))throw Error('Invalid match record.');
+    if(e.rulesVersion===RULES_VERSION && (!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=DEFEAT_LIMIT||e.maxHp<5||e.maxHp>8))throw Error('Invalid match record.');
   }
 
   /*
@@ -268,7 +268,7 @@
     return [e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots,e.defeats||0,e.rulesVersion||3,e.recordVersion||0];
   }
   function battleDocument(log) {
-    return {rulesVersion:RULES_VERSION,seq:log.seq,ownerUids:log.ownerUids,
+    return {rulesVersion:RULES_VERSION,defeatLimit:log.defeatLimit,seq:log.seq,ownerUids:log.ownerUids,
       emojinIds:log.before.map(e=>e.id),after:log.after,json:JSON.stringify(log)};
   }
   function battle(inputA,inputB,rng=Math.random,now=Date.now(),battleId=id('b')) {
@@ -296,7 +296,7 @@
     states.forEach((e,side)=>{
       e.stars=Math.min(50,e.stars+awards[side].stars);
       e.defeats=Number(e.defeats||0)+awards[side].defeats;
-      if(e.defeats>=3){e.status='dead';e.endedAt=now;deadIds.push(e.id);}
+      if(e.defeats>=DEFEAT_LIMIT){e.status='dead';e.endedAt=now;deadIds.push(e.id);}
       else if(e.stars>=50){e.status='legend';e.endedAt=now;legendIds.push(e.id);}
       e.rulesVersion=RULES_VERSION;e.recordVersion=Number(e.recordVersion||0)+1;e.lastBattleId=battleId;
     });
@@ -304,7 +304,7 @@
     const finalState=clone(states);
     const after=states.map(e=>({...e,currentHp:e.maxHp,poisoned:false,cursedSlots:[]}));
     events.push({type:'finish',turn:turns.length,state:finalState,awards,result,deadIds,legendIds});
-    return {rulesVersion:RULES_VERSION,battleId,battleAt:now,emojinAId:inputA.id,emojinBId:inputB.id,
+    return {rulesVersion:RULES_VERSION,defeatLimit:DEFEAT_LIMIT,battleId,battleAt:now,emojinAId:inputA.id,emojinBId:inputB.id,
       ownerNames:[...new Set([inputA.ownerName,inputB.ownerName])],before,after,finalState,turns,events,awards,result,deadIds,legendIds};
   }
 
@@ -426,7 +426,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { RULES_VERSION, MAX_TURNS, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { RULES_VERSION, MAX_TURNS, DEFEAT_LIMIT, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -639,7 +639,7 @@ async function createCloud() {
   const activeDocs=()=>F.getDocsFromServer(activeQuery);
   async function requireMatchRules(tx) {
     const snap=await tx.get(ref('config','battle')),gate=snap.exists()?snap.data():{};
-    if(gate.rulesVersion!==E.RULES_VERSION || gate.maintenance!==false) {
+    if(gate.rulesVersion!==E.RULES_VERSION || gate.defeatLimit!==E.DEFEAT_LIMIT || gate.maintenance!==false) {
       throw Object.assign(Error('バトル方式の切り替え中です。しばらくしてから開き直してください。'),{code:'rules-transition'});
     }
   }
@@ -822,7 +822,7 @@ async function createCloud() {
       const existing=await tx.get(logRef);
       if(existing.exists())return {ok:true,seq:existing.data().seq,log:JSON.parse(existing.data().json),account,npcs:[]};
       await requireMatchRules(tx);
-      if(req.rulesVersion!==E.RULES_VERSION) {
+      if(req.rulesVersion!==E.RULES_VERSION || req.defeatLimit!==E.DEFEAT_LIMIT) {
         return {ok:true,cancelled:true,account,npcs:[]};
       }
       const mode=req.mode||'forced',rules=E.battleMode(mode);
@@ -1191,8 +1191,8 @@ function star(n, legend=false) {
   return `<span class="star-badge ${legend?"legend":""}" role="img" aria-label="星 ${n}"><svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,5 66,31 95,37 76,59 79,91 50,77 21,91 24,59 5,37 34,31"></polygon><text x="50" y="63">${Number(n)}</text></svg></span>`;
 }
 function recordBadge(e) {
-  const defeats=Math.max(0,Math.min(3,Number(e.defeats||0)));
-  return `<span class="record-badge">${star(e.stars,e.status==='legend')}<span class="defeat-record" role="img" aria-label="敗北 ${defeats} / 3">${[0,1,2].map(i=>`<span class="defeat-skull ${i<defeats?'earned':''}" aria-hidden="true">💀</span>`).join('')}</span></span>`;
+  const defeats=Math.max(0,Math.min(E.DEFEAT_LIMIT,Number(e.defeats||0)));
+  return `<span class="record-badge">${star(e.stars,e.status==='legend')}<span class="defeat-record" role="img" aria-label="敗北 ${defeats} / ${E.DEFEAT_LIMIT}"><span class="defeat-skull" aria-hidden="true">💀</span><span aria-hidden="true">×${defeats}</span></span></span>`;
 }
 const HEART_PATH = "M12 21S3 15.8 3 8.8C3 3.7 9.5 2.6 12 7c2.5-4.4 9-3.3 9 1.8 0 7-9 12.2-9 12.2z";
 function heartSvg(className="heart filled") {
@@ -2420,7 +2420,7 @@ async function forceBattle(mode='forced') {
       if(pair.length!==2)throw Error(mode==='challenge'?'チャンピオンがバトルに参加できません。':'マイエモジンがバトルに参加できません。');
       const seed=crypto.getRandomValues(new Uint32Array(1))[0],at=Date.now();
       const preview=E.battle(pair[0],pair[1],E.seeded(seed),at);
-      const request={battleId:preview.battleId,rulesVersion:E.RULES_VERSION,mode,ids:pair.map(e=>e.id),seed,at,
+      const request={battleId:preview.battleId,rulesVersion:E.RULES_VERSION,defeatLimit:E.DEFEAT_LIMIT,mode,ids:pair.map(e=>e.id),seed,at,
         expected:pair.map(E.recordVersion)};
       const saved=await cloud.saveBattle(request);
       return {fresh,saved,log:saved.log||preview};
@@ -2721,7 +2721,7 @@ function showMatchRewards(ev,animated) {
   });
 }
 function setMatchEndingCaption(ev) {
-  if(ev.deadIds.length)setCaption('💀 3個 · '+ev.state.filter(e=>ev.deadIds.includes(e.id)).map(e=>e.name).join('・')+' はボチへ');
+  if(ev.deadIds.length)setCaption('💀 '+(currentBattle.defeatLimit||3)+'個 · '+ev.state.filter(e=>ev.deadIds.includes(e.id)).map(e=>e.name).join('・')+' はボチへ');
   else if(ev.legendIds.length)setCaption('☆ 50到達 · レジェンドへ');
 }
 async function showMatchResult(ev,instant=false) {
@@ -2736,7 +2736,7 @@ async function showMatchResult(ev,instant=false) {
   paintBattle(ev.state.map(e=>({...e,status:'active'})));
   ev.awards.forEach(award=>{
     const target=award.stars?infoEl(award.side).querySelector('.star-badge'):
-      infoEl(award.side).querySelectorAll('.defeat-skull')[ev.state[award.side].defeats-1];
+      infoEl(award.side).querySelector('.defeat-record');
     if(target)animate(target,[{transform:'scale(1)'},{transform:'scale(1.65)',offset:.35},{transform:'scale(1)'}],650/replaySpeed);
   });
   await battleWait(700);paintBattle(ev.state);

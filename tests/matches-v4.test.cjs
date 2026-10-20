@@ -58,10 +58,12 @@ test('poison/curse carry across turns but every persisted resident resets betwee
  }
  assert.equal(poison.finalState[1].currentHp,0);
 });
-test('one/two skulls stay active, third retires; winner does not lose past skulls',()=>{
- for(let prior=0;prior<3;prior++){
+test('zero through nine skulls stay active, tenth retires; winner does not lose past skulls',()=>{
+ assert.equal(E.DEFEAT_LIMIT,10);
+ for(let prior=0;prior<10;prior++){
   const log=match(resident('a','strong',{defeats:1}),resident('b','blank',{defeats:prior}));
-  assert.equal(log.after[1].defeats,prior+1);assert.equal(log.after[1].status,prior===2?'dead':'active');
+  assert.equal(log.after[1].defeats,prior+1);assert.equal(log.after[1].status,prior===9?'dead':'active');
+  assert.equal(log.defeatLimit,10);
   assert.equal(log.after[0].defeats,1);assert.equal(log.after[0].stars,3);
  }
 });
@@ -92,6 +94,20 @@ test('migration is idempotent; does not rewrite archived residents or reset new 
   const archived=resident('old','blank',{maxHp:10,currentHp:0,status,stars:50});delete archived.rulesVersion;
   assert.deepEqual(plain(E.migrateActive(archived)),plain(archived));
  }
+});
+test('existing v4 counters are preserved; old three-skull graves stay historical',()=>{
+ for(const defeats of [0,2,3,8,9]){
+  const input=resident('existing','blank',{defeats});assert.deepEqual(plain(E.migrateActive(input)),plain(input));
+ }
+ const archived=resident('old','blank',{status:'dead',defeats:3,currentHp:8});
+ assert.deepEqual(plain(E.migrateActive(archived)),plain(archived));
+});
+test('replay captions use the logged defeat limit, including old three-skull history',()=>{
+ const start=source.indexOf('function setMatchEndingCaption('),end=source.indexOf('async function showMatchResult(',start);
+ const box={currentBattle:{},setCaption:text=>{box.caption=text;}};vm.createContext(box);vm.runInContext(source.slice(start,end),box);
+ const event={deadIds:['old'],state:[{id:'old',name:'Old'}],legendIds:[]};
+ box.setMatchEndingCaption(event);assert.match(box.caption,/💀 3個/);
+ box.currentBattle={defeatLimit:10};box.setMatchEndingCaption(event);assert.match(box.caption,/💀 10個/);
 });
 test('browser and generated GAS engine give identical complete seeded matches and plans',()=>{
  const gas=fs.readFileSync(path.join(__dirname,'../gas/Engine.gs'),'utf8');assert.equal(gas,shared);

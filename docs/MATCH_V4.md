@@ -1,5 +1,7 @@
 # 最大10ターン方式（rulesVersion 4）：実装・検証・切り替え手順
 
+**2026-10-21の💀10・累積表示への変更は [TEN_DEFEATS.md](TEN_DEFEATS.md) を優先する。本文の「3個でボチ」や3個並列表示は変更前の履歴。**
+
 作業ブランチ：`feat/ten-turn-matches`、追加UI修正：`fix/battle-menu-touch-target`。テスト先の実プレイはユーザー確認済み。本番GAS差し替え後のプレビューも16体・draft 0件で一致し、停止・ルール配備・移行の案内後、ユーザーから移行後プレビュー `activeCount:16, emojinCount:0, draftCount:0` を受領した。フロント9d97ecfのGitHub Pages公開成功とHTML/JS/CSS/SWの一致を確認済み。maintenance解除・トリガー再開の手順は提示済みだが、実行完了の報告は未受領。
 
 ## 稼働コードの照合結果と残る前提

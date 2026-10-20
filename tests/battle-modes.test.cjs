@@ -62,7 +62,7 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
   let documents=new Map();
   const put=(path,value)=>documents.set(path,clone(value));
   put('wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch,revision:1,recentOperations:[]});
-  put('config/battle',{rulesVersion:4,maintenance:false});
+  put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false});
   put('meta/game',{battleSeq:0,legendSeq:0,...meta});
   for(const e of pool){
     put('emojins/'+e.id,e);
@@ -97,7 +97,7 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
     operation(mode='forced',ids=mode==='mine'?['mine','champ']:['champ','mine']){
       const pair=ids.map(id=>documents.get('emojins/'+id));
       return {id:'battle-test',action:'battle',data:{uid:'me',hatchReward:true,walletVersion:2,battleRequest:{
-        battleId:'test',rulesVersion:4,mode,ids,seed:1,at:Date.now(),
+        battleId:'test',rulesVersion:4,defeatLimit:10,mode,ids,seed:1,at:Date.now(),
         expected:pair.map(E.recordVersion)}}};
     },
     run:op=>sandbox.writeOperation(op)
@@ -178,7 +178,26 @@ test('old uncommitted v3 request is archived and cancelled without cost, hatch o
   assert.equal(db.local.cancelledOperations.length,1);
 });
 test('maintenance rejects a match before changing any financial or world data',async()=>{
-  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,maintenance:true});
+  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:true});
   await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
   assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
+});
+test('uncommitted three-defeat request is cancelled without charge or changing the match',async()=>{
+ const db=database(),op=db.operation(),before=db.read('wallets/me');
+ delete op.data.battleRequest.defeatLimit;
+ const result=await db.run(op);assert.equal(result.cancelled,true);
+ assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
+});
+test('already saved three-defeat log is returned unchanged, without charging again',async()=>{
+ const db=database(),op=db.operation(),before=db.read('wallets/me');
+ delete op.data.battleRequest.defeatLimit;
+ const log={rulesVersion:4,battleId:'test',deadIds:['old'],after:[{id:'old',status:'dead',defeats:3}]};
+ db.put('battles/test',{seq:7,json:JSON.stringify(log)});
+ const result=await db.run(op);assert.deepEqual(clone(result.log),log);
+ assert.deepEqual(db.read('wallets/me'),before);assert.equal(result.cancelled,undefined);
+});
+test('old gate without the ten-defeat flag cannot start a new transaction',async()=>{
+ const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,maintenance:false});
+ await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
+ assert.deepEqual(db.read('wallets/me'),before);
 });

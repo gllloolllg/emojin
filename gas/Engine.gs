@@ -28,7 +28,7 @@
   };
   const EMOJIS = ["🦐","🐙","🍙","🤖","👾","💩","🐸","🦖","🦕","🌷","🍄","🦆","🦀","🍋","🍞","🥑","🐌","👻","🗿","🦑","🐧","🐼","🦊","🦋","🐢","🦔","🐟","🐳","🌵","🍆","🥕","🍥","🍣","🍔","🍟","🍩","🍮","🧀","🧊","🚽","🛸","🚀","🧸","🪩","🦷","🧠","🫀","🪼","🦎","🐣","🦭","🐈","🍤","🥦","🍑","🌝","🥸","🤡","👹","👺","👽","👄","💃","🕺","🛌","🐒","🦍","🦧","🐕","🐩","🐺","🦝","🐈‍⬛","🐅","🐆","🐴","🫎","🫏","🐎","🦓","🦌","🦬","🐃","🐄","🐖","🐗","🐑","🐫","🦙","🦒","🐘","🦣","🦏","🦛","🐀","🐇","🐿️","🦫","🦇","🐨","🦥","🦦","🦨","🦘","🦡","🐓","🐤","🐦","🕊️","🦅","🦢","🦉","🦤","🪶","🦩","🦚","🦜","🪽","🐦‍⬛","🪿","🐦‍🔥","🐊","🐍","🐉","🐬","🫍","🐠","🐡","🦈","🐚","🪸","🦞","🦪","🐛","🐜","🐝","🪲","🐞","🦗","🦟","🪰","💐","🌸","🌹","🌻","🌱","🌴","🍀","🍁","🍇","🍈","🍉","🍊","🍌","🍍","🍎","🍒","🍓","🥝","🥔","🌽","🌶️","🫑","🧄","🥜","🫛","🥐","🥖","🥨","🥞","🍖","🍕","🌭","🍳","🍱","🍜","🍡","🍦","🍪","🎂","🍫","🍬","🍭","🍼","☕","🍾","🍷","🍺","🧋","🔪","🏺","🎃","🎄","🎈","🎉","🎎","🎁","⚾","🏀","🏈","🥊","⛳","⛸️","🤿","🥌","🔫","🎱","🪄","🎮","🎴","🧞‍♂️","🧟","🫈","🌍","🗾","🧭","🌋","🪵","🗼","🗽","🎡","🚂","🚃","🚑","🚒","🚓","🚚","🏍️","🛵","🛺","🚲","🛴","🛢️","⛽","🛞","🚨","🪂","🚁","🌪️","🕶️","👘","👛","⛑️","📢","🎸","💴","✒️","📌","🔨","🚬","🪬"];
 
-  const RULES_VERSION = 4, MAX_TURNS = 10;
+  const RULES_VERSION = 4, MAX_TURNS = 10, DEFEAT_LIMIT = 10;
   const INITIAL_MOJI = 2000;
   const GENERATION_COSTS = Object.freeze([100,200,400,800,1000,1200]);
   function generationCost(emojins,ownerUid) {
@@ -89,7 +89,7 @@
     if (!Number.isInteger(e.maxHp) || e.maxHp < 1 || !Number.isFinite(e.currentHp) || e.currentHp <= 0) throw new Error("Invalid HP.");
     if (!Number.isInteger(e.stars) || e.stars < 0 || e.stars >= 50) throw new Error("Invalid stars.");
     if ((e.cursedSlots || []).some(s => !Number.isInteger(s) || s < 0 || s > 5)) throw new Error("Invalid curse.");
-    if(e.rulesVersion===RULES_VERSION && (!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=3||e.maxHp<5||e.maxHp>8))throw Error('Invalid match record.');
+    if(e.rulesVersion===RULES_VERSION && (!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=DEFEAT_LIMIT||e.maxHp<5||e.maxHp>8))throw Error('Invalid match record.');
   }
 
   /*
@@ -268,7 +268,7 @@
     return [e.currentHp,e.stars,e.status,e.poisoned,e.cursedSlots,e.defeats||0,e.rulesVersion||3,e.recordVersion||0];
   }
   function battleDocument(log) {
-    return {rulesVersion:RULES_VERSION,seq:log.seq,ownerUids:log.ownerUids,
+    return {rulesVersion:RULES_VERSION,defeatLimit:log.defeatLimit,seq:log.seq,ownerUids:log.ownerUids,
       emojinIds:log.before.map(e=>e.id),after:log.after,json:JSON.stringify(log)};
   }
   function battle(inputA,inputB,rng=Math.random,now=Date.now(),battleId=id('b')) {
@@ -296,7 +296,7 @@
     states.forEach((e,side)=>{
       e.stars=Math.min(50,e.stars+awards[side].stars);
       e.defeats=Number(e.defeats||0)+awards[side].defeats;
-      if(e.defeats>=3){e.status='dead';e.endedAt=now;deadIds.push(e.id);}
+      if(e.defeats>=DEFEAT_LIMIT){e.status='dead';e.endedAt=now;deadIds.push(e.id);}
       else if(e.stars>=50){e.status='legend';e.endedAt=now;legendIds.push(e.id);}
       e.rulesVersion=RULES_VERSION;e.recordVersion=Number(e.recordVersion||0)+1;e.lastBattleId=battleId;
     });
@@ -304,7 +304,7 @@
     const finalState=clone(states);
     const after=states.map(e=>({...e,currentHp:e.maxHp,poisoned:false,cursedSlots:[]}));
     events.push({type:'finish',turn:turns.length,state:finalState,awards,result,deadIds,legendIds});
-    return {rulesVersion:RULES_VERSION,battleId,battleAt:now,emojinAId:inputA.id,emojinBId:inputB.id,
+    return {rulesVersion:RULES_VERSION,defeatLimit:DEFEAT_LIMIT,battleId,battleAt:now,emojinAId:inputA.id,emojinBId:inputB.id,
       ownerNames:[...new Set([inputA.ownerName,inputB.ownerName])],before,after,finalState,turns,events,awards,result,deadIds,legendIds};
   }
 
@@ -426,7 +426,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { RULES_VERSION, MAX_TURNS, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { RULES_VERSION, MAX_TURNS, DEFEAT_LIMIT, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -6,7 +6,7 @@ function previewV4Migration() {
   for(const row of active) {
     const e=EmojinEngine.migrateActive(row.data);
     if(!Number.isInteger(e.maxHp)||e.maxHp<5||e.maxHp>8||e.currentHp!==e.maxHp||e.poisoned||e.cursedSlots.length
-      ||!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=3||!Number.isInteger(e.stars)||e.stars<0||e.stars>=50) {
+      ||!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=EmojinEngine.DEFEAT_LIMIT||!Number.isInteger(e.stars)||e.stars<0||e.stars>=50) {
       throw Error('Invalid active record; inspect '+row.path);
     }
   }
@@ -17,7 +17,7 @@ function previewV4Migration() {
   console.log(JSON.stringify(report));return report;
 }
 function pauseForV4Migration() {
-  return firestore_().transaction(tx=>({writes:[tx.write('config/battle',{rulesVersion:4,maintenance:true})],value:{paused:true}}));
+  return firestore_().transaction(tx=>({writes:[tx.write('config/battle',{rulesVersion:4,defeatLimit:EmojinEngine.DEFEAT_LIMIT,maintenance:true})],value:{paused:true}}));
 }
 function migrateToV4() {
   const store=firestore_();
@@ -53,7 +53,7 @@ function finishV4Migration() {
   return store.transaction(tx=>{
     const gate=tx.get('config/battle');if(gate?.maintenance!==true)throw Error('Not paused');
     const meta=tx.get('meta/game')||{};
-    return {writes:[tx.write('config/battle',{rulesVersion:4,maintenance:false}),
+    return {writes:[tx.write('config/battle',{rulesVersion:4,defeatLimit:EmojinEngine.DEFEAT_LIMIT,maintenance:false}),
       tx.write('meta/game',{...meta,battleRulesVersion:4,revision:Number(meta.revision||0)+1})],value:{enabled:true}};
   });
 }

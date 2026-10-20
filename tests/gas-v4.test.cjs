@@ -20,7 +20,7 @@ function runtime(initial,{retry=false}={}) {
 const resident=(id,uid,extra={})=>({id,name:id,ownerUid:uid,ownerName:uid,isNpc:uid==='npc',emoji:'🐸',maxHp:8,currentHp:8,
  slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',createdAt:0,endedAt:null,...extra});
 function initial() {
- return {'config/battle':{rulesVersion:4,maintenance:false},'meta/game':{battleSeq:0,legendSeq:0,hour:99},
+ return {'config/battle':{rulesVersion:4,defeatLimit:10,maintenance:false},'meta/game':{battleSeq:0,legendSeq:0,hour:99},
   'emojins/a':resident('a','u1'),'emojins/b':resident('b','u2'),
   'owners/u1':{uid:'u1',name:'A',createdAt:1,lastAccessAt:1,unreadBattleIds:[]},
   'owners/u2':{uid:'u2',name:'B',createdAt:1,lastAccessAt:1,unreadBattleIds:[]}};
@@ -29,6 +29,25 @@ function runHour(c,store,hour) {
  for(let i=0;i<100;i++){const result=c.scheduledStep_(store,hour);if(result.done)return result;}
  throw Error('Scheduler did not converge');
 }
+test('scheduled matches keep losses three and nine alive; only loss ten retires',()=>{
+ for(const prior of [2,8,9]){
+  const data=initial();data['emojins/a'].slots=Array(6).fill('strong');
+  data['emojins/b'].slots=Array(6).fill('blank');data['emojins/b'].defeats=prior;
+  for(let i=0;i<8;i++)data['emojins/npc-'+i]=resident('npc-'+i,'npc',{slots:Array(6).fill('strong')});
+  const {c,store}=runtime(data),E=c.EmojinEngine,pool=store.query('emojins',null,true).map(row=>row.data);
+  let hour=100;
+  while(!E.sample(pool,2,E.seeded(((hour*2654435761)^0x50414952)>>>0)).some(e=>e.id==='b'))hour++;
+  runHour(c,store,hour);
+  const loser=store.get('emojins/b');assert.equal(loser.defeats,prior+1);
+  assert.equal(loser.status,prior===9?'dead':'active');
+ }
+});
+test('new GAS does not write while the ten-defeat rollout flag is missing',()=>{
+ const data=initial();delete data['config/battle'].defeatLimit;
+ const {c,store,records}=runtime(data),before=JSON.stringify([...records]);
+ const result=c.scheduledStep_(store,100);assert.equal(result.paused,true);
+ assert.equal(JSON.stringify([...records]),before);
+});
 test('scheduled whole match commits once on retry/hour marker; NPCs and unread count once',()=>{
  const {c,store}=runtime(initial(),{retry:true});const result=runHour(c,store,100);
  assert.equal(result.done,true);assert.equal(store.get('meta/game').battleSeq,1);
@@ -52,7 +71,7 @@ test('suspension and five-day dormancy are maintained by the Firestore scheduler
  assert.equal(store.get('owners/u1').unreadBattleIds.length,7);
 });
 test('empty worlds initialize/refill without generating a match or incrementing unread counts',()=>{
- const data={'config/battle':{rulesVersion:4,maintenance:false}};
+ const data={'config/battle':{rulesVersion:4,defeatLimit:10,maintenance:false}};
  const {c,store}=runtime(data);
  const result=c.scheduledStep_(store,100,{initializeOnly:true});
  assert.equal(result.done,true);assert.equal(store.query('emojins',null,true).length,10);

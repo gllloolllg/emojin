@@ -72,7 +72,7 @@ function firestore_() {
 function setupGame() {
   // Run manually after the migration and staging checks, never on file upload.
   const store=firestore_(),gate=store.get('config/battle');
-  if(gate?.rulesVersion!==EmojinEngine.RULES_VERSION || gate.maintenance!==false)throw Error('Migration is not enabled');
+  if(gate?.rulesVersion!==EmojinEngine.RULES_VERSION || gate.defeatLimit!==EmojinEngine.DEFEAT_LIMIT || gate.maintenance!==false)throw Error('Migration is not enabled');
   scheduledStep_(store,Math.floor(Date.now()/3600000),{initializeOnly:true});
   ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='hourlyBattle').forEach(t=>ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('hourlyBattle').timeBased().everyMinutes(1).create();
@@ -82,7 +82,7 @@ function scheduledStep_(store,currentHour,options={}) {
   const at=Date.now();
   return store.transaction(tx=>{
     const gate=tx.get('config/battle');
-    if(gate?.rulesVersion!==EmojinEngine.RULES_VERSION || gate.maintenance!==false)return {writes:[],value:{done:true,paused:true}};
+    if(gate?.rulesVersion!==EmojinEngine.RULES_VERSION || gate.defeatLimit!==EmojinEngine.DEFEAT_LIMIT || gate.maintenance!==false)return {writes:[],value:{done:true,paused:true}};
     const storedMeta=tx.get('meta/game');
     const meta=storedMeta||{battleSeq:0,legendSeq:0,hour:options.initializeOnly?currentHour:currentHour-1,runningHour:0,scheduledCount:0};
     const hour=Number(meta.runningHour||0)>Number(meta.hour||0)?Number(meta.runningHour):currentHour;

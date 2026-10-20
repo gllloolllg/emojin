@@ -15,7 +15,7 @@ function database({count=0,balance=2000,hatch=0,draft=null,retryCount=null,owner
  const documents=new Map();let population=emojins(count),retryPending=retryCount!==null;
  if(owner)documents.set('owners/me',{uid:'me',name:'Owner',createdAt:Date.now(),unreadBattleIds:[]});
  if(account)documents.set('wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch,draft,revision:1,recentOperations:[]});
- documents.set('config/battle',{rulesVersion:4,maintenance:false});
+ documents.set('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false});
  documents.set('meta/game',{battleSeq:0,legendSeq:0,revision:1});
  const snap=path=>({exists:()=>documents.has(path),data:()=>documents.has(path)?clone(documents.get(path)):undefined});
  const sandbox={E,crypto:webcrypto,uid:'me',local:{uid:'me',wallet:{balance:legacy,updatedAt:Date.now()},hatch:0,pending:[]},

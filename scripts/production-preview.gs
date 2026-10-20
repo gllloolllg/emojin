@@ -37,7 +37,7 @@ function previewProductionV4() {
         (e.rulesVersion != null && !Number.isInteger(e.rulesVersion)) ||
         !Number.isInteger(e.maxHp) || e.maxHp < 5 || e.maxHp > (version===4?8:10) ||
         !Number.isInteger(e.stars) || e.stars < 0 || e.stars >= 50 ||
-        !Number.isInteger(e.defeats || 0) || (e.defeats || 0) < 0 || (e.defeats || 0) >= 3 ||
+        !Number.isInteger(e.defeats || 0) || (e.defeats || 0) < 0 || (e.defeats || 0) >= 10 ||
         (version===4 && (!Number.isInteger(e.defeats) || e.currentHp!==e.maxHp || e.poisoned!==false || !Array.isArray(e.cursedSlots) || e.cursedSlots.length))) {
       invalid.push({path:row.path,reason:'Unexpected active record; inspect before migration'});continue;
     }

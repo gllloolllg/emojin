@@ -21,7 +21,7 @@ function initializeTestWorld() {
     }
     for(const name of ['emojins','owners','wallets','battles','legends'])
       if(tx.query(name).length)throw Error('Test initialization requires an empty database: '+name);
-    return {writes:[tx.write('config/battle',{rulesVersion:4,maintenance:false}),
+    return {writes:[tx.write('config/battle',{rulesVersion:4,defeatLimit:EmojinEngine.DEFEAT_LIMIT,maintenance:false}),
       tx.write('meta/game',{battleRulesVersion:4,battleSeq:0,legendSeq:0,hour:hour-1,runningHour:0,
         scheduledCount:0,revision:0,suspendedOwnerUids:[],dormantOwnerUids:[]})],value:{initialized:true}};
   });

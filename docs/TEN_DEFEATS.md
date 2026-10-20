@@ -1,6 +1,6 @@
 # 💀10でボチ・累積カウンター（2026-10-21）
 
-作業ブランチ：`feat/ten-defeat-limit`。実装・ローカル検証済み。本番への公開・GAS差し替え・ルール配備・設定変更は未実施。
+作業ブランチ：`feat/ten-defeat-limit`。実装・ローカル検証済み。ユーザーの本番反映依頼によりGAS差し替えを案内し、本番プレビュー `activeCount:16, emojinCount:0, draftCount:0` を受領。個体移行は不要。pauseForV4Migration実行と新ルール公開の案内に対し「完了」の報告を受領し、フロントを公開する段階。finishV4Migrationによる再開・setupGameによるトリガー再登録は、画面の公開確認後に行う。
 
 ## 動作
 

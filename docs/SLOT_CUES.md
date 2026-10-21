@@ -1,6 +1,6 @@
 # MOJI SPIN 予告演出（2026-10-21）
 
-作業ブランチ：`feat/slot-preview-effects`。A〜Dの7パターンを表示層に追加。本番公開は別途依頼を受けて実施する。GAS・Firestoreルール・データ移行は不要。
+作業ブランチ：`feat/slot-preview-effects`。A〜Dの7パターンを表示層に追加。2026-10-21、ユーザーの「公開して」を受領し、検証済みの変更をmainへ反映してGitHub Pagesへ公開する。GAS・Firestoreルール・データ移行は不要。
 
 ## 境界と振り分け
 

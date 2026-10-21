@@ -1689,6 +1689,133 @@ async function collectLoot(drop) {
 /* MOJI SPIN presentation. Every result comes from the saved, pre-drawn round. */
 let slotSession=null;
 const SLOT=window.MojiSpinEngine;
+// Presentation only. These draws never enter the saved round or the game RNG.
+const SLOT_CUES=Object.freeze({
+  weights:Object.freeze({
+    blank:Object.freeze([{type:'A',weight:10.5},{type:'B',weight:4},{type:'C',weight:.5},{type:'D',weight:0},{type:null,weight:85}].map(Object.freeze)),
+    wild:Object.freeze([{type:'A',weight:35},{type:'B',weight:30},{type:'C',weight:10},{type:'D',weight:5},{type:null,weight:20}].map(Object.freeze))
+  }),
+  shake:3000,blankHold:2000,flyIn:2200,flyHold:1000,flyOut:900,
+  slow:6000,step:70,allSpin:6000,blackHold:2000,drop:450,landHold:2000,fade:1000
+});
+function chooseSlotCue(center,rng=Math.random){
+  const choices=SLOT_CUES.weights[center];if(!choices)return null;
+  let value=rng()*100;
+  for(const choice of choices){value-=choice.weight;if(value<0)return choice.type;}
+  return null;
+}
+function resetSlotCueVisuals(session){
+  if(session.cueReel){cancelAnimationFrame(session.cueReel.frame);session.cueReel.track.remove();session.cueReel=null;}
+  if(session.cueAnimation){session.cueAnimation.cancel();session.cueAnimation=null;}
+  if(session.cueLayer){session.cueLayer.getAnimations({subtree:true}).forEach(a=>a.cancel());session.cueLayer.remove();session.cueLayer=null;}
+  session.panel.querySelectorAll('.cue-special,.cue-shaking').forEach(el=>{
+    el.classList.remove('cue-special','cue-shaking');el.style.removeProperty('--slot-cue-height');
+  });
+}
+function paintSpecialSlotReel(state,phase){
+  const height=state.cell.clientHeight;
+  state.cell.style.setProperty('--slot-cue-height',height+'px');
+  state.track.style.transform=`translateY(${-((phase%5+5)%5)*height}px)`;
+}
+function startSpecialSlotReel(session,cell){
+  const track=document.createElement('div');track.className='slot-cue-track';track.setAttribute('aria-hidden','true');
+  track.style.fontSize=getComputedStyle(cell.querySelector('.spin-glyph')).fontSize;
+  track.innerHTML=Array.from({length:10},(_,i)=>`<div class="slot-cue-face ${i%5===4?'cue-blank':''}">${i%5===4?'':'🤡'}</div>`).join('');
+  cell.classList.add('cue-special');cell.appendChild(track);
+  const state={cell,track,started:performance.now(),frame:null};session.cueReel=state;
+  function frame(now){paintSpecialSlotReel(state,(now-state.started)/SLOT_CUES.step);state.frame=requestAnimationFrame(frame);}
+  frame(state.started);
+}
+async function slotCueA(session){
+  const cell=slotCells()[4];cell.classList.add('cue-shaking');
+  const animation=cell.animate([
+    {transform:'translate(0,0)'},{transform:'translate(-8px,6px)'},{transform:'translate(7px,-7px)'},
+    {transform:'translate(-6px,-4px)'},{transform:'translate(8px,5px)'},{transform:'translate(0,0)'}
+  ],{duration:100,iterations:SLOT_CUES.shake/100});session.cueAnimation=animation;
+  try {await animation.finished;}finally{animation.cancel();session.cueAnimation=null;cell.classList.remove('cue-shaking');}
+}
+function slotCueOffscreen(size,rng=Math.random){
+  const side=Math.floor(rng()*4),margin=size*2+80;
+  if(side===0)return {x:rng()*innerWidth,y:-margin};
+  if(side===1)return {x:innerWidth+margin,y:rng()*innerHeight};
+  if(side===2)return {x:rng()*innerWidth,y:innerHeight+margin};
+  return {x:-margin,y:rng()*innerHeight};
+}
+function slotCueFlightFrames(from,to){
+  return Array.from({length:13},(_,i)=>{
+    const t=i/12,wobble=Math.sin(t*Math.PI*6)*22*Math.sin(t*Math.PI);
+    const x=from.x+(to.x-from.x)*t+wobble,y=from.y+(to.y-from.y)*t-wobble*.6;
+    return {transform:`translate(calc(-50% + ${x}px),calc(-50% + ${y}px)) rotate(${Math.sin(t*Math.PI*4)*12}deg)`};
+  });
+}
+async function slotCueB(session,spin){
+  await delay(SLOT_CUES.blankHold);
+  const cell=slotCells()[4],rect=cell.getBoundingClientRect(),x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+  const size=parseFloat(getComputedStyle(cell.querySelector('.spin-glyph')).fontSize);
+  const layer=document.createElement('div');layer.className='slot-cue-flight-layer';layer.setAttribute('aria-hidden','true');
+  const clown=document.createElement('span');clown.className='slot-cue-clown';clown.textContent='🤡';
+  clown.style.cssText=`left:${x}px;top:${y}px;font-size:${size}px`;
+  layer.appendChild(clown);document.body.appendChild(layer);session.cueLayer=layer;
+  try {
+    const start=slotCueOffscreen(size),arrive=clown.animate(slotCueFlightFrames({x:start.x-x,y:start.y-y},{x:0,y:0}),
+      {duration:SLOT_CUES.flyIn,easing:'ease-in-out',fill:'forwards'});
+    await arrive.finished;arrive.cancel();
+    await delay(SLOT_CUES.flyHold);
+    if(spin.cells[4]==='wild')paintSlotCell(cell,'wild');
+    else {
+      const end=slotCueOffscreen(size);
+      await clown.animate(slotCueFlightFrames({x:0,y:0},{x:end.x-x,y:end.y-y}),
+        {duration:SLOT_CUES.flyOut,easing:'ease-in',fill:'forwards'}).finished;
+    }
+  }finally{layer.getAnimations({subtree:true}).forEach(a=>a.cancel());layer.remove();session.cueLayer=null;}
+}
+async function slotCueC(session,spin){
+  const state=session.cueReel;cancelAnimationFrame(state.frame);
+  const started=performance.now(),phase=((started-state.started)/SLOT_CUES.step)%5;
+  const velocity=SLOT_CUES.slow/SLOT_CUES.step,target=spin.cells[4]==='blank'?4:0;
+  const end=Math.ceil((phase+velocity/3-target)/5)*5+target,distance=end-phase;
+  await new Promise(resolve=>{
+    function frame(now){
+      const t=Math.max(0,Math.min(1,(now-started)/SLOT_CUES.slow));
+      // Cubic Hermite motion: keep the incoming speed, then continuously slow to zero.
+      const travel=(t*t*t-2*t*t+t)*velocity+(-2*t*t*t+3*t*t)*distance;
+      paintSpecialSlotReel(state,phase+travel);
+      if(t<1)state.frame=requestAnimationFrame(frame);else resolve();
+    }
+    frame(started);
+  });
+}
+function slotCueConfetti(layer){
+  const colors=['#f9df91','#ff72c7','#a5f3df','#fff','#bda2ff'];
+  for(let i=0;i<85;i++){
+    const p=document.createElement('i');p.className='slot-cue-confetti';p.style.left=(Math.random()*100)+'%';
+    p.style.background=colors[i%colors.length];layer.appendChild(p);
+    p.animate([{transform:'translateY(0) rotate(0deg)',opacity:1},
+      {transform:`translate(${(Math.random()-.5)*innerWidth*.7}px,${innerHeight+90}px) rotate(${360+Math.random()*720}deg)`,opacity:0}],
+      {duration:2400+Math.random()*700,easing:'cubic-bezier(.25,.3,.65,1)'}).finished.then(()=>p.remove()).catch(()=>p.remove());
+  }
+}
+async function slotCueD(session,spin){
+  await delay(Math.max(0,SLOT_CUES.allSpin-(performance.now()-session.reelStarted)));
+  const layer=document.createElement('div');layer.className='slot-cue-blackout';layer.setAttribute('aria-hidden','true');
+  document.body.appendChild(layer);session.cueLayer=layer;
+  try {
+    stopSlotReels(session);slotCells().forEach((cell,i)=>paintSlotCell(cell,spin.cells[i]));
+    await delay(SLOT_CUES.blackHold);
+    const giant=document.createElement('span');giant.className='slot-cue-giant';giant.textContent='🤡';layer.appendChild(giant);
+    await giant.animate([{transform:`translate(-50%,calc(-50% - ${innerHeight}px))`},{transform:'translate(-50%,-50%)'}],
+      {duration:SLOT_CUES.drop,easing:'cubic-bezier(.65,.02,.95,.7)'}).finished;
+    slotCueConfetti(layer);
+    giant.animate([{transform:'translate(-50%,-50%) scale(1)'},{transform:'translate(-50%,-50%) scale(1.12,.88)',offset:.3},
+      {transform:'translate(-50%,-50%) scale(1)'}],{duration:260});
+    await delay(SLOT_CUES.landHold);
+    await Promise.all([
+      layer.animate([{backgroundColor:'#000'},{backgroundColor:'#0000'}],{duration:SLOT_CUES.fade,fill:'forwards'}).finished,
+      giant.animate([{transform:'translate(-50%,-50%) scale(1)',opacity:1},{transform:'translate(-50%,-50%) scale(.12)',opacity:0}],
+        {duration:SLOT_CUES.fade,fill:'forwards',easing:'ease-in'}).finished
+    ]);
+  }finally{layer.getAnimations({subtree:true}).forEach(a=>a.cancel());layer.remove();session.cueLayer=null;}
+}
 function installSlotButton(){
   if(!$('mojiSpinButton')){
     const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
@@ -1812,6 +1939,7 @@ function stopSlotReels(session){
   session.panel.querySelectorAll('.spin-cell').forEach(el=>el.classList.remove('spinning'));
 }
 function startSlotReels(session,free){
+  resetSlotCueVisuals(session);
   stopSlotReels(session);
   session.reelStarted=performance.now();
   $('spinLines').innerHTML='';$('spinWinBanner').className='spin-win-banner';$('spinWinBanner').textContent='';
@@ -1819,22 +1947,30 @@ function startSlotReels(session,free){
     el.classList.remove('winning');el.classList.toggle('locked',free&&i===4);
     if(free&&i===4)paintSlotCell(el,'wild');else el.classList.add('spinning');
   });
+  if(!free&&session.cue==='C')startSpecialSlotReel(session,cells[4]);
   let tick=0;
   session.timer=setInterval(()=>{
-    cells.forEach((el,i)=>{if(el.classList.contains('spinning'))paintSlotCell(el,SLOT.CONFIG.symbols[(tick+i*3)%SLOT.CONFIG.symbols.length].id);});tick++;
+    cells.forEach((el,i)=>{if(el.classList.contains('spinning')&&!(i===4&&session.cueReel))paintSlotCell(el,SLOT.CONFIG.symbols[(tick+i*3)%SLOT.CONFIG.symbols.length].id);});tick++;
   },70);
 }
 async function animateSlotSpin(session,spin){
   if(!session.timer)startSlotReels(session,spin.free);
+  const cue=spin.free?null:session.cue;
+  try {
+  if(cue==='D'){await slotCueD(session,spin);return;}
   await delay(Math.max(0,1000-(performance.now()-session.reelStarted)));
   for(const index of [0,1,2,5,8,7,6,3,4]){
-    const cell=slotCells()[index];cell.classList.remove('spinning');paintSlotCell(cell,spin.cells[index]);
+    if(index===4&&cue==='A')await slotCueA(session);
+    if(index===4&&cue==='C')await slotCueC(session,spin);
+    const cell=slotCells()[index];cell.classList.remove('spinning');paintSlotCell(cell,index===4&&cue==='B'?'blank':spin.cells[index]);
     if(!(spin.free&&index===4)){
       cell.querySelector('.spin-glyph').animate([{transform:'translateY(-7px) scale(.94)'},{transform:'translateY(3px) scale(1.04)',offset:.65},{transform:'translateY(0) scale(1)'}],{duration:260,easing:'ease-out'});
     }
     if(index!==4)await delay(100);
   }
   stopSlotReels(session);
+  if(cue==='B')await slotCueB(session,spin);
+  }finally{resetSlotCueVisuals(session);session.cue=null;}
 }
 function slotConfetti(count=36){
   const host=$('spinFx');if(!host)return;
@@ -1949,6 +2085,8 @@ async function runSlotSession(session,recover=false){
   if(!recover && (session.record||cloud.slotPending||cloud.wallet.balance<SLOT.BET))return;
   // Draw the complete paid game and every free spin exactly once, on this click.
   const candidate=recover?null:SLOT.createRound();
+  const cueRound=session.record?.round||candidate;
+  session.cue=chooseSlotCue(cueRound.spins[0].cells[4]);
   const previous=slotCells().map(el=>el.dataset.symbol);
   session.running=true;busy=true;session.win=0;
   $('spinWinLabel').textContent='WIN';$('spinWinLabel').classList.remove('is-total');
@@ -1961,6 +2099,9 @@ async function runSlotSession(session,recover=false){
     if(!record?.round)throw Error('スピン結果を確認できませんでした。');
     session.record=record;session.balance=record.balanceBefore-record.round.bet;refreshSlotUI();
     const round=SLOT.validateRound(record.round);
+    if(round.id!==cueRound.id||round.spins[0].cells[4]!==cueRound.spins[0].cells[4]){
+      session.cue=null;resetSlotCueVisuals(session);
+    }
     const totals=round.spins.map((_,i)=>round.spins.slice(0,i+1).reduce((sum,spin)=>sum+spin.payout,0));
     await animateSlotSpin(session,round.spins[0]);await animateSlotWin(session,round.spins[0],totals[0]);
     if(round.freeCount){
@@ -1989,7 +2130,7 @@ async function runSlotSession(session,recover=false){
     if(!session.record){slotCells().forEach((el,i)=>paintSlotCell(el,previous[i]));}
     reportError(error);$('spinPhase').textContent='通信を確認して開き直してください';
   }
-  finally {stopSlotReels(session);session.running=false;busy=false;refreshNav();refreshSlotUI();}
+  finally {stopSlotReels(session);resetSlotCueVisuals(session);session.cue=null;session.running=false;busy=false;refreshNav();refreshSlotUI();}
 }
 
 let hatchAnimating=false;

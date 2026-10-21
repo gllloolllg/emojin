@@ -76,6 +76,7 @@ async def main():
    await ctx.add_init_script('window.fixture='+json.dumps(fixtures)+';'+MOCK)
    await ctx.route('https://**/*',lambda r:r.abort())
    served=SOURCE.replace('createCloud().then(cloud=>{','Promise.resolve(window.mockCloud).then(cloud=>{')
+   served=served.replace('function chooseSlotCue(center,rng=Math.random){','function chooseSlotCue(center,rng=Math.random){return null;')
    served=served.replace('function delay(ms) {','function delay(ms) { window.audit.delays.push(ms);')
    served=served.replace('reduced()?Math.min(ms,55):ms','Math.min(ms,10)')
    served=served.replace('/* Firebase configuration is public.',r'''
@@ -97,11 +98,9 @@ window.MojiSpinEngine=Object.freeze({...realSlotEngine,createRound(){return stru
    served=served.replace('function startSlotReels(session,free){','''
 function startSlotReels(session,free){
  if(free)audit.freeFrames.push({kind:'start',count:Number(document.querySelector('#spinRemaining').textContent)});''')
-   served=served.replace('  stopSlotReels(session);\n}\nfunction slotConfetti','''
-  stopSlotReels(session);
+   served=served.replace("  if(cue==='B')await slotCueB(session,spin);",'''
   if(spin.free)audit.freeFrames.push({kind:'stop',count:Number(document.querySelector('#spinRemaining').textContent)});
-}
-function slotConfetti''')
+  if(cue==='B')await slotCueB(session,spin);''')
    await ctx.route('**/app.js',lambda r:r.fulfill(status=200,content_type='application/javascript',body=served))
    page=await ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    await page.goto('http://127.0.0.1:'+str(server.server_address[1])+'/')
@@ -269,4 +268,5 @@ function slotConfetti''')
    await browser.close()
  finally:server.shutdown()
 
-asyncio.run(main())
+if __name__=='__main__':
+ asyncio.run(main())

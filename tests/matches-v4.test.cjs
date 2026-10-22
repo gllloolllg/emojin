@@ -58,12 +58,12 @@ test('poison/curse carry across turns but every persisted resident resets betwee
  }
  assert.equal(poison.finalState[1].currentHp,0);
 });
-test('zero through nine skulls stay active, tenth retires; winner does not lose past skulls',()=>{
- assert.equal(E.DEFEAT_LIMIT,10);
+test('fifth or later skull retires only on a new loss; counters never decrease',()=>{
+ assert.equal(E.DEFEAT_LIMIT,5);
  for(let prior=0;prior<10;prior++){
   const log=match(resident('a','strong',{defeats:1}),resident('b','blank',{defeats:prior}));
-  assert.equal(log.after[1].defeats,prior+1);assert.equal(log.after[1].status,prior===9?'dead':'active');
-  assert.equal(log.defeatLimit,10);
+  assert.equal(log.after[1].defeats,prior+1);assert.equal(log.after[1].status,prior>=4?'dead':'active');
+  assert.equal(log.defeatLimit,5);
   assert.equal(log.after[0].defeats,1);assert.equal(log.after[0].stars,3);
  }
 });
@@ -108,6 +108,7 @@ test('replay captions use the logged defeat limit, including old three-skull his
  const event={deadIds:['old'],state:[{id:'old',name:'Old'}],legendIds:[]};
  box.setMatchEndingCaption(event);assert.match(box.caption,/💀 3個/);
  box.currentBattle={defeatLimit:10};box.setMatchEndingCaption(event);assert.match(box.caption,/💀 10個/);
+ box.currentBattle={defeatLimit:5};box.setMatchEndingCaption(event);assert.match(box.caption,/💀 5個以上/);
 });
 test('browser and generated GAS engine give identical complete seeded matches and plans',()=>{
  const gas=fs.readFileSync(path.join(__dirname,'../gas/Engine.gs'),'utf8');assert.equal(gas,shared);
@@ -118,5 +119,31 @@ test('browser and generated GAS engine give identical complete seeded matches an
   assert.deepEqual(plain(l),plain(r));
   const owners={a:{uid:'a',unreadBattleIds:[]},b:{uid:'b',unreadBattleIds:[]}};
   assert.deepEqual(plain(E.planBattle([a,b],owners,{},l,E.seeded(seed))),plain(G.planBattle([a,b],owners,{},r,G.seeded(seed))));
+ }
+});
+
+test('grandfathered five through nine skulls survive wins, draws and legend promotion without a new skull',()=>{
+ for(let defeats=5;defeats<=9;defeats++){
+  for(const stars of [0,49]){
+   const log=match(resident('a','strong',{defeats,stars}),resident('b'));
+   assert.equal(log.after[0].defeats,defeats);assert.equal(log.after[0].status,stars===49?'legend':'active');
+   assert.equal(log.after[0].endedAt,stars===49?100000:null);assert.equal(log.deadIds.length,0);
+  }
+  const draw=match(resident('a','blank',{defeats}),resident('b','blank',{defeats}));
+  assert.ok(draw.after.every(e=>e.status==='active'&&e.defeats===defeats));
+  assert.equal(draw.deadIds.length,0);
+ }
+});
+test('simultaneous KO retires both at five or later, including NPCs and grandfathered records',()=>{
+ const log=match(resident('a','ram',{defeats:4,isNpc:true,maxHp:5,currentHp:5}),resident('b','ram',{defeats:9,maxHp:5,currentHp:5}));
+ assert.deepEqual(plain(log.after.map(e=>[e.defeats,e.status])),[[5,'dead'],[10,'dead']]);
+ assert.deepEqual(plain(log.deadIds),['a','b']);
+});
+test('score badges preserve actual five-through-ten counts, including historical graves',()=>{
+ const start=source.indexOf('function recordBadge('),end=source.indexOf('const HEART_PATH',start);
+ const box={E,star:()=>'<star>'};vm.createContext(box);vm.runInContext(source.slice(start,end),box);
+ for(const defeats of [0,4,5,6,7,8,9,10]){
+  const html=box.recordBadge({defeats,stars:1,status:defeats===10?'dead':'active'});
+  assert.ok(html.includes('×'+defeats+'</span>'));assert.ok(html.includes('敗北 '+defeats+' 回'));
  }
 });

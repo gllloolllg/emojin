@@ -1,5 +1,7 @@
 # 💀10でボチ・累積カウンター（2026-10-21）
 
+**次の変更仕様は [FIVE_DEFEATS.md](FIVE_DEFEATS.md) を参照。以下は旧10個方式の本番切り替え記録。**
+
 作業ブランチ：`feat/ten-defeat-limit`。実装・ローカル検証済み。ユーザーの本番反映依頼によりGAS差し替えを案内し、本番プレビュー `activeCount:16, emojinCount:0, draftCount:0` を受領。個体移行は不要。pauseForV4Migration実行と新ルール公開の案内に対し「完了」の報告を受領。4c9f5a7のGitHub Pages公開成功とHTML/JS/CSS/SWの一致を確認後、finishV4Migration・setupGame・トリガー確認の手順を提示し、ユーザーから「完了」を受領した。本番切り替え完了。
 
 ## 動作

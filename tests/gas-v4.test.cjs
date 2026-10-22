@@ -20,7 +20,7 @@ function runtime(initial,{retry=false}={}) {
 const resident=(id,uid,extra={})=>({id,name:id,ownerUid:uid,ownerName:uid,isNpc:uid==='npc',emoji:'🐸',maxHp:8,currentHp:8,
  slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',createdAt:0,endedAt:null,...extra});
 function initial() {
- return {'config/battle':{rulesVersion:4,defeatLimit:10,maintenance:false},'meta/game':{battleSeq:0,legendSeq:0,hour:99},
+ return {'config/battle':{rulesVersion:4,defeatLimit:5,maintenance:false},'meta/game':{battleSeq:0,legendSeq:0,hour:99},
   'emojins/a':resident('a','u1'),'emojins/b':resident('b','u2'),
   'owners/u1':{uid:'u1',name:'A',createdAt:1,lastAccessAt:1,unreadBattleIds:[]},
   'owners/u2':{uid:'u2',name:'B',createdAt:1,lastAccessAt:1,unreadBattleIds:[]}};
@@ -29,8 +29,8 @@ function runHour(c,store,hour) {
  for(let i=0;i<100;i++){const result=c.scheduledStep_(store,hour);if(result.done)return result;}
  throw Error('Scheduler did not converge');
 }
-test('scheduled matches keep losses three and nine alive; only loss ten retires',()=>{
- for(const prior of [2,8,9]){
+test('scheduled matches retire at the fifth or later new skull and preserve grandfathered inputs',()=>{
+ for(const prior of [2,3,4,5,6,7,8,9]){
   const data=initial();data['emojins/a'].slots=Array(6).fill('strong');
   data['emojins/b'].slots=Array(6).fill('blank');data['emojins/b'].defeats=prior;
   for(let i=0;i<8;i++)data['emojins/npc-'+i]=resident('npc-'+i,'npc',{slots:Array(6).fill('strong')});
@@ -39,10 +39,10 @@ test('scheduled matches keep losses three and nine alive; only loss ten retires'
   while(!E.sample(pool,2,E.seeded(((hour*2654435761)^0x50414952)>>>0)).some(e=>e.id==='b'))hour++;
   runHour(c,store,hour);
   const loser=store.get('emojins/b');assert.equal(loser.defeats,prior+1);
-  assert.equal(loser.status,prior===9?'dead':'active');
+  assert.equal(loser.status,prior>=4?'dead':'active');
  }
 });
-test('new GAS does not write while the ten-defeat rollout flag is missing',()=>{
+test('new GAS does not write while the five-defeat rollout flag is missing',()=>{
  const data=initial();delete data['config/battle'].defeatLimit;
  const {c,store,records}=runtime(data),before=JSON.stringify([...records]);
  const result=c.scheduledStep_(store,100);assert.equal(result.paused,true);
@@ -71,7 +71,7 @@ test('suspension and five-day dormancy are maintained by the Firestore scheduler
  assert.equal(store.get('owners/u1').unreadBattleIds.length,7);
 });
 test('empty worlds initialize/refill without generating a match or incrementing unread counts',()=>{
- const data={'config/battle':{rulesVersion:4,defeatLimit:10,maintenance:false}};
+ const data={'config/battle':{rulesVersion:4,defeatLimit:5,maintenance:false}};
  const {c,store}=runtime(data);
  const result=c.scheduledStep_(store,100,{initializeOnly:true});
  assert.equal(result.done,true);assert.equal(store.query('emojins',null,true).length,10);
@@ -130,4 +130,22 @@ test('REST adapter preserves Firestore types and retries aborted transactions wi
  assert.equal(lastWrite.fields.nested.mapValue.fields.x.integerValue,'7');
  assert.equal(lastWrite.fields.number.integerValue,'123');assert.equal(lastWrite.fields.nothing.nullValue,null);
  assert.ok(!lastWrite.name.startsWith('https://'));
+});
+
+test('cutover preview accepts active skulls five through nine without changing any residents',()=>{
+ const data=initial();
+ for(let defeats=5;defeats<=9;defeats++)data['emojins/legacy'+defeats]=resident('legacy'+defeats,'u1',{defeats});
+ const {c,store,records}=runtime(data),before=JSON.stringify([...records]);
+ const report=c.previewV4Migration();assert.equal(report.emojinCount,0);assert.equal(report.draftCount,0);
+ assert.equal(JSON.stringify([...records]),before);
+ c.pauseForV4Migration();c.finishV4Migration();
+ assert.equal(store.get('config/battle').defeatLimit,5);assert.equal(store.get('config/battle').maintenance,false);
+ for(let defeats=5;defeats<=9;defeats++)assert.deepEqual(store.get('emojins/legacy'+defeats),data['emojins/legacy'+defeats]);
+});
+test('new GAS refuses both old three-skull and ten-skull enabled gates without writes',()=>{
+ for(const defeatLimit of [3,10]){
+  const data=initial();data['config/battle'].defeatLimit=defeatLimit;
+  const {c,store,records}=runtime(data),before=JSON.stringify([...records]);
+  assert.equal(c.scheduledStep_(store,100).paused,true);assert.equal(JSON.stringify([...records]),before);
+ }
 });

@@ -6,7 +6,7 @@ function previewV4Migration() {
   for(const row of active) {
     const e=EmojinEngine.migrateActive(row.data);
     if(!Number.isInteger(e.maxHp)||e.maxHp<5||e.maxHp>8||e.currentHp!==e.maxHp||e.poisoned||e.cursedSlots.length
-      ||!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=EmojinEngine.DEFEAT_LIMIT||!Number.isInteger(e.stars)||e.stars<0||e.stars>=50) {
+      ||!Number.isInteger(e.defeats)||e.defeats<0||e.defeats>=EmojinEngine.LEGACY_DEFEAT_LIMIT||!Number.isInteger(e.stars)||e.stars<0||e.stars>=50) {
       throw Error('Invalid active record; inspect '+row.path);
     }
   }

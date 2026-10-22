@@ -17,7 +17,7 @@ after(async()=>{if(env)await env.cleanup();});
 beforeEach(async()=>{
  await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
   const db=c.firestore();await Promise.all([
-   setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:10,maintenance:false}),
+   setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:5,maintenance:false}),
    setDoc(doc(db,'meta/game'),{battleSeq:0,legendSeq:0}),
    setDoc(doc(db,'owners/u1'),{uid:'u1',name:'Owner',unreadBattleIds:[]}),
    setDoc(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:1000,updatedAt:1},draft:{id:'e-new'},hatch:0,revision:1}),
@@ -25,9 +25,10 @@ beforeEach(async()=>{
    setDoc(doc(db,'emojins/history'),{...resident('history','u1'),status:'dead',rulesVersion:3,maxHp:10,currentHp:0})]);
  });
 });
-function batchMatch(db,{legacy=false,badHp=false,id='b-test',prior=0,limit=10}={}){
- const a={...resident('a','u1'),slots:Array(6).fill('strong')},b={...resident('b','u2'),slots:Array(6).fill('blank'),defeats:prior},log=E.battle(a,b,E.seeded(1),10000,id);
+function batchMatch(db,{legacy=false,badHp=false,id='b-test',prior=0,aPrior=0,tie=false,mutate=null,limit=5}={}){
+ const a={...resident('a','u1'),slots:Array(6).fill(tie?'blank':'strong'),defeats:aPrior},b={...resident('b','u2'),slots:Array(6).fill('blank'),defeats:prior},log=E.battle(a,b,E.seeded(1),10000,id);
  log.defeatLimit=limit;
+ if(mutate)mutate(log);
  const owners={u1:{uid:'u1',name:'Owner',unreadBattleIds:[]},u2:{uid:'u2',name:'Other',unreadBattleIds:[]}};
  const plan=E.planBattle([a,b],owners,{battleSeq:0,legendSeq:0},log,E.seeded(3));
  if(badHp)plan.emojins[0].currentHp=1;
@@ -49,10 +50,11 @@ test('old three-defeat client is rejected even though its rulesVersion is still 
  const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{limit:3}).commit());
  assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
 });
-for(const prior of [2,8,9])test(`loss ${prior+1}: new rules accept the matching active/dead result`,async()=>{
+for(const prior of [2,3,4,5,6,7,8,9])test(`loss ${prior+1}: new rules accept the matching active/dead result`,async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/b'),{...resident('b','u2'),defeats:prior}));
  const db=env.authenticatedContext('u1').firestore();await assertSucceeds(batchMatch(db,{prior}).commit());
  const loser=(await getDoc(doc(db,'emojins/b'))).data();
- assert.equal(loser.defeats,prior+1);assert.equal(loser.status,prior===9?'dead':'active');
+ assert.equal(loser.defeats,prior+1);assert.equal(loser.status,prior>=4?'dead':'active');
 });
 test('non-reset HP and orphan NPC writes are denied',async()=>{
  const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{badHp:true}).commit());
@@ -69,13 +71,13 @@ test('authentication, wallet privacy and owner identity restrictions remain',asy
  await assertFails(setDoc(doc(own,'owners/u1'),{uid:'u1',name:'Changed',unreadBattleIds:[]}));
 });
 test('gates and backups are admin-only; archived history remains readable and immutable',async()=>{
- const db=env.authenticatedContext('u1').firestore();await assertFails(setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:10,maintenance:false}));
+ const db=env.authenticatedContext('u1').firestore();await assertFails(setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:5,maintenance:false}));
  await assertFails(getDoc(doc(db,'migrationBackups/anything')));
  await assertSucceeds(getDoc(doc(db,'emojins/history')));
  await assertFails(setDoc(doc(db,'emojins/history'),resident('history','u1')));
 });
 test('maintenance prevents new financial/game mutations, while reads and acknowledgements work',async()=>{
- await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'config/battle'),{rulesVersion:4,defeatLimit:10,maintenance:true}));
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'config/battle'),{rulesVersion:4,defeatLimit:5,maintenance:true}));
  const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db).commit());
  await assertSucceeds(getDoc(doc(db,'wallets/u1')));
  await assertSucceeds(setDoc(doc(db,'owners/u1'),{uid:'u1',name:'Owner',unreadBattleIds:['b-test']}));
@@ -133,7 +135,7 @@ test('GAS REST scheduler commits a complete match with real Firestore transactio
 });
 test('GAS REST migration previews, backs up, migrates drafts and preserves post-migration skulls on rerun',async()=>{
  await env.withSecurityRulesDisabled(async c=>{
-  const db=c.firestore();await setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:10,maintenance:true});
+  const db=c.firestore();await setDoc(doc(db,'config/battle'),{rulesVersion:4,defeatLimit:5,maintenance:true});
   await setDoc(doc(db,'emojins/a'),{...resident('a','u1'),rulesVersion:3,maxHp:9,currentHp:1,stars:12,poisoned:true,cursedSlots:[0]});
   await setDoc(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:1000,updatedAt:1},hatch:7,revision:1,draft:{id:'draft',maxHp:10,paid:true,cost:1200}});
  });
@@ -148,4 +150,35 @@ test('GAS REST migration previews, backs up, migrates drafts and preserves post-
  assert.equal(gas.migrateToV4().changed,0);assert.equal(store.get('emojins/a').defeats,2);
  assert.equal(store.get('emojins/history').maxHp,10);
  gas.finishV4Migration();assert.equal(store.get('config/battle').maintenance,false);
+});
+
+test('old ten-defeat client cannot commit after the five-defeat cutover',async()=>{
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{limit:10}).commit());
+ assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
+});
+for(const aPrior of [5,6,7,8,9])test(`grandfathered ${aPrior} skull winner remains active with unchanged counter`,async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/a'),{...resident('a','u1'),defeats:aPrior}));
+ const db=env.authenticatedContext('u1').firestore();await assertSucceeds(batchMatch(db,{aPrior}).commit());
+ const winner=(await getDoc(doc(db,'emojins/a'))).data();assert.equal(winner.status,'active');assert.equal(winner.defeats,aPrior);
+});
+test('grandfathered nine-skull draw stays active without rewriting or truncating skulls',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  for(const [id,uid] of [['a','u1'],['b','u2']])await setDoc(doc(c.firestore(),'emojins/'+id),{...resident(id,uid),defeats:9});
+ });
+ const db=env.authenticatedContext('u1').firestore();await assertSucceeds(batchMatch(db,{aPrior:9,prior:9,tie:true}).commit());
+ for(const id of ['a','b']){const e=(await getDoc(doc(db,'emojins/'+id))).data();assert.equal(e.status,'active');assert.equal(e.defeats,9);}
+});
+test('cannot retire a grandfathered winner without a new skull',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/a'),{...resident('a','u1'),defeats:9}));
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{aPrior:9,mutate:log=>{
+  log.after[0].status='dead';log.after[0].endedAt=10000;
+ }}).commit());
+});
+test('cannot keep a fifth-skull loser active or truncate inherited skulls',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/b'),{...resident('b','u2'),defeats:4}));
+ const db=env.authenticatedContext('u1').firestore();await assertFails(batchMatch(db,{prior:4,mutate:log=>{
+  log.after[1].status='active';log.after[1].endedAt=null;
+ }}).commit());
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/a'),{...resident('a','u1'),defeats:9}));
+ await assertFails(batchMatch(db,{aPrior:9,prior:4,mutate:log=>{log.after[0].defeats=5;}}).commit());
 });

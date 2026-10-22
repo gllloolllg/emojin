@@ -143,7 +143,7 @@ test('saved v1/v2 maps can change key order on Firestore readback without changi
 // Run the product wallet transaction against an optimistic, conflict-retrying memory store.
 function walletStore(balance=4000){
  const documents=new Map([['wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch:0,revision:1,recentOperations:[]}],
-  ['config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false}]]);
+  ['config/battle',{rulesVersion:4,defeatLimit:5,maintenance:false}]]);
  let revision=0,retries=0;
  const snap=path=>({exists:()=>documents.has(path),data:()=>plain(documents.get(path))});
  const box={E,crypto:webcrypto,uid:'me',auth:{currentUser:{uid:'me'}},db:{},window:{MojiSpinEngine:S},local:{pending:[]},

@@ -46,7 +46,7 @@ test('repeated test initialization preserves residents, scores, accounts and mat
  assert.equal(r.store.query('emojins').length,10);assert.equal(r.triggers(),0);
 });
 test('test initialization refuses existing unconfigured data or maintenance state without writing',()=>{
- for(const data of [{'emojins/old':{status:'active',maxHp:10}}, {'config/battle':{rulesVersion:4,defeatLimit:10,maintenance:true},'meta/game':{battleRulesVersion:4}}]){
+ for(const data of [{'emojins/old':{status:'active',maxHp:10}}, {'config/battle':{rulesVersion:4,defeatLimit:5,maintenance:true},'meta/game':{battleRulesVersion:4}}]){
   const r=runtime(data);assert.throws(()=>r.c.initializeTestWorld(),/empty database|already has configuration/);
   assert.deepEqual(Object.fromEntries(r.records),data);
  }

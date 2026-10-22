@@ -62,7 +62,7 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
   let documents=new Map();
   const put=(path,value)=>documents.set(path,clone(value));
   put('wallets/me',{uid:'me',wallet:{balance,updatedAt:Date.now()},hatch,revision:1,recentOperations:[]});
-  put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false});
+  put('config/battle',{rulesVersion:4,defeatLimit:5,maintenance:false});
   put('meta/game',{battleSeq:0,legendSeq:0,...meta});
   for(const e of pool){
     put('emojins/'+e.id,e);
@@ -97,7 +97,7 @@ function database({balance=1000,hatch=3,retry=false,meta={},pool}={}){
     operation(mode='forced',ids=mode==='mine'?['mine','champ']:['champ','mine']){
       const pair=ids.map(id=>documents.get('emojins/'+id));
       return {id:'battle-test',action:'battle',data:{uid:'me',hatchReward:true,walletVersion:2,battleRequest:{
-        battleId:'test',rulesVersion:4,defeatLimit:10,mode,ids,seed:1,at:Date.now(),
+        battleId:'test',rulesVersion:4,defeatLimit:5,mode,ids,seed:1,at:Date.now(),
         expected:pair.map(E.recordVersion)}}};
     },
     run:op=>sandbox.writeOperation(op)
@@ -178,7 +178,7 @@ test('old uncommitted v3 request is archived and cancelled without cost, hatch o
   assert.equal(db.local.cancelledOperations.length,1);
 });
 test('maintenance rejects a match before changing any financial or world data',async()=>{
-  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:true});
+  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,defeatLimit:5,maintenance:true});
   await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
   assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
 });
@@ -196,8 +196,37 @@ test('already saved three-defeat log is returned unchanged, without charging aga
  const result=await db.run(op);assert.deepEqual(clone(result.log),log);
  assert.deepEqual(db.read('wallets/me'),before);assert.equal(result.cancelled,undefined);
 });
-test('old gate without the ten-defeat flag cannot start a new transaction',async()=>{
+test('old gate without the five-defeat flag cannot start a new transaction',async()=>{
  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,maintenance:false});
  await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
  assert.deepEqual(db.read('wallets/me'),before);
+});
+
+test('forced transaction retires a grandfathered loser only after one skull and charges once on retry',async()=>{
+ for(const prior of [4,5,6,7,8,9]){
+  const winner={...resident('champ','other',10),slots:Array(6).fill('strong'),defeats:9};
+  const loser={...resident('mine','me',4),slots:Array(6).fill('blank'),defeats:prior};
+  const db=database({pool:[winner,loser],retry:true}),op=db.operation();
+  await db.run(op);await db.run(op);
+  assert.equal(db.read('emojins/mine').defeats,prior+1);assert.equal(db.read('emojins/mine').status,'dead');
+  assert.equal(db.read('emojins/champ').defeats,9);assert.equal(db.read('emojins/champ').status,'active');
+  assert.equal(db.read('wallets/me').wallet.balance,900);assert.equal(db.read('wallets/me').hatch,4);
+  assert.equal(db.read('meta/game').battleSeq,1);assert.equal(db.read('battles/test').defeatLimit,5);
+ }
+});
+test('queued unsaved ten-defeat request is cancelled without new cost or skulls',async()=>{
+ const db=database(),op=db.operation(),before=db.read('wallets/me');op.data.battleRequest.defeatLimit=10;
+ const result=await db.run(op);assert.equal(result.cancelled,true);
+ assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
+});
+test('already settled ten-defeat result is returned without charging or recalculating under five',async()=>{
+ const db=database(),op=db.operation(),before=db.read('wallets/me');op.data.battleRequest.defeatLimit=10;
+ const log={rulesVersion:4,defeatLimit:10,battleId:'test',deadIds:[],after:[{id:'mine',status:'active',defeats:5}]};
+ db.put('battles/test',{seq:7,json:JSON.stringify(log)});
+ const result=await db.run(op);assert.deepEqual(clone(result.log),log);assert.deepEqual(db.read('wallets/me'),before);
+});
+test('new frontend refuses an enabled ten-defeat gate before financial mutations',async()=>{
+ const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false});
+ await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
+ assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
 });

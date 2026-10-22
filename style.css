@@ -738,6 +738,14 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 
 /* Keep the saved total from spoiling the ongoing slot presentation. */
 body.moji-spin-open .city-header .mo-reading{visibility:hidden}
+/* Opaque velvet and a quiet gold lattice, scoped to the slot backdrop. */
+body.moji-spin-open #modalHost>.modal-backdrop{
+ background:
+  radial-gradient(ellipse at 50% 0%,#bf98542b,transparent 65%),
+  repeating-linear-gradient(45deg,#d8b67508 0 1px,transparent 1px 28px),
+  repeating-linear-gradient(-45deg,#d8b67508 0 1px,transparent 1px 28px),
+  radial-gradient(ellipse at 50% 40%,#30202c,#1b131f 60%,#100d16);
+}
 
 .moji-spin-launch{width:56px;height:56px;left:8px;border-radius:50%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
 
@@ -756,13 +764,16 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 /* Quiet paytable control; no status text under the title. */
 .spin-phase{display:none!important}
 .spin-tools{display:flex;justify-content:flex-end;padding:7px 0 8px}
-.spin-odds-button{padding:4px 10px;border:1px solid #cbb1cf55;border-radius:6px;background:transparent;color:#ccb8cf;font-size:11px;line-height:1.4;letter-spacing:.05em}
+.spin-odds-button{padding:4px 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:#ccb8cf;font-size:11px;line-height:1.4;letter-spacing:.05em}
 .spin-odds-button:disabled{opacity:.3}
 .spin-odds-dialog{box-sizing:border-box;width:min(330px,calc(100vw - 32px));height:min(600px,calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:hidden;margin:auto;padding:24px 20px 12px;border:1px solid #bda179;border-radius:18px;background:#2e2235;color:#fff0cd;box-shadow:0 16px 60px #0009;font-family:'Aldrich',system-ui,sans-serif;text-align:center}
 .spin-odds-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
 .spin-odds-dialog::backdrop{background:#100b18bb;backdrop-filter:blur(3px)}
 .spin-odds-dialog h3{margin:0;font-size:19px;font-weight:500;letter-spacing:.12em}
 .spin-odds-close{position:absolute;right:7px;top:7px;display:grid;place-items:center;width:32px;height:32px;border:0;background:transparent;color:#cfbdcc;font-size:25px;line-height:1}
+.spin-odds-button,.spin-odds-close{-webkit-appearance:none;appearance:none;box-shadow:none;-webkit-tap-highlight-color:transparent}
+.spin-odds-button:focus,.spin-odds-close:focus{outline:none}
+.spin-odds-button:focus-visible,.spin-odds-close:focus-visible{color:#f4d98e;background-color:#f4d98e14}
 .spin-odds-pages{min-height:0;overflow:hidden}
 .spin-odds-page{height:100%;overflow-y:auto;overscroll-behavior:contain}
 .spin-odds-page[hidden]{display:none}

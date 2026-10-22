@@ -759,14 +759,14 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-odds-button{padding:4px 10px;border:1px solid #cbb1cf55;border-radius:6px;background:transparent;color:#ccb8cf;font-size:11px;line-height:1.4;letter-spacing:.05em}
 .spin-odds-button:disabled{opacity:.3}
 .spin-odds-dialog{box-sizing:border-box;width:min(330px,calc(100vw - 32px));height:min(600px,calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:hidden;margin:auto;padding:24px 20px 12px;border:1px solid #bda179;border-radius:18px;background:#2e2235;color:#fff0cd;box-shadow:0 16px 60px #0009;font-family:'Aldrich',system-ui,sans-serif;text-align:center}
-.spin-odds-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
+.spin-odds-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:20px}
 .spin-odds-dialog::backdrop{background:#100b18bb;backdrop-filter:blur(3px)}
 .spin-odds-dialog h3{margin:0;font-size:19px;font-weight:500;letter-spacing:.12em}
 .spin-odds-close{position:absolute;right:7px;top:7px;display:grid;place-items:center;width:32px;height:32px;border:0;background:transparent;color:#cfbdcc;font-size:25px;line-height:1}
 .spin-odds-pages{min-height:0;overflow:hidden}
 .spin-odds-page{height:100%;overflow-y:auto;overscroll-behavior:contain}
 .spin-odds-page[hidden]{display:none}
-.spin-odds-page-free{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.spin-odds-page-free{display:flex;flex-direction:column;align-items:center;}
 .spin-odds-nav{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #ffffff14;padding-top:6px}
 .spin-odds-nav button{width:44px;height:44px;border:0;background:transparent;color:#f4d98e;font-size:18px}
 .spin-odds-nav button:disabled{opacity:.2}
@@ -785,8 +785,8 @@ body.moji-spin-open .city-header .mo-reading{visibility:hidden}
 .spin-odds-scroll thead th:not(:first-child){font-size:21px}
 .spin-odds-scroll tbody th{color:#f4d98e}
 .spin-odds-scroll tr>:first-child{position:sticky;left:0;z-index:1;background:#2e2235;box-shadow:1px 0 #ffffff14}
-.spin-odds-trigger{display:grid;grid-template-columns:repeat(3,29px);grid-template-rows:repeat(3,29px);gap:4px;justify-content:center;margin:0 auto 10px}
-.spin-odds-trigger span{display:grid;place-items:center;border:1px solid #bda3c078;border-radius:3px;font-size:23px;line-height:1}
+.spin-odds-trigger{display:grid;grid-template-columns:repeat(3,70px);grid-template-rows:repeat(3,70px);gap:10px;justify-content:center;margin:0 auto 10px}
+.spin-odds-trigger span{display:grid;place-items:center;border:1px solid #bda3c078;border-radius:3px;font-size:35px;line-height:1}
 .spin-odds-trigger span:nth-child(5){border-color:#f4d98e;background:#f4d98e12}
 
 /* Keep the three skulls directly below the legend's star, including short screens. */

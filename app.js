@@ -637,7 +637,7 @@ async function createCloud() {
   const defaultMeta=()=>({battleSeq:0,legendSeq:0,hour:Math.floor(Date.now()/3600000),runningHour:0,scheduledCount:0});
   const data=s=>s.exists()?s.data():null;
   const decodeLog=s=>JSON.parse(s.data().json);
-  let reading=null, archiveCache=null, archiveAt=0;
+  let reading=null, archiveCache=null, archiveAt=0, zukanCache=null, zukanAt=0;
   const activeDocs=()=>F.getDocsFromServer(activeQuery);
   async function requireMatchRules(tx) {
     const snap=await tx.get(ref('config','battle')),gate=snap.exists()?snap.data():{};
@@ -992,6 +992,17 @@ async function createCloud() {
       ]));
       archiveCache=[...dead.docs,...legends.docs].map(s=>s.data());archiveAt=Date.now();return archiveCache;
     },
+    async getGeneratedEmojis(){
+      const ownerUid=uid;
+      if(!auth.currentUser || !ownerUid)throw Error('オーナーログインが必要です。');
+      if(zukanCache?.uid===ownerUid && Date.now()-zukanAt<30000)return [...zukanCache.emojis];
+      // Query every owned record, including graves and legends beyond the archive's 200-item limit.
+      const snap=await retry(()=>F.getDocsFromServer(F.query(F.collection(db,'emojins'),F.where('ownerUid','==',ownerUid))));
+      if(uid!==ownerUid)throw Error('オーナーが変更されました。開き直してください。');
+      const known=new Set(E.EMOJIS);
+      const emojis=[...new Set(snap.docs.map(s=>s.data()).filter(e=>e.ownerUid===ownerUid && !e.isNpc && known.has(e.emoji)).map(e=>e.emoji))];
+      zukanCache={uid:ownerUid,emojis};zukanAt=Date.now();return [...emojis];
+    },
     async createOwner({name,password}){
       try{
         const creds=await credentials(name,password);
@@ -1070,7 +1081,7 @@ async function createCloud() {
       const result=await enqueue('createEmojin',{uid,emojin:e,chosen:d.chosen},'create-'+e.id);
       const saved=await F.getDocFromServer(ref('emojins',e.id));
       if(!saved.exists())throw Error('生成の保存を再試行してください。');
-      local.draft=null;persist();archiveAt=0;return saved.data();
+      local.draft=null;persist();archiveAt=0;zukanCache=null;return saved.data();
     },
     saveBattle(request){archiveAt=0;return enqueue('battle',{uid,battleRequest:request,hatchReward:true,walletVersion:2},'battle-'+request.battleId);}
 
@@ -1344,9 +1355,10 @@ async function showArchive(status="active") {
   } catch(error) { reportError(error);await closeModal(true);return; }
   finally { busy=false; }
   modalReturn=null;
-  const tabs=[{key:"active",name:"👤"},{key:"legend",name:"🏆"},{key:"dead",name:"🪦"}];
+  const tabs=[{key:"active",name:"👤"},{key:"legend",name:"🏆"},{key:"dead",name:"🪦"},{key:"zukan",name:"📕"}];
   const chosen=tabs.findIndex(t=>t.key===status),index=chosen<0?0:chosen;
   const panes=tabs.map(tab=>{
+    if(tab.key==='zukan')return '<div class="archive-pane" role="tabpanel" id="pane-zukan"><div class="archive-loading"><div class="loader"></div></div></div>';
     const emojins=store.emojins.filter(e=>e.status===tab.key&&(tab.key!=="active"||my(e))&&(tab.key!=="dead"||!e.isNpc))
       .sort((a,b)=>tab.key==="active"?b.createdAt-a.createdAt:b.endedAt-a.endedAt);
     const entries=emojins.map(e=>`<button class="archive-entry" data-emojin-id="${e.id}" data-return-status="${tab.key}"><span class="archive-emoji">${e.emoji}</span><span><h3>${esc(e.name)}</h3><span class="owner-line">${tab.key==="active"?`HP ${e.currentHp} / ${e.maxHp}`:`オーナー：${esc(e.ownerName)}`}</span></span>${recordBadge(e)}<span class="archive-arrow">${nextSvg()}</span></button>`).join("");
@@ -1354,17 +1366,36 @@ async function showArchive(status="active") {
   }).join("");
   openModal(`<button class="archive-close" data-close-modal="true" aria-label="閲覧を閉じる">${closeSvg()}</button>
     <h2 class="archive-heading" aria-live="polite"></h2>
-    <div class="archive-tabs" role="tablist">${tabs.map((t,i)=>`<button class="archive-tab ${i===index?"selected":""}" role="tab" tabindex="${i===index?0:-1}" aria-selected="${i===index}" aria-controls="pane-${t.key}" data-archive-tab="${t.key}">${t.name}</button>`).join("")}</div>
+    <div class="archive-tabs" role="tablist">${tabs.map((t,i)=>`<button class="archive-tab ${i===index?"selected":""}" role="tab" tabindex="${i===index?0:-1}" aria-selected="${i===index}" aria-controls="pane-${t.key}" data-archive-tab="${t.key}" aria-label="${t.key==='zukan'?'ズカン':t.name}">${t.name}</button>`).join("")}</div>
     <div class="archive-viewport"><div class="archive-track" style="transform:translateX(-${index*100}%)">${panes}</div></div>`,
     "エモジンを閲覧",{panelClass:"archive-panel",hideClose:true});
   switchArchiveTab($("modalHost").querySelector(".archive-panel"),tabs[index].key);
 }
 
+async function loadZukan(panel) {
+  const pane=panel.querySelector('#pane-zukan');
+  if(!pane || ['loading','loaded'].includes(pane.dataset.zukanState))return;
+  pane.dataset.zukanState='loading';
+  pane.innerHTML='<div class="archive-loading"><div class="loader"></div></div>';
+  try {
+    const generated=new Set(await cloud.getGeneratedEmojis());
+    if(!panel.isConnected)return;
+    pane.innerHTML=`<div class="zukan-grid" role="list" aria-label="生成した絵文字">${E.EMOJIS.map(emoji=>{
+      const unlocked=generated.has(emoji);
+      return `<span class="zukan-cell${unlocked?'':' is-locked'}" role="listitem" aria-label="${unlocked?esc(emoji):'未生成'}">${unlocked?emoji:'🥚'}</span>`;
+    }).join('')}</div>`;
+    pane.dataset.zukanState='loaded';
+  } catch(error) {
+    if(!panel.isConnected)return;
+    pane.dataset.zukanState='error';pane.innerHTML='<div class="archive-empty">ズカンを読み込めませんでした。</div>';
+    console.warn('Zukan',error);
+  }
+}
 function switchArchiveTab(panel,key) {
   if(!panel)return;
-  const keys=['active','legend','dead'],index=keys.indexOf(key);if(index<0)return;
+  const keys=['active','legend','dead','zukan'],index=keys.indexOf(key);if(index<0)return;
   panel.dataset.activeTab=key;
-  panel.querySelector('.archive-heading').textContent={active:'マイエモジン',legend:'レジェンド',dead:'ボチ'}[key];
+  panel.querySelector('.archive-heading').textContent={active:'マイエモジン',legend:'レジェンド',dead:'ボチ',zukan:'ズカン'}[key];
   panel.querySelector('.archive-track').style.transform=`translateX(-${index*100}%)`;
   panel.querySelectorAll('.archive-tab').forEach(button=>{
     const selected=button.dataset.archiveTab===key;
@@ -1374,6 +1405,7 @@ function switchArchiveTab(panel,key) {
   panel.querySelectorAll('.archive-pane').forEach((pane,i)=>{
     pane.inert=i!==index;pane.setAttribute('aria-hidden',String(i!==index));
   });
+  if(key==='zukan')loadZukan(panel);
 }
 
 function showAuthChoice(){
@@ -3347,8 +3379,8 @@ function wireEvents() {
     const dx=ev.clientX-g.x,dy=ev.clientY-g.y;
     if(!g.panel.isConnected || Math.abs(dx)<45 || Math.abs(dx)<Math.abs(dy)*1.35 || performance.now()-g.time>1200)return;
     suppressArchiveClickUntil=performance.now()+400;
-    const keys=['active','legend','dead'],index=keys.indexOf(g.panel.dataset.activeTab);
-    switchArchiveTab(g.panel,keys[E.clamp(index+(dx<0?1:-1),0,2)]);
+    const keys=['active','legend','dead','zukan'],index=keys.indexOf(g.panel.dataset.activeTab);
+    switchArchiveTab(g.panel,keys[E.clamp(index+(dx<0?1:-1),0,keys.length-1)]);
   });
   $('modalHost').addEventListener('pointercancel',()=>{archiveGesture=null;});
   $('modalHost').addEventListener('click',ev=>{

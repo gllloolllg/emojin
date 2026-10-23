@@ -423,7 +423,7 @@ button.slot:active{transform:scale(.89)}
 .cutin-icon{z-index:1;font-size:82px;line-height:1}
 .cutin-ring{position:absolute;width:150px;height:150px;border:2px solid var(--neon-sky);border-radius:50%;opacity:.8}
 
-/* A fixed window with three independently scrolling sliding pages. */
+/* A fixed window with independently scrolling sliding pages. */
 .archive-panel{height:min(600px,calc(100dvh - 72px - var(--safe-top) - var(--safe-bottom)));width:min(440px,100%);max-height:none;padding:63px 0 0;overflow:hidden;transition:background .35s}
 .archive-panel[data-active-tab="active"]{background:#304248}
 .archive-panel[data-active-tab="legend"]{background:#44364A}
@@ -438,6 +438,9 @@ button.slot:active{transform:scale(.89)}
 .archive-track{height:100%;width:100%;display:flex;transition:transform .38s cubic-bezier(.2,.75,.25,1)}
 .archive-pane{height:100%;min-width:100%;overflow-y:auto;overscroll-behavior:contain;padding:16px 14px 24px;scrollbar-width:thin}
 .archive-pane .archive-entry{background:var(--bg)}
+.zukan-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px 6px}
+.zukan-cell{display:grid;place-items:center;aspect-ratio:1;font-size:clamp(26px,8vw,42px);line-height:1.2;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
+.zukan-cell.is-locked{opacity:.35}
 .detail-overlay{z-index:34}
 .detail-name{margin:64px 4px 0;text-align:center}
 .modal-close,.archive-close,.battle-next,.legend-continue{background:none;border:0;color:var(--rose-light)}

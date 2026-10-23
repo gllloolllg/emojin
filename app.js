@@ -1925,15 +1925,15 @@ function showSlotOdds(){
     <div class="spin-odds-pages">
       <section class="spin-odds-page" aria-labelledby="slotOddsTitle">
         <div class="spin-odds-grid">${symbols.map(symbol=>`<div class="spin-odds-item"><span class="spin-odds-symbol"><span>${symbol.emoji}</span>${symbol.id==='wild'?'<small>WILD</small>':''}</span><strong>${symbol.payout}</strong></div>`).join('')}</div>
-        <p class="spin-odds-note">1回${SLOT.BET}モジ、1ライン${SLOT.CONFIG.lineBet}モジ。<br>横3本・縦3本・斜め2本の計8ライン。<br>同じ絵柄が3つ揃うと当選します。<br>WILDは他の絵柄の代わりになります。<br>複数ラインは合算。ブランクを含むラインは無効。</p>
+        <p class="spin-odds-note">横3本・縦3本・斜め2本の計8ライン。<br>同じ絵柄が3つ揃うと当選します。<br>WILDは他の絵柄の代わりになります。</p>
       </section>
       <section class="spin-odds-page" aria-labelledby="slotOddsTitle" hidden>
         <div class="spin-odds-scroll" role="region" aria-label="エニーボーナス配当表、左右にスクロールできます" tabindex="0"><table><caption>個数ごとの獲得モジ</caption><thead><tr><th scope="col">個数</th>${anySymbols.map(symbol=>`<th scope="col" aria-label="${symbol.name}">${symbol.emoji}</th>`).join('')}</tr></thead><tbody>${counts.map(count=>`<tr><th scope="row">${count}</th>${anySymbols.map(symbol=>`<td>${SLOT.CONFIG.anyBonus[symbol.id][count]?.toLocaleString('en-US')||'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-        <p class="spin-odds-note">9マス全体の個数で当選し、ライン配当に加算。<br>各絵柄は該当する個数の配当だけを獲得。<br>WILDはすべての絵柄に同時に代用されます。<br>複数絵柄は合算。追加BETなし。<br>フリースピンでも同じ配当です。<br>表は左右にスクロールできます。</p>
+        <p class="spin-odds-note">出現した絵柄の個数で当選。<br>WILDはすべての絵柄に同時に代用されます。<br>表は左右にスクロールできます。</p>
       </section>
       <section class="spin-odds-page spin-odds-page-free" aria-labelledby="slotOddsTitle" hidden>
         <div class="spin-odds-trigger" role="img" aria-label="3行3列の中央にワイルド">${Array.from({length:9},(_,i)=>`<span>${i===4?'🤡':''}</span>`).join('')}</div>
-        <p class="spin-odds-note">通常スピンで中央に🤡が止まると突入。<br>回数は${SLOT.CONFIG.freeCounts.map(x=>x.count).join('・')}回から抽選します。<br>中央のWILDを固定し、残り8マスを抽選。<br>フリースピン中のBET消費はありません。<br>再突入・回数追加はありません。<br>残り回数はスピン開始時に1減ります。</p>
+        <p class="spin-odds-note">通常スピンで中央に🤡が止まると突入。<br>${SLOT.CONFIG.freeCounts.map(x=>x.count).join('・')}回の無料スピンを獲得します。</p>
       </section>
     </div>
     <nav class="spin-odds-nav" aria-label="遊び方のページ"><button class="spin-odds-prev" type="button" aria-label="前のページ" disabled>◀</button><span class="spin-odds-page-count" role="status" aria-live="polite">1 / 3</span><button class="spin-odds-next" type="button" aria-label="次のページ">▶</button></nav>`;

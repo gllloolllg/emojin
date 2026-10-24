@@ -1368,13 +1368,13 @@ function showFace(face,cursed=false) {
 }
 
 let detailReturnFocus=null,detailClosing=false;
-function openDetailOverlay(html) {
+function openDetailOverlay(html,legend=false) {
   closePopover(true);
   detailClosing=false;
   detailReturnFocus=document.activeElement;
   const host=$("detailHost");
   $("modalHost").inert=true;
-  host.innerHTML=`<div class="modal-backdrop"></div><section class="modal-panel detail-panel" tabindex="-1" role="dialog" aria-modal="true" aria-label="エモジン">${html}</section>`;
+  host.innerHTML=`<div class="modal-backdrop"></div><section class="modal-panel detail-panel${legend?' legend-detail-panel':''}" tabindex="-1" role="dialog" aria-modal="true" aria-label="エモジン">${html}</section>`;
   host.classList.remove("hidden");
   animate(host.querySelector(".modal-backdrop"),[{opacity:0},{opacity:1}],260);
   animate(host.querySelector(".modal-panel"),[{transform:"translateY(40px) scale(.88)",opacity:0},{transform:"translateY(0) scale(1)",opacity:1}],420);
@@ -1399,9 +1399,14 @@ function showDetail(e, ret=null) {
     <div class="slots-row">${slotRow(e)}</div>
     <div class="owner-line detail-owner">オーナー：${esc(e.ownerName)}</div>
     ${when?`<div class="detail-date">${when}</div>`:""}`;
-  if($("modalHost").querySelector(".archive-panel")){openDetailOverlay(content);return;}
+  if($("modalHost").querySelector(".archive-panel")){openDetailOverlay(content,e.status==='legend');return;}
   modalReturn=ret;
-  openModal(content,"エモジン",{panelClass:"detail-panel",tapToClose:true});
+  openModal(content,"エモジン",{panelClass:e.status==='legend'?"detail-panel legend-detail-panel":"detail-panel",tapToClose:true});
+}
+function archiveAtmosphere() {
+  const gold=Array.from({length:12},(_,i)=>`<i class="archive-gold-piece" style="--x:${4+(i*31)%91}%;--drift:${(i%2?1:-1)*(10+i%4*4)}px;--fall:${8+i%5}s;--delay:-${i*1.3}s;--twirl:${2+i%3*.7}s"></i>`).join('');
+  const spirits=['👻','🦇','👻','🦇'].map((emoji,i)=>`<span class="archive-spirit" style="--x:${[12,72,28,82][i]}%;--y:${[16,37,62,82][i]}%;--float:${8+i*1.7}s;--delay:-${i*2.7}s">${emoji}</span>`).join('');
+  return `<div class="archive-atmosphere" aria-hidden="true"><div class="archive-gold">${gold}</div><div class="archive-haunt">${spirits}</div></div>`;
 }
 async function showArchive(status="active") {
   if(busy)return;
@@ -1424,7 +1429,7 @@ async function showArchive(status="active") {
     const entries=emojins.map(e=>`<button class="archive-entry" data-emojin-id="${e.id}" data-return-status="${tab.key}"><span class="archive-emoji">${e.emoji}</span><span><h3>${esc(e.name)}</h3><span class="owner-line">${tab.key==="active"?`HP ${e.currentHp} / ${e.maxHp}`:`オーナー：${esc(e.ownerName)}`}</span></span>${recordBadge(e)}<span class="archive-arrow">${nextSvg()}</span></button>`).join("");
     return `<div class="archive-pane" role="tabpanel" id="pane-${tab.key}"><div class="archive-list">${entries||'<div class="archive-empty">エモジンはいない</div>'}</div></div>`;
   }).join("");
-  openModal(`<button class="archive-close" data-close-modal="true" aria-label="閲覧を閉じる">${closeSvg()}</button>
+  openModal(`${archiveAtmosphere()}<button class="archive-close" data-close-modal="true" aria-label="閲覧を閉じる">${closeSvg()}</button>
     <h2 class="archive-heading" aria-live="polite"></h2>
     <div class="archive-tabs" role="tablist">${tabs.map((t,i)=>`<button class="archive-tab ${i===index?"selected":""}" role="tab" tabindex="${i===index?0:-1}" aria-selected="${i===index}" aria-controls="pane-${t.key}" data-archive-tab="${t.key}" aria-label="${t.key==='zukan'?'ズカン':t.name}">${t.name}</button>`).join("")}</div>
     <div class="archive-viewport"><div class="archive-track" style="transform:translateX(-${index*100}%)">${panes}</div></div>`,

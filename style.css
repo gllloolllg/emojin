@@ -633,6 +633,25 @@ html,body,#app,#app *{touch-action:manipulation;-webkit-user-select:none;user-se
 .archive-panel[data-active-tab="legend"] .archive-tab.selected{background:linear-gradient(#fff4b5,#f6cb51);color:#573808;border-color:#fff6c8;box-shadow:0 0 13px #fff4bc}
 @keyframes legendListShine{0%,30%{transform:translateX(-120%)}70%,100%{transform:translateX(120%)}}
 
+/* Small, reusable CSS particles; hidden tabs have no running particle animations. */
+.archive-atmosphere{position:absolute;inset:54px 0 64px;z-index:2;overflow:hidden;pointer-events:none}
+.archive-gold,.archive-haunt{position:absolute;inset:0;display:none;pointer-events:none}
+.archive-panel[data-active-tab="legend"] .archive-gold,.archive-panel[data-active-tab="dead"] .archive-haunt{display:block}
+.archive-gold-piece{position:absolute;top:0;bottom:0;left:var(--x);width:6px;animation:archiveGoldFall var(--fall) linear var(--delay) infinite}
+.archive-gold-piece::before{content:'';position:absolute;bottom:0;width:4px;height:7px;opacity:.58;background:linear-gradient(135deg,#fff2ad,#ad751e);animation:archiveGoldTwirl var(--twirl) ease-in-out infinite alternate}
+.archive-gold-piece:nth-child(3n)::before{width:3px;height:5px;background:#ad751e;opacity:.4}
+.archive-spirit{position:absolute;left:var(--x);top:var(--y);font-size:16px;line-height:1.3;opacity:.45;animation:archiveSpiritFloat var(--float) ease-in-out var(--delay) infinite alternate}
+.archive-spirit:nth-child(even){font-size:14px}
+@keyframes archiveGoldFall{from{transform:translate3d(0,-100%,0)}to{transform:translate3d(var(--drift),12px,0)}}
+@keyframes archiveGoldTwirl{from{transform:rotate(-30deg) scaleX(.4)}to{transform:rotate(140deg) scaleX(1)}}
+@keyframes archiveSpiritFloat{0%{transform:translate3d(-18px,8px,0) rotate(-10deg);opacity:.3}33%{transform:translate3d(24px,-20px,0) rotate(9deg);opacity:.5}66%{transform:translate3d(-6px,-4px,0) rotate(-6deg);opacity:.4}100%{transform:translate3d(18px,17px,0) rotate(12deg);opacity:.5}}
+
+.legend-detail-panel{background:radial-gradient(ellipse at 15% 12%,#fffbe6cc,transparent 42%),radial-gradient(ellipse at 90% 85%,#fff2b99e,transparent 40%),linear-gradient(135deg,#ffeaa0,#d9a32d 28%,#fff0aa 49%,#bb801c 76%,#f7d478);border:2px solid #ffe9a5;box-shadow:0 0 0 3px #a67525,0 15px 40px #0006,0 0 30px #f9ce5870;color:#50320d}
+.legend-detail-panel .detail-name{color:#50320d;text-shadow:0 1px #fff5b8}
+.legend-detail-panel .owner-line,.legend-detail-panel .my-tag,.legend-detail-panel .detail-date{color:#65400e}
+.legend-detail-panel .star-badge{filter:drop-shadow(0 1px 3px #75500b66)}
+.legend-detail-panel .heart.filled path{fill:#a94d50;stroke:#93423e}
+
 /* The list title is centered across the full panel, independent of the close button. */
 .archive-heading{position:absolute;top:10px;left:0;right:0;height:38px;display:flex;align-items:center;justify-content:center;margin:0;padding:0;font-family:"Monomaniac One",sans-serif;font-size:24px;font-weight:400;line-height:1;letter-spacing:.08em;color:var(--text);pointer-events:none}
 .archive-panel[data-active-tab="legend"] .archive-heading{color:#573808;text-shadow:0 1px 0 #fff4b5}

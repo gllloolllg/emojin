@@ -7,7 +7,7 @@
  --mine-bg:#37545C;--reveal-bg:#3C354E;
  --poison:#B3DE9F;--poison-dark:#35433A;--backdrop:#17121DC9;
  --city-bg:#2B2433;--city-road:#211C29;--city-block:#382D3E;
- --city-block-alt:#3B394D;--city-block-third:#4E394B;--city-detail:#59475E;
+ --city-block-alt:#3B394D;--city-block-third:#4E394B;--city-detail:#5947.5E;
  --city-line:#59455C;--city-pink:#AC7F95;--city-purple:#96829F;
  --safe-bottom:env(safe-area-inset-bottom,0px);--safe-top:env(safe-area-inset-top,0px);
  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
@@ -31,7 +31,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);out
 }
 #cityScreen{position:absolute;inset:0;overflow:hidden;background:var(--city-bg) url('./city-background.png') center / 100% 100% no-repeat}
 #cityCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.city-header{position:absolute;top:calc(24px + var(--safe-top));left:25px;right:25px;display:flex;align-items:center;justify-content:flex-end;z-index:5;pointer-events:none}
+.city-header{position:absolute;top:calc(24px + var(--safe-top));left:0px;right:0px;display:flex;align-items:center;justify-content:flex-end;z-index:5;pointer-events:none}
 .header-tools{display:flex;align-items:center;gap:8px;pointer-events:auto;margin-right:auto}
 .announcements-button{width:44px;height:44px;display:grid;place-items:center;padding:0;border:0;background:none;font-size:28px;line-height:1;opacity:.35;filter:brightness(.65)}
 .announcements-button.has-unread{opacity:1;filter:none}
@@ -760,7 +760,7 @@ body.moji-spin-open #modalHost>.modal-backdrop{
   radial-gradient(ellipse at 50% 40%,#30202c,#1b131f 60%,#100d16);
 }
 
-.moji-spin-launch{width:56px;height:56px;left:8px;border-radius:50%;font-size:37.5px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
+.moji-spin-launch{width:56px;height:56px;left:8px;padding-left:4px;border-radius:50%;font-size:35px;border:2px solid #ffe9a6;background:linear-gradient(145deg,#fff0b0,#e5bc58 55%,#b9852c);box-shadow:inset 0 2px 3px #ffffff88,0 3px 10px #0005,0 0 12px #e5bc5855}
 
 /* Free-spin entry and persistent countdown. */
 .spin-wheel-wrap{padding:0;background:transparent;color:inherit;cursor:pointer}

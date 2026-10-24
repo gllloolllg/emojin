@@ -9,6 +9,10 @@ service cloud.firestore {
     // Only the IAM-authorized migration/scheduler can alter rollout gates/backups.
     match /config/{id} { allow read: if signedIn(); allow write: if false; }
     match /migrationBackups/{id} { allow read, write: if false; }
+    match /announcements/{id} {
+      allow read: if signedIn() && resource.data.published == true;
+      allow write: if false;
+    }
     match /owners/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.uid == uid;

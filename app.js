@@ -992,6 +992,15 @@ async function createCloud() {
       ]));
       archiveCache=[...dead.docs,...legends.docs].map(s=>s.data());archiveAt=Date.now();return archiveCache;
     },
+    async getAnnouncements(){
+      if(!auth.currentUser)throw Error('オーナーログインが必要です。');
+      const snap=await retry(()=>F.getDocsFromServer(F.query(F.collection(db,'announcements'),F.where('published','==',true))));
+      return snap.docs.map(doc=>{
+        const value=doc.data(),publishedAt=value.publishedAt?.toMillis?.();
+        return {body:typeof value.body==='string'?value.body.trim():'',publishedAt,published:value.published};
+      }).filter(item=>item.published===true && item.body && Number.isFinite(item.publishedAt) && item.publishedAt>=0)
+        .sort((a,b)=>b.publishedAt-a.publishedAt).map(({body,publishedAt})=>({body,publishedAt}));
+    },
     async getGeneratedEmojis(){
       const ownerUid=uid;
       if(!auth.currentUser || !ownerUid)throw Error('オーナーログインが必要です。');
@@ -1175,6 +1184,57 @@ async function syncWorld({play=false}={}) {
 function reportError(error) {
   console.error(error);
   toast(error.message || '通信に失敗しました。もう一度お試しください。',5000);
+}
+/* Announcement read state is one local timestamp, never a per-message/owner database write. */
+const ANNOUNCEMENTS_READ_KEY='emojin.announcements.openedAt.'+FIREBASE_CONFIG.projectId;
+let announcementItems=[],announcementReadAt=readAnnouncementTime(),announcementRequest=null,announcementCheckedAt=0;
+function readAnnouncementTime() {
+  try {const value=Number(localStorage.getItem(ANNOUNCEMENTS_READ_KEY));return Number.isFinite(value)&&value>=0?value:0;}
+  catch{return 0;}
+}
+function renderAnnouncementButton() {
+  const button=$('announcementsButton');
+  const unread=announcementItems.some(item=>item.publishedAt>=announcementReadAt);
+  button.classList.toggle('has-unread',unread);
+  button.setAttribute('aria-label',unread?'お知らせ（未読あり）':'お知らせ');
+  button.disabled=!store?.player || busy || !!playback;
+}
+async function refreshAnnouncements(force=false) {
+  if(!store?.player)return [];
+  if(announcementRequest) {
+    if(!force)return announcementRequest;
+    // Opening must not reuse a snapshot taken before the recorded opening time.
+    while(announcementRequest)await announcementRequest.catch(()=>{});
+  }
+  if(!force && announcementCheckedAt && Date.now()-announcementCheckedAt<60000)return announcementItems;
+  announcementCheckedAt=Date.now();
+  const request=cloud.getAnnouncements().then(items=>{
+    announcementItems=items;renderAnnouncementButton();return items;
+  });
+  announcementRequest=request;
+  try{return await request;}finally{if(announcementRequest===request)announcementRequest=null;}
+}
+async function showAnnouncements() {
+  if(busy || playback || modalKind || !store?.player)return;
+  const openedAt=Date.now(),previousReadAt=announcementReadAt;
+  openModal('<h2 class="announcements-heading">お知らせ</h2><div class="announcements-content"><div class="announcement-status" role="status">読み込み中…</div></div>',
+    'お知らせ',{panelClass:'announcements-panel'});
+  const revision=modalRevision;
+  const content=$('modalHost').querySelector('.announcements-content');
+  try {
+    const items=await refreshAnnouncements(true);
+    if(revision!==modalRevision || modalClosing || !content.isConnected)return;
+    content.innerHTML=items.length?`<ul class="announcement-list">${items.map(item=>`<li class="announcement-item${item.publishedAt>=previousReadAt?' is-unread':''}"><p>${esc(item.body)}</p></li>`).join('')}</ul>`
+      :'<p class="announcement-status">お知らせはありません。</p>';
+    // Keep this opening's unread emphasis; only future openings use the saved timestamp.
+    announcementReadAt=Math.max(openedAt,announcementReadAt,readAnnouncementTime());
+    try{localStorage.setItem(ANNOUNCEMENTS_READ_KEY,String(announcementReadAt));}catch(error){console.warn('Announcement read time',error);}
+    renderAnnouncementButton();
+  } catch(error) {
+    if(revision!==modalRevision || modalClosing || !content.isConnected)return;
+    content.innerHTML='<p class="announcement-status" role="status">お知らせを読み込めませんでした。<br>閉じて、もう一度お試しください。</p>';
+    console.warn('Announcements',error);
+  }
 }
 function active() { return store.emojins.filter(e=>e.status==="active" && !(store.dormantOwnerUids||[]).includes(e.ownerUid)); }
 function battlePool() { return active().filter(e=>e.isNpc || !(store.suspendedOwnerUids||[]).includes(e.ownerUid)); }
@@ -1452,7 +1512,7 @@ function showAuthForm(mode){
       store=await cloud.getState();
       await closeModal(true);
       $("bootScreen").classList.add('hidden');
-      renderCity();refreshNav();
+      renderCity();refreshNav();refreshAnnouncements(true).catch(error=>console.warn('Announcements',error));
       await showRevival();
       if(registering)showTutorial();
       else if(store.draft)beginGeneration();
@@ -2203,6 +2263,7 @@ async function animateHatchReward() {
   finally {orb.remove();hatchAnimating=false;busy=false;refreshNav();}
 }
 function refreshNav() {
+  renderAnnouncementButton();
   renderHatch();
   refreshSlotUI();
   const cost=E.generationCost(store.emojins,cloud.uid);
@@ -3289,6 +3350,10 @@ async function showLegend(e) {
 }
 
 function wireEvents() {
+  $('announcementsButton').onclick=showAnnouncements;
+  window.addEventListener('storage',event=>{
+    if(event.key===ANNOUNCEMENTS_READ_KEY || event.key===null){announcementReadAt=readAnnouncementTime();renderAnnouncementButton();}
+  });
   $("generateButton").onclick=beginGeneration;
   $("forceBattleButton").onclick=()=>forceBattle();
   $('battleMenuToggle').onclick=toggleBattleMenu;
@@ -3416,9 +3481,9 @@ function wireEvents() {
   });
   let resizeTimer;
   window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(drawCity,70);});
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncWorld({play:true}).catch(reportError);});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncWorld({play:true}).catch(reportError);refreshAnnouncements().catch(error=>console.warn('Announcements',error));}});
   setInterval(refreshNav,5000);
-  setInterval(()=>{if(!document.hidden)syncWorld({play:true}).catch(reportError);},60000);
+  setInterval(()=>{if(!document.hidden){syncWorld({play:true}).catch(reportError);refreshAnnouncements().catch(error=>console.warn('Announcements',error));}},60000);
 }
 async function init() {
   store=cloud.player?await cloud.getState():{
@@ -3430,6 +3495,7 @@ async function init() {
   window.addEventListener('emojin-wallet',()=>{if(store){store.wallet=cloud.wallet;refreshNav();}});
   window.addEventListener('emojin-operation-cancelled',()=>{const message=cloud.takeUpgradeNotice?.();if(message)toast(message,5000);});
   installSlotButton();wireEvents();drawCity();renderCity();requestAnimationFrame(worldLoop);
+  if(store.player)refreshAnnouncements().catch(error=>console.warn('Announcements',error));
   await delay(680);
   animate($("bootScreen"),[{opacity:1},{opacity:0}],350);
   await delay(350);$("bootScreen").classList.add("hidden");

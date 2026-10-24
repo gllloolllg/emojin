@@ -4,7 +4,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {createRequire}=require('node:module');
 const dep=process.env.RULE_TEST_DEPENDENCIES?createRequire(path.join(process.env.RULE_TEST_DEPENDENCIES,'package.json')):require;
 const {initializeTestEnvironment,assertSucceeds,assertFails}=dep('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,writeBatch}=dep('firebase/firestore');
+const {doc,setDoc,getDoc,getDocs,collection,query,where,Timestamp,writeBatch}=dep('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Run with firebase emulators:exec --project demo-emojin-v4');
 const root=path.join(__dirname,'..'),ctx={};vm.createContext(ctx);
 const source=fs.readFileSync(path.join(root,'app.js'),'utf8');vm.runInContext(source.slice(0,source.indexOf('/* MOJI SPIN:')),ctx);
@@ -24,6 +24,19 @@ beforeEach(async()=>{
    setDoc(doc(db,'emojins/a'),resident('a','u1')),setDoc(doc(db,'emojins/b'),resident('b','u2')),
    setDoc(doc(db,'emojins/history'),{...resident('history','u1'),status:'dead',rulesVersion:3,maxHp:10,currentHp:0})]);
  });
+});
+test('published announcements are readable by players, drafts are private and all client writes are denied',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();await setDoc(doc(db,'announcements/live'),{body:'公開本文',publishedAt:Timestamp.fromMillis(1000),published:true});
+  await setDoc(doc(db,'announcements/draft'),{body:'下書き',publishedAt:Timestamp.fromMillis(2000),published:false});
+ });
+ const db=env.authenticatedContext('u1').firestore(),anon=env.unauthenticatedContext().firestore();
+ await assertSucceeds(getDoc(doc(db,'announcements/live')));await assertFails(getDoc(doc(db,'announcements/draft')));
+ await assertFails(getDoc(doc(anon,'announcements/live')));
+ const snap=await assertSucceeds(getDocs(query(collection(db,'announcements'),where('published','==',true))));assert.equal(snap.size,1);
+ await assertFails(getDocs(collection(db,'announcements')));
+ await assertFails(setDoc(doc(db,'announcements/new'),{body:'不正追加',publishedAt:Timestamp.now(),published:true}));
+ await assertFails(setDoc(doc(db,'announcements/live'),{body:'不正編集',publishedAt:Timestamp.now(),published:true}));
 });
 function batchMatch(db,{legacy=false,badHp=false,id='b-test',prior=0,aPrior=0,tie=false,mutate=null,limit=5}={}){
  const a={...resident('a','u1'),slots:Array(6).fill(tie?'blank':'strong'),defeats:aPrior},b={...resident('b','u2'),slots:Array(6).fill('blank'),defeats:prior},log=E.battle(a,b,E.seeded(1),10000,id);

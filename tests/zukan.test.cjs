@@ -27,6 +27,15 @@ test('empty collection returns no discoveries, without treating drafts as genera
  const r=runtime();r.c.local={draft:{emoji:'🐸',chosen:'strong'}};
  assert.deepEqual(plain(await r.c.api.getGeneratedEmojis()),[]);
 });
+test('details retain every own instance of one emoji across active, dead and legend records without another query',async()=>{
+ const records=['active','dead','legend'].map((status,i)=>record('🐸',{id:'frog-'+i,status,slots:['attack1'],stars:i}));
+ records.push(record('🐸',{id:'other',ownerUid:'other'}),record('🐸',{id:'npc',isNpc:true}));
+ const r=runtime(records),found=await r.c.api.getGeneratedEmojins();
+ assert.deepEqual(plain(found.map(e=>e.id)),['frog-0','frog-1','frog-2']);
+ found[0].slots.push('poison');found[1].stars=100;
+ const cached=await r.c.api.getGeneratedEmojins();assert.deepEqual(plain(cached[0].slots),['attack1']);assert.equal(cached[1].stars,1);
+ assert.deepEqual(plain(await r.c.api.getGeneratedEmojis()),['🐸']);assert.equal(r.reads(),1);
+});
 test('cache returns independent arrays, expires in 30s and is isolated by owner ID',async()=>{
  const r=runtime([record('🐸')]);const first=await r.c.api.getGeneratedEmojis();first.push('🤡');
  assert.deepEqual(plain(await r.c.api.getGeneratedEmojis()),['🐸']);assert.equal(r.reads(),1);

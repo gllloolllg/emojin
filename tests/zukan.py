@@ -9,10 +9,15 @@ base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
 MOCK=base.MOCK+r'''
 audit.zukanReads=0;window.generated=['🦐','🐸','🤡'];window.failZukan=false;window.holdZukan=false;
 mockCloud.getArchive=async()=>[];
-mockCloud.getGeneratedEmojis=async()=>{
+window.zukanRecord=(emoji,id,status='active',createdAt=1)=>({id,emoji,status,createdAt,name:status==='legend'?'伝説のカエル':status==='dead'?'ボチのカエル':emoji,
+ ownerUid:'me',ownerName:'Owner',isNpc:false,maxHp:8,currentHp:8,stars:status==='legend'?50:4,defeats:status==='dead'?5:1,
+ poisoned:false,cursedSlots:[],slots:['attack1','attack2','blank','heal','guard','poison'],endedAt:status==='active'?null:50,rulesVersion:4,recordVersion:1});
+mockCloud.getGeneratedEmojins=async()=>{
  audit.zukanReads++;if(holdZukan)await new Promise(resolve=>window.releaseZukan=resolve);
- if(failZukan)throw Error('offline');return [...generated];
+ if(failZukan)throw Error('offline');return [...generated.map((emoji,i)=>zukanRecord(emoji,'z-'+i)),
+  ...(generated.includes('🐸')?[zukanRecord('🐸','z-old','dead',30),zukanRecord('🐸','z-legend','legend',40)]:[])];
 };
+mockCloud.getAnnouncements=async()=>[];
 '''
 async def main():
  server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(base.Quiet,directory=str(ROOT)))
@@ -50,8 +55,38 @@ async def main():
      const r=els.slice(0,6).map(el=>el.getBoundingClientRect());
      return r.slice(0,5).every(x=>Math.abs(x.top-r[0].top)<1)&&r[5].top>r[0].bottom;
     }''');assert columns
-    assert await page.locator('#pane-zukan button,#pane-zukan [data-emojin-id]').count()==0
-    await cells.first.tap();assert await page.locator('#detailHost').is_hidden()
+    assert await page.locator('#pane-zukan button').count()==3
+    await cells.nth(1).tap();assert await page.locator('#detailHost').is_hidden()
+    await cells.first.tap();await page.wait_for_selector('#detailHost .detail-panel')
+    assert await page.locator('#detailHost .zukan-detail-nav').count()==0
+    assert await page.locator('#detailHost .detail-name').text_content()=='🦐'
+    await page.locator('#detailHost .detail-name').tap();await page.wait_for_function("document.querySelector('#detailHost').classList.contains('hidden')")
+    await page.locator('[data-zukan-emoji="🐸"]').tap();await page.wait_for_selector('#detailHost .legend-detail-panel')
+    await page.locator('#detailHost .detail-panel').evaluate('async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));}')
+    assert await page.locator('.zukan-detail-prev').is_disabled()
+    assert await page.locator('#detailHost .detail-name').text_content()=='伝説のカエル'
+    nav_layout=await page.locator('.zukan-detail-nav').evaluate_all('''els=>els.every(el=>{const r=el.getBoundingClientRect();return r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})''')
+    assert nav_layout
+    await page.screenshot(path=f'/tmp/emojin-zukan-details-legend-{width}.png')
+    await page.locator('.zukan-detail-next').tap()
+    assert await page.locator('#detailHost .detail-name').text_content()=='ボチのカエル'
+    assert await page.locator('#detailHost .legend-detail-panel').count()==0
+    assert await page.locator('#detailHost .defeat-record').text_content()=='💀×5'
+    assert await page.locator('#detailHost .slot').count()==6
+    await page.screenshot(path=f'/tmp/emojin-zukan-details-dead-{width}.png')
+    await page.locator('.zukan-detail-next').tap()
+    assert await page.locator('#detailHost .detail-name').text_content()=='🐸'
+    assert await page.locator('.zukan-detail-next').is_disabled()
+    await page.locator('.zukan-detail-prev').tap();await page.locator('.zukan-detail-prev').tap()
+    assert await page.locator('#detailHost .detail-name').text_content()=='伝説のカエル'
+    assert await page.locator('#detailHost .legend-detail-panel').count()==1
+    await page.locator('#detailHost .slot').first.tap();await page.wait_for_selector('#popoverHost:not(.hidden) .slot-popover')
+    await page.keyboard.press('Escape');await page.wait_for_function("document.querySelector('#popoverHost').classList.contains('hidden')")
+    await page.keyboard.press('Escape');await page.wait_for_function("document.querySelector('#detailHost').classList.contains('hidden')")
+    assert await page.locator('#modalHost').get_attribute('inert') is None
+    assert await page.locator('.archive-heading').text_content()=='ズカン'
+    assert await page.locator('[data-zukan-emoji="🐸"]').evaluate('el=>el===document.activeElement')
+    assert await page.evaluate('audit.zukanReads')==1
     await page.screenshot(path=f'/tmp/emojin-zukan-{width}.png')
     await page.locator('#pane-zukan').evaluate('el=>el.scrollTop=el.scrollHeight')
     assert await cells.last.evaluate('el=>el.getBoundingClientRect().bottom<=document.querySelector(".archive-tabs").getBoundingClientRect().top')
@@ -81,7 +116,7 @@ async def main():
     assert await page.locator('.zukan-cell.is-locked').count()==len(catalog)
     assert await page.locator('.zukan-cell:not(.is-locked)').count()==0
     assert not errors,errors
-    print(f'PASS {width}x{height}: fourth tab, five columns, complete emoji order, translucent locked eggs, no details, swipe/keyboard, scroll, reopen/new creation, read failure/retry and stale response isolation',flush=True)
+    print(f'PASS {width}x{height}: fourth tab/five columns, locked eggs inert, single/multiple details with side arrows, active/dead/legend pagination, golden theme, skill popover, focus/tab restoration, no per-page fetch, swipe/keyboard, scroll, reopen, failure/stale isolation',flush=True)
     await ctx.close()
    await browser.close()
  finally:server.shutdown()

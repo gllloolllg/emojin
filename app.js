@@ -1002,15 +1002,18 @@ async function createCloud() {
         .sort((a,b)=>b.publishedAt-a.publishedAt).map(({body,publishedAt})=>({body,publishedAt}));
     },
     async getGeneratedEmojis(){
+      return [...new Set((await this.getGeneratedEmojins()).map(e=>e.emoji))];
+    },
+    async getGeneratedEmojins(){
       const ownerUid=uid;
       if(!auth.currentUser || !ownerUid)throw Error('オーナーログインが必要です。');
-      if(zukanCache?.uid===ownerUid && Date.now()-zukanAt<30000)return [...zukanCache.emojis];
+      if(zukanCache?.uid===ownerUid && Date.now()-zukanAt<30000)return E.clone(zukanCache.emojins);
       // Query every owned record, including graves and legends beyond the archive's 200-item limit.
       const snap=await retry(()=>F.getDocsFromServer(F.query(F.collection(db,'emojins'),F.where('ownerUid','==',ownerUid))));
       if(uid!==ownerUid)throw Error('オーナーが変更されました。開き直してください。');
       const known=new Set(E.EMOJIS);
-      const emojis=[...new Set(snap.docs.map(s=>s.data()).filter(e=>e.ownerUid===ownerUid && !e.isNpc && known.has(e.emoji)).map(e=>e.emoji))];
-      zukanCache={uid:ownerUid,emojis};zukanAt=Date.now();return [...emojis];
+      const emojins=snap.docs.map(s=>s.data()).filter(e=>e.ownerUid===ownerUid && !e.isNpc && known.has(e.emoji));
+      zukanCache={uid:ownerUid,emojins};zukanAt=Date.now();return E.clone(emojins);
     },
     async createOwner({name,password}){
       try{
@@ -1390,15 +1393,18 @@ async function closeDetailOverlay(immediate=false) {
   if(!immediate&&detailReturnFocus?.isConnected)detailReturnFocus.focus({preventScroll:true});
   detailReturnFocus=null;detailClosing=false;
 }
-function showDetail(e, ret=null) {
+function detailContent(e) {
   const tag=my(e)?"マイ エモジン":"";
   const when=e.status==="dead"?`🪦 ${dateText(e.endedAt)}`:e.status==="legend"?`🏆 ${dateText(e.endedAt)}`:"";
-  const content=`<div class="detail-star">${recordBadge(e)}</div>
+  return `<div class="detail-star">${recordBadge(e)}</div>
     <h2 class="detail-name">${esc(e.name)}</h2><div class="my-tag">${tag}</div>
     ${emojiVisual(e)}<div class="hp-detail">${hearts(e)}</div>
     <div class="slots-row">${slotRow(e)}</div>
     <div class="owner-line detail-owner">オーナー：${esc(e.ownerName)}</div>
     ${when?`<div class="detail-date">${when}</div>`:""}`;
+}
+function showDetail(e, ret=null) {
+  const content=detailContent(e);
   if($("modalHost").querySelector(".archive-panel")){openDetailOverlay(content,e.status==='legend');return;}
   modalReturn=ret;
   openModal(content,"エモジン",{panelClass:e.status==='legend'?"detail-panel legend-detail-panel":"detail-panel",tapToClose:true});
@@ -1443,11 +1449,12 @@ async function loadZukan(panel) {
   pane.dataset.zukanState='loading';
   pane.innerHTML='<div class="archive-loading"><div class="loader"></div></div>';
   try {
-    const generated=new Set(await cloud.getGeneratedEmojis());
+    const emojins=await cloud.getGeneratedEmojins(),generated=new Set(emojins.map(e=>e.emoji));
     if(!panel.isConnected)return;
+    pane.zukanEmojins=emojins;
     pane.innerHTML=`<div class="zukan-grid" role="list" aria-label="生成した絵文字">${E.EMOJIS.map(emoji=>{
       const unlocked=generated.has(emoji);
-      return `<span class="zukan-cell${unlocked?'':' is-locked'}" role="listitem" aria-label="${unlocked?esc(emoji):'未生成'}">${unlocked?emoji:'🥚'}</span>`;
+      return `<span class="zukan-cell${unlocked?'':' is-locked'}" role="listitem" aria-label="${unlocked?esc(emoji):'未生成'}">${unlocked?`<button type="button" data-zukan-emoji="${esc(emoji)}" aria-label="${esc(emoji)}のエモジンを見る" aria-haspopup="dialog">${emoji}</button>`:'🥚'}</span>`;
     }).join('')}</div>`;
     pane.dataset.zukanState='loaded';
   } catch(error) {
@@ -1455,6 +1462,27 @@ async function loadZukan(panel) {
     pane.dataset.zukanState='error';pane.innerHTML='<div class="archive-empty">ズカンを読み込めませんでした。</div>';
     console.warn('Zukan',error);
   }
+}
+function showZukanDetail(button) {
+  const pane=button.closest('#pane-zukan');
+  const emojins=(pane?.zukanEmojins||[]).filter(e=>e.emoji===button.dataset.zukanEmoji && my(e) && !e.isNpc)
+    .sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)||String(a.id).localeCompare(String(b.id)));
+  if(!emojins.length)return;
+  let index=0;
+  function render(first=false,focus=null) {
+    const e=emojins[index];
+    if(first)showDetail(e);
+    const panel=$('detailHost').querySelector('.detail-panel');
+    if(!panel)return;
+    if(!first){panel.innerHTML=detailContent(e);panel.classList.toggle('legend-detail-panel',e.status==='legend');panel.scrollTop=0;}
+    if(emojins.length<2)return;
+    panel.insertAdjacentHTML('beforeend',`<button type="button" class="zukan-detail-nav zukan-detail-prev" aria-label="前のエモジン" ${index===0?'disabled':''}>◀</button><button type="button" class="zukan-detail-nav zukan-detail-next" aria-label="次のエモジン" ${index===emojins.length-1?'disabled':''}>▶</button>`);
+    for(const [selector,step] of [['.zukan-detail-prev',-1],['.zukan-detail-next',1]]){
+      panel.querySelector(selector).onclick=event=>{event.stopPropagation();index=E.clamp(index+step,0,emojins.length-1);render(false,selector);};
+    }
+    if(focus){const target=panel.querySelector(focus);(target.disabled?panel.querySelector('.zukan-detail-nav:not(:disabled)'):target).focus({preventScroll:true});}
+  }
+  render(true);
 }
 function switchArchiveTab(panel,key) {
   if(!panel)return;
@@ -3413,6 +3441,8 @@ function wireEvents() {
     if(close){closeModal();return;}
     const face=ev.target.closest("[data-face]");
     if(face&&!busy){showFace(face.dataset.face,face.classList.contains("cursed"));return;}
+    const zukan=ev.target.closest('[data-zukan-emoji]');
+    if(zukan){showZukanDetail(zukan);return;}
     const entry=ev.target.closest("[data-emojin-id]");
     if(entry){
       const e=findEmojin(entry.dataset.emojinId);
@@ -3427,6 +3457,7 @@ function wireEvents() {
     if(modalOptions.tapToClose&&!busy)closeModal();
   });
   $("detailHost").addEventListener("click",ev=>{
+    if(ev.target.closest('.zukan-detail-nav'))return;
     const face=ev.target.closest("[data-face]");
     if(face){showFace(face.dataset.face,face.classList.contains("cursed"));return;}
     closeDetailOverlay();

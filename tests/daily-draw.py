@@ -13,7 +13,16 @@ console.log(JSON.stringify({...E.battle(e('me','strong'),e('other','blank'),E.se
 MOCK=r'''
 window.dailyNow=Number(localStorage.getItem('test.daily.now'))||Date.parse('2026-10-27T03:00:00Z');Date.now=()=>dailyNow;
 window.realDailyTimes=innerWidth===390&&!localStorage.getItem('test.daily.animated');
-'''+base.MOCK.replace('duration:Math.min(options.duration||0,8)',"duration:(window.realDailyTimes&&(this.closest('.daily-draw-panel')||this.classList.contains('daily-award-flight')))?(options.duration||0):Math.min(options.duration||0,8)")+r'''
+'''+base.MOCK.replace('duration:Math.min(options.duration||0,8)',"duration:(window.realDailyTimes&&(this.closest('.daily-draw-panel')||this.classList.contains('daily-award-flight')))?(options.duration||0):Math.min(options.duration||0,8)").replace('delay:0','delay:window.realDailyTimes?(options.delay||0):0')+r'''
+audit.dailyEntrance=[];
+const dailyAnimate=Element.prototype.animate;
+Element.prototype.animate=function(frames,options){
+ const animation=dailyAnimate.call(this,frames,options);
+ if(this.matches('.daily-gift-button')&&options.duration===1100){
+  audit.dailyEntrance.push({delay:options.delay,opacity:getComputedStyle(this).opacity,fill:animation.effect.getTiming().fill});
+ }
+ return animation;
+};
 audit.dailyClaims=[];audit.dailyDraws=0;audit.dailyLookups=0;audit.dailyReveal=0;
 window.dailyLedger=JSON.parse(localStorage.getItem('test.daily.ledger')||'{}');
 window.dailyRewards=[{kind:'moji',amount:100,rare:false},{kind:'hatch',amount:1,rare:false},{kind:'moji',amount:500,rare:true}];
@@ -86,7 +95,8 @@ window.DailyMojiDraw=Object.freeze({...dailyOriginal,createRound(day){audit.dail
    async def choose_ready(page):
     await page.wait_for_function("document.querySelectorAll('.daily-gift-button:not(:disabled)').length===3",timeout=20000)
    async def award_ready(page):
-    await page.wait_for_function("document.querySelector('.daily-help')?.textContent.includes('タップして、ほか')",timeout=20000)
+    await page.wait_for_function("JSON.parse(localStorage.getItem('emojin.dailyMoji.emojin-49855.me')||'null')?.phase==='result'",timeout=20000)
+    assert 'ほかの特典' not in await page.locator('.daily-help').text_content()
    async def finish_round(page):
     await page.locator('.daily-result').tap()
     await page.wait_for_selector('.daily-gifts.is-summary')
@@ -103,6 +113,8 @@ window.DailyMojiDraw=Object.freeze({...dailyOriginal,createRound(day){audit.dail
     assert await page.locator('.daily-draw-panel').evaluate("el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.borderWidth==='0px'&&s.backgroundColor==='rgba(0, 0, 0, 0)'&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;}")
     assert await page.locator('#modalHost>.modal-backdrop').evaluate("el=>getComputedStyle(el).backgroundColor==='rgba(0, 0, 0, 0.733)'")
     assert await page.locator('.daily-gift-symbol').all_text_contents()==['🎁','🎁','🎁']
+    assert await page.evaluate("audit.dailyEntrance.length===3&&audit.dailyEntrance.every(a=>a.opacity==='0'&&a.fill==='backwards')")
+    assert await page.evaluate('audit.dailyEntrance.map(a=>a.delay)')==[0,190,380]
     assert await page.evaluate('audit.dailyDraws')==1
     await page.screenshot(path=f'/tmp/emojin-daily-choose-{width}.png')
     await page.evaluate('holdDailySave=true');await page.locator('.daily-gift-button').nth(0).tap()

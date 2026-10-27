@@ -1892,7 +1892,7 @@ async function showDailyDraw(state,saved=null){
     hint.textContent='3つの特典はこちら！';help.textContent='タップして街へ';dailyConfetti(fx,36);
     await Promise.all(buttons.map((button,i)=>button.animate([{transform:'translateY(50px) scale(.4) rotate(-12deg)',opacity:0},
       {transform:'translateY(-12px) scale(1.12) rotate(5deg)',opacity:1,offset:.7},{transform:'translateY(0) scale(1) rotate(0)',opacity:1}],
-      {duration:700,delay:i*100,easing:'ease-out'}).finished));locked=false;
+      {duration:700,delay:i*100,easing:'ease-out',fill:'backwards'}).finished));locked=false;
   }
   async function revealAward(){
     stage.querySelector('.daily-picked')?.remove();gifts.classList.add('is-hidden');stage.classList.add('has-award');
@@ -1904,7 +1904,7 @@ async function showDailyDraw(state,saved=null){
       {transform:'translate(-50%,-50%) scale(1.25) rotate(8deg)',opacity:1,offset:.65},{transform:'translate(-50%,-50%) scale(1) rotate(0)',opacity:1}],
       {duration:950,easing:'cubic-bezier(.18,.8,.25,1)'}).finished;
     if(!state.awardShown){await dailyAwardFlight(record,result);state.awardShown=true;saveDailyState(state);}
-    phase='award';state.phase='result';saveDailyState(state);help.textContent+=(help.textContent?'\n':'')+'タップして、ほかの特典を見る';locked=false;
+    phase='award';state.phase='result';saveDailyState(state);locked=false;
   }
   async function select(choice){
     if(locked && phase!=='recover')return;locked=true;phase='opening';state.choice=choice;state.phase='pending';saveDailyState(state);help.innerHTML='';
@@ -1952,7 +1952,7 @@ async function showDailyDraw(state,saved=null){
       dailyConfetti(fx,30);
       await Promise.all(buttons.map((button,i)=>button.animate([{transform:`translateY(${-innerHeight}px) rotate(${-30+i*30}deg) scale(.4)`,opacity:0},
         {transform:'translateY(18px) rotate(10deg) scale(1.1)',opacity:1,offset:.72},{transform:'translateY(-10px) rotate(-5deg)',opacity:1,offset:.86},
-        {transform:'translateY(0) rotate(0) scale(1)',opacity:1}],{duration:1100,delay:i*190,easing:'ease-out'}).finished));
+        {transform:'translateY(0) rotate(0) scale(1)',opacity:1}],{duration:1100,delay:i*190,easing:'ease-out',fill:'backwards'}).finished));
       buttons.forEach(button=>{button.disabled=false;});gifts.classList.add('is-ready');locked=false;
     }
     await finished;

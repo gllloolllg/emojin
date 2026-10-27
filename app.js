@@ -532,6 +532,46 @@ function validateRound(round){
 root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluateAnyBonus,evaluate,roll,createRound,validateRound});
 })(globalThis);
 
+/* Daily Moji Draw: frontend draw helpers. No storage or presentation. */
+(function(root){
+  'use strict';
+  const CONFIG=Object.freeze({version:1,normalHatchChance:.3,normalMojiMin:30,normalMojiMax:150,rareMojiMin:400,rareMojiMax:600});
+  function dayKey(now=Date.now()){return new Date(now+9*3600000).toISOString().slice(0,10);}
+  function validateDay(day){
+    if(typeof day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day+'T00:00:00Z'))||new Date(day+'T00:00:00Z').toISOString().slice(0,10)!==day)throw Error('くじの日付が正しくありません。');
+    return day;
+  }
+  const integer=(low,high,rng)=>low+Math.min(high-low,Math.floor(rng()*(high-low+1)));
+  function createRound(day=dayKey(),rng=Math.random){
+    validateDay(day);
+    const rewards=Array.from({length:2},()=>rng()<CONFIG.normalHatchChance?{kind:'hatch',amount:1,rare:false}:
+      {kind:'moji',amount:integer(CONFIG.normalMojiMin,CONFIG.normalMojiMax,rng),rare:false});
+    rewards.push({kind:'moji',amount:integer(CONFIG.rareMojiMin,CONFIG.rareMojiMax,rng),rare:true});
+    for(let i=2;i>0;i--){const j=integer(0,i,rng);[rewards[i],rewards[j]]=[rewards[j],rewards[i]];}
+    return {version:CONFIG.version,day,rewards};
+  }
+  function validateRound(round){
+    if(!round||round.version!==CONFIG.version||!Array.isArray(round.rewards)||round.rewards.length!==3)throw Error('くじの内容が正しくありません。');
+    validateDay(round.day);
+    if(round.rewards.filter(r=>r?.rare===true).length!==1)throw Error('レア特典の数が正しくありません。');
+    for(const r of round.rewards){
+      if(!r||typeof r.rare!=='boolean'||!Number.isInteger(r.amount))throw Error('特典が正しくありません。');
+      if(r.rare){if(r.kind!=='moji'||r.amount<CONFIG.rareMojiMin||r.amount>CONFIG.rareMojiMax)throw Error('レア特典が正しくありません。');}
+      else if(r.kind==='hatch'){if(r.amount!==1)throw Error('孵化ポイントが正しくありません。');}
+      else if(r.kind!=='moji'||r.amount<CONFIG.normalMojiMin||r.amount>CONFIG.normalMojiMax)throw Error('通常特典が正しくありません。');
+    }
+    return {version:CONFIG.version,day:round.day,rewards:round.rewards.map(({kind,amount,rare})=>({kind,amount,rare}))};
+  }
+  function validateRecord(record,day){
+    if(record?.kind!=='dailyDraw'||!Number.isInteger(record.choice)||record.choice<0||record.choice>2)throw Error('保存済みのくじを確認できませんでした。');
+    const round=validateRound(record.round),reward=round.rewards[record.choice];
+    if(round.day!==day||record.reward?.kind!==reward.kind||record.reward.amount!==reward.amount||record.reward.rare!==reward.rare
+      ||record.moji!==(reward.kind==='moji'?reward.amount:0)||!Number.isInteger(record.hatch)||record.hatch<0||record.hatch>(reward.kind==='hatch'?1:0))throw Error('保存済みの特典が正しくありません。');
+    return {...record,round,reward};
+  }
+  root.DailyMojiDraw=Object.freeze({CONFIG,dayKey,validateDay,createRound,validateRound,validateRecord});
+})(globalThis);
+
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
@@ -792,6 +832,23 @@ async function createCloud() {
         tx.set(accountRef,next);tx.set(receipt,record);
         return {ok:true,record,account:next};
       }
+      if(op.action==='dailyDraw') {
+        const receipt=receiptRef(op.id),existing=await tx.get(receipt);
+        if(existing.exists()) {
+          const record=existing.data();if(record.kind!=='dailyDraw')throw Error('くじの保存内容を確認してください。');
+          return {ok:true,record,account};
+        }
+        await requireMatchRules(tx);
+        const round=window.DailyMojiDraw.validateRound(op.data.round),choice=op.data.choice;
+        if(op.id!=='daily-'+round.day || !Number.isInteger(choice) || choice<0 || choice>2)throw Error('くじの選択が正しくありません。');
+        const reward=round.rewards[choice],wallet=E.accrueMoji(account.wallet,Date.now());
+        const moji=reward.kind==='moji'?reward.amount:0,hatch=reward.kind==='hatch'?Math.max(0,Math.min(1,10-account.hatch)):0;
+        wallet.balance+=moji;
+        const next=nextAccount(account,{wallet,hatch:account.hatch+hatch},op.id);
+        const record={kind:'dailyDraw',round,choice,reward,moji,hatch,at:Date.now()};
+        tx.set(accountRef,next);tx.set(receipt,record);
+        return {ok:true,record,account:next};
+      }
       if(op.action==='walletReward') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists())return {...existing.data(),account};
@@ -919,6 +976,22 @@ async function createCloud() {
     saveDraft(value){if(value?.id===local.draft?.id){local.draft=E.clone(value);persist();}},
     addLoot(amount,id){const task=enqueue('walletReward',{uid,amount},id);task.catch(()=>resumeWrites());return task;},
     get slotPending(){return !!local.account?.slotRound || local.pending.some(op=>op.action==='slotSpin'&&op.data.uid===uid);},
+    async getDailyDraw(day){
+      window.DailyMojiDraw.validateDay(day);
+      await ensureWallet();await flush();
+      const snap=await F.getDocFromServer(receiptRef('daily-'+day));
+      if(!snap.exists())return null;
+      const record=snap.data();if(record.kind!=='dailyDraw')throw Error('くじの保存内容を確認してください。');
+      return record;
+    },
+    async claimDailyDraw(round,choice){
+      window.DailyMojiDraw.validateRound(round);
+      const id='daily-'+round.day,data={uid,round,choice};
+      const result=await enqueue('dailyDraw',data,id);
+      const saved=result.results?.[id] || await retry(()=>writeOperation({action:'dailyDraw',data,id}));
+      if(!saved.record)throw Error('くじの保存結果を確認できませんでした。');
+      return saved.record;
+    },
     async getSlotRound(){
       await ensureWallet();await flush();
       const snap=await F.getDocFromServer(walletRef());applyAccount(snap.data());
@@ -1348,6 +1421,7 @@ async function closeModal(force=false) {
   host.classList.add("hidden");host.innerHTML="";
   if(ret){showArchive(ret.status,ret.filter);return;}
   if(oldFocus&&oldFocus.isConnected)oldFocus.focus({preventScroll:true});
+  if(!force)maybeDailyDraw().catch(error=>console.warn('Daily draw',error));
 }
 async function closePopover(immediate=false) {
   const host=$("popoverHost");
@@ -1685,6 +1759,7 @@ function showTutorial() {
 
     host.classList.add('hidden');
     store.player.tutorialSeen = true;
+    dailyTutorialDoneUid=cloud.uid;
     cloud.markTutorialSeen().catch(reportError);
 
     if (store.draft) beginGeneration();
@@ -1706,6 +1781,187 @@ function showTutorial() {
   host.focus({ preventScroll: true });
 }
 
+
+/* Daily entry event. Date checks and presentation are frontend-only; receipts settle once. */
+const DAILY=window.DailyMojiDraw;
+let dailyChecking=false,dailyAttemptedDay='',dailyFailedAt=0,dailyVesselSerial=0,dailyTutorialDoneUid='';
+function dailyStorageKey(){return 'emojin.dailyMoji.'+FIREBASE_CONFIG.projectId+'.'+cloud.uid;}
+function readDailyState(day){
+  try {
+    const state=JSON.parse(localStorage.getItem(dailyStorageKey())||'null');
+    if(state?.day!==day)return null;
+    if(state.phase==='done')return {day,phase:'done'};
+    state.round=DAILY.validateRound(state.round);
+    if(state.round.day!==day || (state.choice!==null && (!Number.isInteger(state.choice)||state.choice<0||state.choice>2)))return null;
+    return state;
+  }catch{return null;}
+}
+function saveDailyState(state){
+  let previous=null;
+  try{previous=JSON.parse(localStorage.getItem(dailyStorageKey())||'null');if(previous)DAILY.validateDay(previous.day);}catch{previous=null;}
+  if(previous && (previous.day>state.day || (previous.day===state.day && previous.phase==='done' && state.phase!=='done')))return;
+  try{localStorage.setItem(dailyStorageKey(),JSON.stringify(state));}catch(error){console.warn('Daily draw state',error);}
+}
+function dailyCanShow(){
+  return !!store?.player && (store.player.tutorialSeen || dailyTutorialDoneUid===cloud.uid) && !document.hidden && !busy && !playback && !modalKind && !modalClosing && !revivalPlaying
+    && !store.draft && !hatchAnimating && !lootFlights && $('battleMenu').classList.contains('hidden')
+    && !(store.battles||[]).some(b=>(store.player.unreadBattleIds||[]).includes(b.battleId))
+    && !(store.legends||[]).some(l=>l.seq>(store.player.seenLegendSeq||0))
+    && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','detailHost','popoverHost'].every(id=>$(id).classList.contains('hidden'));
+}
+async function maybeDailyDraw(){
+  const day=DAILY.dayKey(),state=readDailyState(day);
+  if(dailyChecking || dailyAttemptedDay===day || state?.phase==='done' || !dailyCanShow() || (dailyFailedAt && Date.now()-dailyFailedAt<30000))return;
+  dailyChecking=true;
+  try {
+    const saved=await cloud.getDailyDraw(day);
+    if(!dailyCanShow() || DAILY.dayKey()!==day)return;
+    const fresh=await cloud.getState();
+    if(!dailyCanShow() || DAILY.dayKey()!==day)return;
+    store=fresh;renderCity();refreshNav();
+    if(!store.player)return;
+    if((store.battles||[]).some(b=>(store.player.unreadBattleIds||[]).includes(b.battleId))
+      || (store.legends||[]).some(l=>l.seq>(store.player.seenLegendSeq||0)))await playUpdates();
+    if(!dailyCanShow() || DAILY.dayKey()!==day)return;
+    const pending=readDailyState(day)||state;
+    if(pending?.phase==='done')return;
+    let record=saved?DAILY.validateRecord(saved,day):null;
+    if(record && !Number.isInteger(pending?.choice)){saveDailyState({day,phase:'done'});dailyAttemptedDay=day;return;}
+    const entry=pending||{day,round:DAILY.createRound(day),choice:null,phase:'choose',awardShown:false};
+    if(record){entry.round=record.round;entry.choice=record.choice;}
+    saveDailyState(entry);dailyAttemptedDay=day;
+    await showDailyDraw(entry,record);
+  }catch(error){dailyFailedAt=Date.now();console.warn('Daily draw',error);}
+  finally{dailyChecking=false;}
+}
+function dailyRewardMarkup(reward){
+  if(reward.kind==='hatch')return '<span class="daily-reward daily-hatch"><span class="daily-hatch-orb"></span><strong><span>孵化ポイント</span><span>＋1</span></strong></span>';
+  const svg=document.querySelector('.mo-vessel svg').cloneNode(true),clip='daily-beaker-'+(++dailyVesselSerial);
+  svg.querySelector('clipPath').id=clip;
+  const fluid=svg.querySelector('rect');fluid.removeAttribute('id');fluid.setAttribute('clip-path','url(#'+clip+')');fluid.setAttribute('y','25');fluid.setAttribute('height','25');
+  return `<span class="daily-reward daily-moji">${svg.outerHTML}<strong>${reward.amount}モジ</strong></span>`;
+}
+function dailyConfetti(host,count=42){
+  const colors=['#ffe9a0','#f7bd40','#ff9bd5','#a9f1d0','#fff8dc'];
+  for(let i=0;i<count;i++){
+    const piece=document.createElement('i');piece.className='daily-confetti';piece.style.background=colors[i%colors.length];
+    piece.style.left=(10+Math.random()*80)+'%';host.appendChild(piece);
+    piece.animate([{transform:'translateY(-30px) rotate(0deg)',opacity:1},
+      {transform:`translate(${(Math.random()-.5)*200}px,${host.clientHeight+80}px) rotate(${360+Math.random()*720}deg)`,opacity:0}],
+      {duration:1300+Math.random()*900,easing:'ease-out'}).finished.then(()=>piece.remove()).catch(()=>piece.remove());
+  }
+}
+async function dailyAwardFlight(record,icon){
+  const target=record.reward.kind==='hatch'?$('hatchGauge'):document.querySelector('.mo-vessel svg');
+  const from=icon.getBoundingClientRect(),to=target.getBoundingClientRect(),x=from.left+from.width/2,y=from.top+from.height/2;
+  const dx=to.left+to.width/2-x,dy=to.top+to.height/2-y;
+  const flight=document.createElement('div');flight.className='daily-award-flight';flight.setAttribute('aria-hidden','true');
+  flight.style.left=x+'px';flight.style.top=y+'px';flight.innerHTML=dailyRewardMarkup(record.reward);document.body.appendChild(flight);
+  try {
+    await flight.animate([{transform:'translate(-50%,-50%) scale(.8)',opacity:1},
+      {transform:`translate(calc(-50% + ${dx*.45}px),calc(-50% + ${dy*.4-65}px)) scale(1.15)`,opacity:1,offset:.5},
+      {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.16)`,opacity:0}],
+      {duration:1100,easing:'ease-in-out',fill:'forwards'}).finished;
+    if(record.hatch>0 && cloud.hatchPending>0)cloud.revealHatch();
+    refreshNav();
+    await target.animate([{filter:'brightness(3)',boxShadow:'0 0 28px #ffe383'},{filter:'brightness(1)',boxShadow:'0 0 0 transparent'}],{duration:500}).finished;
+  }finally{flight.getAnimations({subtree:true}).forEach(a=>a.cancel());flight.remove();}
+}
+async function showDailyDraw(state,saved=null){
+  busy=true;refreshNav();
+  openModal(`<h2 class="daily-title">きょうのモジくじ</h2><p class="daily-instruction">ひとつ選んでタップ</p>
+    <div class="daily-stage"><div class="daily-rays" aria-hidden="true"></div><div class="daily-gifts" role="group" aria-label="3つのプレゼント">
+    ${[0,1,2].map(i=>`<button class="daily-gift-button" type="button" aria-label="${i+1}番のプレゼント" disabled><span class="daily-gift-symbol">🎁</span></button>`).join('')}
+    </div><div class="daily-result hidden" aria-live="polite"></div><div class="daily-fx" aria-hidden="true"></div></div>
+    <div class="daily-help" role="status"></div>`,'きょうのモジくじ',{closable:false,hideClose:true,panelClass:'daily-draw-panel'});
+  const host=$('modalHost'),panel=host.querySelector('.daily-draw-panel'),stage=panel.querySelector('.daily-stage'),gifts=panel.querySelector('.daily-gifts');
+  const buttons=[...gifts.children],result=panel.querySelector('.daily-result'),hint=panel.querySelector('.daily-instruction'),help=panel.querySelector('.daily-help'),fx=panel.querySelector('.daily-fx');
+  host.classList.add('daily-draw-host');document.body.classList.add('daily-draw-open');
+  let locked=true,phase='choose',record=saved,finish;
+  const finished=new Promise(resolve=>{finish=resolve;});
+  function restoreGifts(){buttons.forEach(button=>{button.getAnimations().forEach(a=>a.cancel());});gifts.classList.remove('is-hidden','is-summary');stage.querySelector('.daily-picked')?.remove();}
+  async function leave(complete){
+    if(locked)return;locked=true;
+    if(complete)saveDailyState({day:state.day,phase:'done'});
+    await closeModal(true);finish();
+  }
+  async function showAll(){
+    if(locked)return;locked=true;phase='all';state.phase='all';saveDailyState(state);
+    result.classList.add('hidden');restoreGifts();gifts.classList.add('is-summary');stage.classList.add('is-revealed');
+    buttons.forEach((button,i)=>{button.innerHTML=dailyRewardMarkup(state.round.rewards[i]);button.disabled=true;button.classList.toggle('is-chosen',i===state.choice);});
+    hint.textContent='3つの特典はこちら！';help.textContent='タップして街へ';dailyConfetti(fx,36);
+    await Promise.all(buttons.map((button,i)=>button.animate([{transform:'translateY(50px) scale(.4) rotate(-12deg)',opacity:0},
+      {transform:'translateY(-12px) scale(1.12) rotate(5deg)',opacity:1,offset:.7},{transform:'translateY(0) scale(1) rotate(0)',opacity:1}],
+      {duration:700,delay:i*100,easing:'ease-out'}).finished));locked=false;
+  }
+  async function revealAward(){
+    stage.querySelector('.daily-picked')?.remove();gifts.classList.add('is-hidden');stage.classList.add('has-award');
+    result.innerHTML=dailyRewardMarkup(record.reward);result.classList.remove('hidden');
+    hint.textContent=record.reward.kind==='hatch'?'孵化ポイントを獲得！':record.reward.amount+'モジを獲得！';
+    help.textContent=record.reward.kind==='hatch' && record.hatch===0?'ゲージ満タンのため追加されません。':'';
+    dailyConfetti(fx,64);
+    await result.animate([{transform:'translate(-50%,-50%) scale(.1) rotate(-25deg)',opacity:0},
+      {transform:'translate(-50%,-50%) scale(1.25) rotate(8deg)',opacity:1,offset:.65},{transform:'translate(-50%,-50%) scale(1) rotate(0)',opacity:1}],
+      {duration:950,easing:'cubic-bezier(.18,.8,.25,1)'}).finished;
+    if(!state.awardShown){await dailyAwardFlight(record,result);state.awardShown=true;saveDailyState(state);}
+    phase='award';state.phase='result';saveDailyState(state);help.textContent+=(help.textContent?'\n':'')+'タップして、ほかの特典を見る';locked=false;
+  }
+  async function select(choice){
+    if(locked && phase!=='recover')return;locked=true;phase='opening';state.choice=choice;state.phase='pending';saveDailyState(state);help.innerHTML='';
+    buttons.forEach(button=>{button.disabled=true;});restoreGifts();gifts.classList.remove('is-ready');result.classList.add('hidden');
+    const start=buttons[choice].getBoundingClientRect(),bounds=stage.getBoundingClientRect(),dx=start.left+start.width/2-bounds.left-bounds.width/2,dy=start.top+start.height/2-bounds.top-bounds.height/2;
+    const picked=document.createElement('div');picked.className='daily-picked';picked.innerHTML='<span class="daily-gift-bottom">🎁</span><span class="daily-gift-lid">🎁</span>';stage.appendChild(picked);
+    buttons.forEach(button=>button.animate([{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.3) translateY(60px)'}],{duration:450,fill:'forwards'}));
+    const opening=(async()=>{
+      await picked.animate([{transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.5)`},
+        {transform:'translate(-50%,-50%) scale(1.12)',offset:.75},{transform:'translate(-50%,-50%) scale(1)'}],{duration:750,easing:'ease-out'}).finished;
+      picked.classList.add('is-opening');await delay(800);
+    })();
+    hint.textContent='なにが出るかな…';
+    try {
+      const [receipt]=await Promise.all([record?Promise.resolve(record):cloud.claimDailyDraw(state.round,choice),opening]);
+      record=DAILY.validateRecord(receipt,state.day);state.round=record.round;state.choice=record.choice;saveDailyState(state);
+      picked.classList.remove('is-opening');dailyConfetti(fx,45);
+      await Promise.all([
+        picked.querySelector('.daily-gift-lid').animate([{transform:'translateY(0) rotate(0)',opacity:1},{transform:'translate(-45px,-150px) rotate(-35deg)',opacity:0}],{duration:600,fill:'forwards'}).finished,
+        picked.querySelector('.daily-gift-bottom').animate([{transform:'scale(1)',opacity:1},{transform:'translateY(80px) scale(1.4)',opacity:0}],{duration:600,fill:'forwards'}).finished
+      ]);
+      await revealAward();
+    } catch(error) {
+      console.warn('Daily draw settlement',error);picked.classList.remove('is-opening');picked.getAnimations({subtree:true}).forEach(a=>a.cancel());
+      hint.textContent='通信を確認して、もう一度お試しください。';
+      help.innerHTML='<button type="button" class="daily-retry">再試行</button><button type="button" class="daily-later">あとで</button>';
+      phase='error';locked=false;
+      help.querySelector('.daily-retry').onclick=event=>{event.stopPropagation();phase='recover';select(state.choice);};
+      help.querySelector('.daily-later').onclick=event=>{event.stopPropagation();leave(false);};
+    }
+  }
+  const advance=()=>{if(locked)return;if(phase==='award')showAll().catch(error=>{console.warn(error);locked=false;});else if(phase==='all')leave(true);};
+  panel.addEventListener('click',advance);
+  panel.addEventListener('keydown',event=>{
+    if(event.key==='Tab'&&!panel.querySelector('button:not(:disabled)')){event.preventDefault();panel.focus({preventScroll:true});}
+    if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button')){event.preventDefault();advance();}
+  });
+  buttons.forEach((button,i)=>{button.onclick=event=>{event.stopPropagation();panel.focus({preventScroll:true});select(i);};});
+  try {
+    if(record){
+      state.choice=record.choice;state.round=record.round;
+      if(state.phase==='all'){locked=false;await showAll();}else await revealAward();
+    }else if(Number.isInteger(state.choice)){phase='recover';await select(state.choice);}
+    else {
+      dailyConfetti(fx,30);
+      await Promise.all(buttons.map((button,i)=>button.animate([{transform:`translateY(${-innerHeight}px) rotate(${-30+i*30}deg) scale(.4)`,opacity:0},
+        {transform:'translateY(18px) rotate(10deg) scale(1.1)',opacity:1,offset:.72},{transform:'translateY(-10px) rotate(-5deg)',opacity:1,offset:.86},
+        {transform:'translateY(0) rotate(0) scale(1)',opacity:1}],{duration:1100,delay:i*190,easing:'ease-out'}).finished));
+      buttons.forEach(button=>{button.disabled=false;});gifts.classList.add('is-ready');locked=false;
+    }
+    await finished;
+  }finally{
+    panel.getAnimations({subtree:true}).forEach(a=>a.cancel());
+    if(panel.isConnected)await closeModal(true);
+    host.classList.remove('daily-draw-host');document.body.classList.remove('daily-draw-open');busy=false;refreshNav();
+  }
+}
 
 /* Loot rewards are queued locally and committed to the owner wallet in Firestore. */
 const LOOT = Object.freeze({interval:10000, chance:1/6, limit:3, lifetime:120000,
@@ -3325,7 +3581,7 @@ async function playUpdates(extraIds=[]) {
       store.player.seenBattleSeq=maxBattle;
       try{await cloud.markSeen({battleSeq:maxBattle,legendSeq:store.player.seenLegendSeq});}catch(error){reportError(error);}
     }
-    refreshNav();return;
+    refreshNav();await maybeDailyDraw();return;
   }
   await closeModal(true);
   playback={skip:false};$("speedButton").textContent=replaySpeed+"×";
@@ -3355,7 +3611,7 @@ async function playUpdates(extraIds=[]) {
   store.player=cloud.player;
   store.suspendedOwnerUids=(store.suspendedOwnerUids||[]).filter(id=>id!==cloud.uid);
   if(store.player.suspended)store.suspendedOwnerUids.push(cloud.uid);
-  renderCity();refreshNav();
+  renderCity();refreshNav();await maybeDailyDraw();
 }
 async function showLegend(e) {
   if(!e)return;busy=true;
@@ -3518,7 +3774,7 @@ function wireEvents() {
   let resizeTimer;
   window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(drawCity,70);});
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncWorld({play:true}).catch(reportError);refreshAnnouncements().catch(error=>console.warn('Announcements',error));}});
-  setInterval(refreshNav,5000);
+  setInterval(()=>{refreshNav();maybeDailyDraw().catch(error=>console.warn('Daily draw',error));},5000);
   setInterval(()=>{if(!document.hidden){syncWorld({play:true}).catch(reportError);refreshAnnouncements().catch(error=>console.warn('Announcements',error));}},60000);
 }
 async function init() {

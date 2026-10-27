@@ -4,11 +4,12 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {createRequire}=require('node:module');
 const dep=process.env.RULE_TEST_DEPENDENCIES?createRequire(path.join(process.env.RULE_TEST_DEPENDENCIES,'package.json')):require;
 const {initializeTestEnvironment,assertSucceeds,assertFails}=dep('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocs,collection,query,where,Timestamp,writeBatch}=dep('firebase/firestore');
+const {doc,setDoc,getDoc,getDocs,collection,query,where,Timestamp,writeBatch,runTransaction}=dep('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Run with firebase emulators:exec --project demo-emojin-v4');
 const root=path.join(__dirname,'..'),ctx={};vm.createContext(ctx);
 const source=fs.readFileSync(path.join(root,'app.js'),'utf8');vm.runInContext(source.slice(0,source.indexOf('/* MOJI SPIN:')),ctx);
 const E=ctx.EmojinEngine,plain=v=>JSON.parse(JSON.stringify(v));
+vm.runInContext(source.slice(source.indexOf('/* Daily Moji Draw:'),source.indexOf('/* Firebase configuration is public.')),ctx);
 const resident=(id,uid)=>({id,ownerUid:uid,ownerName:uid,isNpc:false,name:id,emoji:'🐸',maxHp:8,currentHp:8,
  slots:Array(6).fill('attack1'),poisoned:false,cursedSlots:[],stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',createdAt:1,endedAt:null});
 let env;
@@ -37,6 +38,35 @@ test('published announcements are readable by players, drafts are private and al
  await assertFails(getDocs(collection(db,'announcements')));
  await assertFails(setDoc(doc(db,'announcements/new'),{body:'不正追加',publishedAt:Timestamp.now(),published:true}));
  await assertFails(setDoc(doc(db,'announcements/live'),{body:'不正編集',publishedAt:Timestamp.now(),published:true}));
+});
+function dailyClient(db){
+ const c={E,uid:'u1',db,auth:{currentUser:{uid:'u1'}},local:{},ensureWallet:async()=>{},applyAccount:()=>{},persist:()=>{},
+  F:{runTransaction:(db,callback)=>runTransaction(db,tx=>callback({get:ref=>tx.get(ref),set:(ref,value)=>tx.set(ref,plain(value))}))},
+  ref:(name,id)=>doc(db,name,id),walletRef:()=>doc(db,'wallets/u1'),receiptRef:id=>doc(db,'wallets/u1/operations/'+id),
+  window:{DailyMojiDraw:ctx.DailyMojiDraw,dispatchEvent:()=>{}},Event:class{}};
+ vm.createContext(c);
+ for(const [start,end] of [['  async function requireMatchRules(','  // One live subscription'],['  function nextAccount(','  function ensureWallet('],['  writeOperation=async op=>{','  // Pending operations keep their IDs']])vm.runInContext(source.slice(source.indexOf(start),source.indexOf(end)),c);
+ return (choice,day='2026-10-27')=>c.writeOperation({id:'daily-'+day,action:'dailyDraw',data:{uid:'u1',choice,
+  round:{version:1,day,rewards:[{kind:'moji',amount:100,rare:false},{kind:'hatch',amount:1,rare:false},{kind:'moji',amount:500,rare:true}]}}});
+}
+test('daily draw uses existing private wallet rules; competing real transactions award only one chosen prize',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const ref=doc(c.firestore(),'wallets/u1'),old=(await getDoc(ref)).data();
+  await setDoc(ref,{...old,wallet:{balance:1000,updatedAt:Date.now()}});
+ });
+ const db=env.authenticatedContext('u1').firestore(),other=env.authenticatedContext('u1').firestore();
+ const [a,b]=await Promise.all([dailyClient(db)(0),dailyClient(other)(2)]);
+ assert.deepEqual(plain(a.record),plain(b.record));
+ assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000+a.record.moji);
+ assert.equal((await getDoc(doc(db,'wallets/u1/operations/daily-2026-10-27'))).data().kind,'dailyDraw');
+ const again=await dailyClient(db)(1);assert.deepEqual(plain(again.record),plain(a.record));
+});
+test('daily draw leaves a full hatch gauge unchanged and never clips moji above 3000',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'wallets/u1'),{uid:'u1',wallet:{balance:4000,updatedAt:Date.now()},hatch:10,revision:1}));
+ const db=env.authenticatedContext('u1').firestore(),claim=dailyClient(db);
+ const first=await claim(1);assert.equal(first.record.hatch,0);assert.equal(first.record.moji,0);
+ const second=await claim(2,'2026-10-28');assert.equal(second.record.moji,500);
+ const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.wallet.balance,4500);assert.equal(wallet.hatch,10);
 });
 function batchMatch(db,{legacy=false,badHp=false,id='b-test',prior=0,aPrior=0,tie=false,mutate=null,limit=5}={}){
  const a={...resident('a','u1'),slots:Array(6).fill(tie?'blank':'strong'),defeats:aPrior},b={...resident('b','u2'),slots:Array(6).fill('blank'),defeats:prior},log=E.battle(a,b,E.seeded(1),10000,id);

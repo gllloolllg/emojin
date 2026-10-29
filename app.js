@@ -2563,12 +2563,12 @@ function refreshNav() {
   btn.querySelector(".nav-cost").innerHTML =
   store.draft ? 'つづき' : `${cost} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
-  const menuBlocked=!store.player||busy||!!playback||!!modalKind||modalClosing||revivalPlaying||!!store.draft;
-  $('battleMenuToggle').disabled=menuBlocked;
+  const menuBlocked=!canOpenBattleMenu();
+  // Overlays already cover this control. Do not leave it disabled after they close.
+  $('battleMenuToggle').disabled=!store.player;
   if(menuBlocked)closeBattleMenu();
-  const pool=battlePool(),residents=active();
   for(const [mode,id] of [['challenge','challengeBattleButton'],['mine','myBattleButton']]) {
-    $(id).disabled=menuBlocked||balance<E.battleMode(mode).cost||pool.length<2||!E.battleAnchors(pool,mode,cloud.uid,residents).length;
+    $(id).disabled=menuBlocked||balance<E.battleMode(mode).cost;
   }
   $("moBalance").textContent=balance.toLocaleString("ja-JP");
   const height=38*Math.min(balance,MOJI_CAP)/MOJI_CAP;
@@ -2961,6 +2961,22 @@ async function showBattleCutin(loading=Promise.resolve()) {
     host.classList.add("hidden");
   }
 }
+function canOpenBattleMenu() {
+  return !!store?.player && !playback && !modalKind && !modalClosing
+    && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','detailHost','popoverHost']
+      .every(id=>$(id).classList.contains('hidden'));
+}
+function battleUnavailableReason(mode,{participants=true,operation=true}={}) {
+  if(store.draft)return 'エモジンの生成を完了してから、バトルを開始してください。';
+  if(operation && (busy||revivalPlaying))return '演出や保存が終わってから、もう一度タップしてください。';
+  if(Math.max(0,updateMoji()-lootPending)<E.battleMode(mode).cost)return `${E.battleMode(mode).cost}モジ必要です。`;
+  if(!participants)return '';
+  if(battlePool().length<2)return 'バトルに参加できるエモジンが2体必要です。';
+  if(!E.battleAnchors(battlePool(),mode,cloud.uid,active()).length)return mode==='challenge'
+    ?'現在のチャンピオンは休止中のため、バトルに参加できません。'
+    :'バトルに参加できるマイエモジンがいません。';
+  return '';
+}
 function closeBattleMenu(restoreFocus=false) {
   const menu=$('battleMenu'),toggle=$('battleMenuToggle');
   if(menu.classList.contains('hidden'))return;
@@ -2970,25 +2986,26 @@ function closeBattleMenu(restoreFocus=false) {
 }
 function toggleBattleMenu() {
   if(!$('battleMenu').classList.contains('hidden')){closeBattleMenu();return;}
-  if(busy||playback||modalKind||!store?.player)return;
+  if(!canOpenBattleMenu())return;
+  refreshNav();
   $('battleMenu').classList.remove('hidden');
   $('battleMenuToggle').setAttribute('aria-expanded','true');
   $('battleMenuToggle').setAttribute('aria-label','バトルメニューを閉じる');
   animate($('battleMenu'),[{transform:'translateY(10px) scale(.96)',opacity:0},{transform:'translateY(0) scale(1)',opacity:1}],180);
 }
 async function forceBattle(mode='forced') {
-  if(busy||playback||!store.player)return;
-  const rules=E.battleMode(mode);
+  if(!canOpenBattleMenu())return;
+  const reason=battleUnavailableReason(mode,{participants:false});
+  if(reason){toast(reason,4200);refreshNav();return;}
   closeBattleMenu();
   busy=true;
   let battleId;
   try {
-    if(battlePool().length<2||updateMoji()<rules.cost||!E.battleAnchors(battlePool(),mode,cloud.uid,active()).length){refreshNav();return;}
     const {fresh,saved,log}=await showBattleCutin((async()=>{
       const fresh=await cloud.getState();
       store=fresh;renderCity();refreshNav();
-      if(battlePool().length<2)throw Error('バトルに参加できるエモジンが2体必要です。');
-      if(updateMoji()<rules.cost)throw Error(`${rules.cost}モジ必要です。`);
+      const reason=battleUnavailableReason(mode,{operation:false});
+      if(reason)throw Error(reason);
       const pair=E.selectBattlePair(battlePool(),mode,cloud.uid,active());
       if(pair.length!==2)throw Error(mode==='challenge'?'チャンピオンがバトルに参加できません。':'マイエモジンがバトルに参加できません。');
       const seed=crypto.getRandomValues(new Uint32Array(1))[0],at=Date.now();

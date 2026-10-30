@@ -35,6 +35,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);out
 .header-tools{display:flex;align-items:center;gap:8px;pointer-events:auto;margin-right:auto}
 .announcements-button{width:44px;height:44px;display:grid;place-items:center;padding:0;border:0;background:none;font-size:28px;line-height:1;opacity:.35;filter:brightness(.65)}
 .announcements-button.has-unread{opacity:1;filter:none}
+.announcements-bell{display:block;transform-origin:50% 20%}
+.announcements-button.has-unread .announcements-bell{animation:announcementBellShake 3s ease-in-out infinite}
+@keyframes announcementBellShake{0%,20%,100%{transform:rotate(0)}3%{transform:rotate(-18deg)}6%{transform:rotate(18deg)}9%{transform:rotate(-14deg)}12%{transform:rotate(14deg)}15%{transform:rotate(-8deg)}18%{transform:rotate(8deg)}}
 .demo-button,.unread-button{border:1px solid var(--line);background:var(--bg);border-radius:4px;font-size:11px;letter-spacing:.06em;padding:10px 12px;color:var(--muted);min-height:38px}
 .demo-button span{margin-left:6px;color:var(--rose-light)}
 .unread-button{color:var(--neon-sky)}

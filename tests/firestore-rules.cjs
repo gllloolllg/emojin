@@ -144,7 +144,7 @@ function gasRuntime() {
  assert.match(host,/^(127\.0\.0\.1|localhost):\d+$/);
  const productionPrefix='https://firestore.googleapis.com/v1/projects/demo-emojin-v4/databases/(default)/documents';
  const c={console,PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'demo-emojin-v4'})},
-  ScriptApp:{getOAuthToken:()=> 'owner'},Utilities:{sleep:()=>{}},UrlFetchApp:{fetch:(url,options)=>{
+  ScriptApp:{getOAuthToken:()=> 'owner'},Utilities:{sleep:()=>{},getUuid:()=>require('node:crypto').randomUUID()},UrlFetchApp:{fetch:(url,options)=>{
    assert.ok(url.startsWith(productionPrefix),'Only the demo project is allowed');
    const local='http://'+host+'/v1/projects/demo-emojin-v4/databases/(default)/documents'+url.slice(productionPrefix.length);
    const args=['--silent','--show-error','--noproxy','127.0.0.1,localhost','--max-time','10',
@@ -158,7 +158,7 @@ function gasRuntime() {
    return {getResponseCode:()=>status,getContentText:()=>body};
   }}};
  vm.createContext(c);
- for(const file of ['Engine.gs','Code.gs','Migration.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
+ for(const file of ['Engine.gs','Code.gs','Migration.gs','Announcements.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
  return c;
 }
 test('GAS REST scheduler commits a complete match with real Firestore transactions and resumes idempotently',async()=>{
@@ -249,4 +249,23 @@ test('NPC versus NPC battles remain writable under the owner restriction',async(
  const log=E.battle(a,b,E.seeded(1),10000,'b-npcs'),db=env.authenticatedContext('u1').firestore(),batch=writeBatch(db);
  log.after.forEach(e=>batch.set(doc(db,'emojins/'+e.id),plain(e)));
  batch.set(doc(db,'battles/b-npcs'),plain(E.battleDocument(log)));await assertSucceeds(batch.commit());
+});
+
+test('manual GAS post creates one readable announcement with real Timestamp even after a lost commit response',async()=>{
+ const gas=gasRuntime(),fetch=gas.UrlFetchApp.fetch;let loseCommit=true;
+ gas.UrlFetchApp.fetch=(url,options)=>{
+  const response=fetch(url,options);
+  if(url.endsWith(':commit')&&loseCommit&&response.getResponseCode()===200){
+   loseCommit=false;return {getResponseCode:()=>503,getContentText:()=>JSON.stringify({error:{message:'Simulated lost response',status:'UNAVAILABLE'}})};
+  }
+  return response;
+ };
+ const started=Date.now(),result=gas.publishAnnouncement_(' \nお知らせの本文です。\n二行目も表示できます。\n ');
+ assert.equal(loseCommit,false);
+ const db=env.authenticatedContext('u1').firestore(),rows=await getDocs(query(collection(db,'announcements'),where('published','==',true)));
+ assert.equal(rows.size,1);assert.equal(rows.docs[0].id,result.id);
+ const value=rows.docs[0].data();assert.deepEqual(Object.keys(value).sort(),['body','published','publishedAt']);
+ assert.equal(value.body,'お知らせの本文です。\n二行目も表示できます。');assert.equal(value.published,true);
+ assert.ok(value.publishedAt instanceof Timestamp);assert.ok(value.publishedAt.toMillis()>=started&&value.publishedAt.toMillis()<=Date.now());
+ assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
 });

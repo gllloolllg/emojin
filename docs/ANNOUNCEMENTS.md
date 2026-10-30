@@ -15,6 +15,27 @@
 
 ## Firebaseで追加する方法
 
+### GASから本文だけで投稿する方法（2026-10-30追加）
+
+初回だけ、既存の本番GASプロジェクトで「＋」→「スクリプト」を選び、`Announcements`を作成する。[gas/Announcements.gs](https://raw.githubusercontent.com/gllloolllg/emojin/main/gas/Announcements.gs)の全文を貼り付けて保存する。Code.gs・Engine.gs・Migration.gs・appsscript.jsonの差し替え、トリガーの停止/追加、Webアプリのデプロイ、Firestoreルール更新は不要。既存の`firestore_()`と管理者OAuth/IAM接続を使い、スクリプトプロパティのFIREBASE_PROJECT_IDも引き継ぐ。
+
+投稿のたびに行う操作：
+
+1. `Announcements.gs`の先頭の`ANNOUNCEMENT_BODY`の空欄（2つのバッククォートの間）に本文を書く。複数行でもよい。
+2. 保存する。
+3. 上部の関数一覧で`postAnnouncement`を選び、「実行」を押す。本文なしならエラーになり投稿しない。
+4. 実行ログの「お知らせを公開しました。」を確認する。ゲーム内の🔔を開くと新しいお知らせが表示される。
+
+フォームは不要。フィールド名・型・日時の手入力は不要で、タイトルも作らない。次の投稿では本文部分だけを書き換えて同じ操作を行う。1回の手動実行で新しいドキュメントを1件追加する。同じ本文でも別の手動実行は新規投稿になる。
+
+保存先は`announcements/a-<UUID>`。`body`は前後の空白だけを除き、改行・絵文字を維持する。`published:true`と`publishedAt`のサーバー日時（Firestore Timestamp型）を自動設定する。通信再試行でもUUIDを変えず、保存済みなら書き直さないため、成功応答が失われても投稿は重複しない。掲載時刻も再試行で更新しない。空欄はFirestoreへ接続する前に拒否し、権限・通信エラーを成功表示に置き換えない。本文のサンプル投稿は本番へ自動作成しない。
+
+修正・取り下げは従来どおりFirebaseコンソールで行う。今回、公開Webエンドポイントやプレイヤーへの書き込み権限は追加しない。
+
+検証：`node --test tests/gas-announcements.test.cjs tests/gas-v4.test.cjs`で空欄、本文・改行、Timestamp変換指定、再試行、保存済み応答の消失、別の手動投稿、権限エラーと既存定期処理を確認する。Firestore Emulatorでは実際のGAS REST接続で投稿し、サーバーTimestampと認証済みプレイヤーへの公開、応答消失後の重複防止を確認する。本番への検証投稿はしない。
+
+### Firebaseコンソールから追加する方法
+
 1. [本番Firestore](https://console.firebase.google.com/project/emojin-49855/firestore/databases/-default-/data)を開く。
 2. 最初だけ「コレクションを開始」を押し、コレクションIDを **`announcements`** にする。
 3. 「ドキュメントを追加」。ドキュメントIDは **自動ID** でよい。

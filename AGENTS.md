@@ -17,6 +17,7 @@
 - Firestore のウォレットトランザクション、操作ID・receiptによる二重精算防止、再試行、別端末同期、未送信操作・中断スピンの復帰を維持する。
 - スロットはクリック時に全結果を一括抽選し、保存結果を演出する。演出中に再抽選しない。保存済み最終残高を演出途中に表示しない。中断結果を通常の次回SPINに回さない。
 - 戦闘ルール変更時はフロントと GAS 双方の影響を確認する。GASのFirestore差し替え版は `gas/`。2026-10-19再共有の稼働GASはFirestore方式で照合済み。過去に添付されたSpreadsheet版を切り替え元と混同しない。UIだけの変更では GAS を変更しない。
+- 同じオーナー同士の対戦禁止は [docs/NO_SAME_OWNER_BATTLES.md](docs/NO_SAME_OWNER_BATTLES.md)。全モードで共通のcanBattle/selectBattlePairを使い、NPC同士は維持する。相手なしは無課金・試合なし、旧ログ再生は維持。GASのCode.gs/Engine.gsとFirestoreルールを揃えてからフロントを公開する。
 - iPhone の画面高さ・safe-area 調整を維持する。OSの「視差効果を減らす」が有効でもアニメーションを再生する。ダブルタップズーム・長押し選択を抑止する方針を維持する。
 - PWA更新でプレイ・保存を中断させない。変更前に `sw.js`、`index.html` の更新処理、`EmojinCanReload` を確認する。SW自体の更新経路と通常のシェル更新経路を区別する。
 - 最低限 `node --check app.js` と `node --check sw.js` を行い、変更範囲のロジック・ブラウザー操作を確認する。ブラウザーの模擬検証、実Firebase連携、iPhone実機確認を区別する。

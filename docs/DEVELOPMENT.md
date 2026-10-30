@@ -1,5 +1,7 @@
 # エモジン 開発引き継ぎ・実装確認
 
+**2026-10-30の全モードでの同オーナー対戦禁止は [NO_SAME_OWNER_BATTLES.md](NO_SAME_OWNER_BATTLES.md) を優先する。以下の「マイエモジン同士でもよい」は変更前の履歴。GAS・ルール・フロントを順に切り替える。**
+
 **最新の💀5個以上・次の💀獲得時にボチとなる仕様は [FIVE_DEFEATS.md](FIVE_DEFEATS.md) を参照。旧10個方式とメニュー配置の記録は [TEN_DEFEATS.md](TEN_DEFEATS.md)。**
 
 **MOJI SPINの2026-10-20追加仕様（新配当・ANY BONUS・スロットversion 2）は [SLOT_V2.md](SLOT_V2.md) を参照。以下の旧スロット配当表はversion 1の履歴。**

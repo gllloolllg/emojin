@@ -119,7 +119,8 @@ function scheduledStep_(store,currentHour,options={}) {
     const pool=EmojinEngine.eligible(all,owners);
     if(pool.length<2 || (ordinal>=1 && pool.length<=30))return {writes:[tx.write('meta/game',{...nextMeta,hour,runningHour:0,scheduledCount:0,revision:Number(meta.revision||0)+1})],value:{done:true}};
     const seed=((hour*2654435761)^(ordinal*2246822519))>>>0;
-    const pair=EmojinEngine.sample(pool,2,EmojinEngine.seeded(seed^0x50414952));
+    const pair=EmojinEngine.selectBattlePair(pool,'forced',null,pool,EmojinEngine.seeded(seed^0x50414952));
+    if(pair.length<2)return {writes:[tx.write('meta/game',{...nextMeta,hour,runningHour:0,scheduledCount:0,revision:Number(meta.revision||0)+1})],value:{done:true,noOpponents:true}};
     const battleId='b-hour-'+hour+'-'+ordinal;
     // Pair selection has a separate stream. The recorded seed means exactly the same match on the frontend.
     const log=EmojinEngine.battle(pair[0],pair[1],EmojinEngine.seeded(seed),at,battleId);

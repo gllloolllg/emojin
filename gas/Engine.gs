@@ -312,8 +312,8 @@
 
   function forced(emojins, rng = Math.random, now = Date.now()) {
     const active = emojins.filter(e => e.status === "active");
-    if (active.length < 2) return { emojins: emojins.map(clone), battles: [] };
-    const pair = sample(active, 2, rng);
+    const pair = selectBattlePair(active,'forced',null,active,rng);
+    if (pair.length < 2) return { emojins: emojins.map(clone), battles: [] };
     const log = battle(pair[0], pair[1], rng, now);
     const updates = new Map(log.after.map(e => [e.id,e]));
     return { emojins: emojins.map(e => updates.get(e.id) || clone(e)), battles: [log] };
@@ -327,7 +327,8 @@
     if (active.length < 2) return { emojins: world, battles: logs };
     const safetyLimit = active.length * 51;
     do {
-      const pair = sample(active, 2, rng);
+      const pair = selectBattlePair(active,'forced',null,active,rng);
+      if(pair.length<2)break;
       const log = battle(pair[0], pair[1], rng, now);
       const updates = new Map(log.after.map(e => [e.id,e]));
       world = world.map(e => updates.get(e.id) || e);
@@ -382,16 +383,30 @@
     const maxStars=Math.max(0,...residents.map(e=>e.stars));
     return pool.filter(e=>e.stars===maxStars);
   }
+  function canBattle(a,b) {
+    return !!a && !!b && a.id!==b.id && (a.isNpc || b.isNpc || a.ownerUid==='npc' || b.ownerUid==='npc'
+      || !a.ownerUid || a.ownerUid!==b.ownerUid);
+  }
   function selectBattlePair(pool,mode,ownerUid,residents=pool,rng=Math.random) {
     const anchors=battleAnchors(pool,mode,ownerUid,residents);
     if(pool.length<2 || !anchors.length)return [];
-    if(mode==='forced')return sample(pool,2,rng);
-    const first=anchors[index(rng,anchors.length)];
-    const others=pool.filter(e=>e.id!==first.id);
+    const ownerCounts=new Map();
+    for(const e of pool)if(!e.isNpc && e.ownerUid!=='npc' && e.ownerUid)ownerCounts.set(e.ownerUid,(ownerCounts.get(e.ownerUid)||0)+1);
+    const candidates=anchors.map(e=>({e,count:pool.length-(e.isNpc||e.ownerUid==='npc'||!e.ownerUid?1:ownerCounts.get(e.ownerUid))}))
+      .filter(candidate=>candidate.count>0);
+    if(!candidates.length)return [];
+    let first;
+    if(mode==='forced') {
+      // Weight the first resident by its opponents so all valid ordered pairs are equally likely.
+      let choice=index(rng,candidates.reduce((sum,c)=>sum+c.count,0));
+      for(const candidate of candidates){choice-=candidate.count;if(choice<0){first=candidate.e;break;}}
+    }else first=candidates[index(rng,candidates.length)].e;
+    const others=pool.filter(e=>canBattle(first,e));
     return others.length?[first,others[index(rng,others.length)]]:[];
   }
   function planBattle(all, owners, meta, inputLog, rng = Math.random) {
     const log = clone(inputLog), nextMeta = {...meta};
+    if(log.before.length && (log.before.length!==2 || !canBattle(...log.before)))throw Error('同じオーナーのエモジン同士はバトルできません。');
     log.seq = Number(meta.battleSeq || 0) + 1;
     log.ownerUids = [...new Set(log.before.filter(e => !e.isNpc && e.ownerUid !== 'npc').map(e => e.ownerUid))];
     nextMeta.battleSeq = log.seq;
@@ -428,7 +443,7 @@
     return {log, meta:nextMeta, owners:ownerUpdates, emojins:[...log.after,...npcs], npcs, legends};
   }
 
-  const api = { RULES_VERSION, MAX_TURNS, DEFEAT_LIMIT, LEGACY_DEFEAT_LIMIT, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
+  const api = { RULES_VERSION, MAX_TURNS, DEFEAT_LIMIT, LEGACY_DEFEAT_LIMIT, resolveTurn, migrateActive, normalizeDraft, recordVersion, battleDocument, INITIAL_MOJI, GENERATION_COSTS, generationCost, DORMANCY_MS, ownerPresence, participatingCount, eligible, BATTLE_MODES, battleMode, battleAnchors, canBattle, selectBattlePair, planBattle, BASIC, SPECIAL, FACES, EMOJIS, accrueMoji, clone, clamp, index, sample, id, createDraft, fromDraft, battle, forced, hourly, seeded };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

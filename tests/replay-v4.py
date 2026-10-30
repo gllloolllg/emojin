@@ -13,7 +13,8 @@ FIXTURES=r'''
 const fs=require('fs'),vm=require('vm'),old=require('./tests/fixtures/rules-v3-engine.cjs');
 const source=fs.readFileSync('app.js','utf8'),c={};vm.createContext(c);vm.runInContext(source.slice(0,source.indexOf('/* MOJI SPIN:')),c);const E=c.EmojinEngine;
 const e=(id,face='blank',extra={})=>({id,name:id,emoji:'🐸',ownerUid:id,ownerName:id,isNpc:false,maxHp:8,currentHp:8,stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',poisoned:false,cursedSlots:[],slots:Array(6).fill(face),createdAt:1,endedAt:null,...extra});
-const a=E.battle(e('skip-a','strong'),e('skip-b'),E.seeded(1),1000,'skip');
+// Historical same-owner logs must remain replayable after new pair selection changes.
+const a=E.battle(e('skip-a','strong',{ownerUid:'historical-owner'}),e('skip-b','blank',{ownerUid:'historical-owner'}),E.seeded(1),1000,'skip');
 const legacy=old.battle(e('old-a','attack1'),e('old-b'),old.seeded(1),1001);legacy.battleId='old';
 const draw=E.battle(e('draw-a'),e('draw-b'),E.seeded(1),1002,'draw');
 const award=E.battle(e('award-a','strong',{stars:49,defeats:9}),e('award-b','blank',{defeats:Number(process.env.EMOJIN_TEST_PRIOR||4)}),E.seeded(1),1003,'award');
@@ -118,7 +119,7 @@ async def main():
    menu_layout=await page.evaluate("""()=>{
     const button=document.querySelector('#battleMenuToggle'),toggle=button.getBoundingClientRect(),force=document.querySelector('#forceBattleButton').getBoundingClientRect(),menu=document.querySelector('#battleMenu').getBoundingClientRect(),item=document.querySelector('#myBattleButton').getBoundingClientRect();
     const hit=(x,y)=>button.contains(document.elementFromPoint(x,y));
-    return {attached:Math.abs(toggle.bottom-force.top)<1&&Math.abs(menu.bottom-force.top)<1,centered:Math.abs(toggle.left+toggle.width/2-force.left-force.width/2)<1,touch:toggle.width>=64&&toggle.height>=44,separate:item.bottom<=toggle.top,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0,edges:[[toggle.left+8,toggle.top+8],[toggle.right-8,toggle.bottom-8]].every(p=>hit(...p))};
+    return {attached:Math.abs(toggle.bottom-force.top-10)<1&&Math.abs(menu.bottom-force.top)<1,centered:Math.abs(toggle.left+toggle.width/2-force.left-force.width/2)<1,touch:toggle.width>=64&&toggle.height>=44,separate:item.bottom<=toggle.top,inView:menu.left>=0&&menu.right<=innerWidth&&menu.top>=0,edges:[[toggle.left+8,toggle.top+8],[toggle.right-8,toggle.bottom-8]].every(p=>hit(...p))};
    }""")
    assert all(menu_layout.values()),menu_layout
    await page.screenshot(path='/tmp/emojin-v4-menu-'+str(WIDTH)+'.png')

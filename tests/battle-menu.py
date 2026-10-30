@@ -44,7 +44,15 @@ async def main():
     # Local suspension is stale: only fresh state should decide participation.
     await page.evaluate('mockCloud.suspended=[]');await challenge.tap();await page.wait_for_function('!!audit.battleRequest');assert await page.evaluate("audit.battleRequest.mode==='challenge'&&audit.battleRequest.ids[0]==='champ'")
     await page.wait_for_selector('#battleCutin',state='hidden');assert not errors,errors
-    print(f'PASS {width}: triangle overlap, touch target, busy/draft menu toggle, explicit suspended reason/no charge, 199/200 boundary, eligible champion request')
+    await page.evaluate("delete audit.battleRequest;menuResidents.forEach(e=>e.ownerUid='me')")
+    for button in ['challengeBattleButton','myBattleButton','forceBattleButton']:
+     await page.evaluate("document.querySelector('#toast').textContent=''")
+     if button!='forceBattleButton':await toggle.tap()
+     await page.locator('#'+button).tap()
+     await page.wait_for_function("document.querySelector('#toast').textContent.includes('別のオーナー')")
+     assert await page.evaluate('!audit.battleRequest&&mockCloud.wallet.balance===200')
+    assert not errors,errors
+    print(f'PASS {width}: menu controls, 200 boundary, eligible request, all manual modes reject same-owner-only world without settlement')
     await ctx.close()
    await browser.close()
  finally:server.shutdown()

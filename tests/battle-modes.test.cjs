@@ -29,15 +29,15 @@ test('challenge chooses both tied town champions, never itself',()=>{
   }
   assert.equal(anchors.size,2);assert.equal(opponents.size,3);
 });
-test('mine draws from all owned candidates and allows another owned opponent',()=>{
+test('mine draws from all owned candidates and excludes another owned opponent',()=>{
   const pool=[resident('a','me'),resident('b','me'),resident('c','other')];
-  const anchors=new Set();let sameOwnerOpponent=false;
+  const anchors=new Set();
   for(let n=0;n<100;n++){
     const pair=E.selectBattlePair(pool,'mine','me',pool,E.seeded(n));
     assert.equal(pair[0].ownerUid,'me');assert.notEqual(pair[0].id,pair[1].id);
-    anchors.add(pair[0].id);sameOwnerOpponent ||= pair[1].ownerUid==='me';
+    anchors.add(pair[0].id);assert.equal(pair[1].ownerUid,'other');
   }
-  assert.equal(anchors.size,2);assert.ok(sameOwnerOpponent);
+  assert.equal(anchors.size,2);
 });
 test('zero-star ties, absent owners, lone residents and suspended champions',()=>{
   const a=resident('a','me'),b=resident('b','other'),champion=resident('c','suspended',10);
@@ -229,4 +229,50 @@ test('new frontend refuses an enabled ten-defeat gate before financial mutations
  const db=database(),before=db.read('wallets/me');db.put('config/battle',{rulesVersion:4,defeatLimit:10,maintenance:false});
  await assert.rejects(db.run(db.operation()),error=>error.code==='rules-transition');
  assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.read('meta/game').battleSeq,0);
+});
+
+test('all modes exclude same human owner pairs while allowing NPC versus NPC',()=>{
+ const pool=[resident('a','me',9),resident('b','me',9),resident('c','other',2),resident('d','other',1),resident('n1','npc'),resident('n2','npc')];
+ for(const mode of ['forced','challenge','mine'])for(let seed=0;seed<500;seed++){
+  const pair=E.selectBattlePair(pool,mode,'me',pool,E.seeded(seed));
+  assert.equal(pair.length,2);assert.notEqual(pair[0].id,pair[1].id);assert.equal(E.canBattle(...pair),true);
+  assert.ok(pair.some(e=>e.isNpc)||pair[0].ownerUid!==pair[1].ownerUid);
+  if(mode==='challenge')assert.equal(pair[0].stars,9);
+  if(mode==='mine')assert.equal(pair[0].ownerUid,'me');
+ }
+ const npcs=pool.slice(-2);assert.equal(E.selectBattlePair(npcs,'forced',null,npcs,E.seeded(1)).length,2);
+});
+test('no compatible opponent means no match, cost, score or looping above thirty',()=>{
+ const pool=Array.from({length:40},(_,i)=>resident('own-'+i,'me',i===0?10:0)),before=clone(pool);
+ for(const mode of ['forced','challenge','mine'])assert.equal(E.selectBattlePair(pool,mode,'me',pool,E.seeded(1)).length,0);
+ for(const mode of ['forced','hourly']){
+  const result=E[mode](pool,E.seeded(1));assert.equal(result.battles.length,0);assert.deepEqual(clone(result.emojins),before);
+ }
+ const log=E.battle(pool[0],pool[1],E.seeded(1),100,'old-friendly');
+ assert.throws(()=>E.planBattle(pool,{me:{uid:'me',unreadBattleIds:[]}}, {},log),/同じオーナー/);
+ assert.deepEqual(clone(pool),before);
+});
+test('forced selection weights by compatible opponents rather than biasing single-owner groups',()=>{
+ const pool=[resident('a1','a'),resident('a2','a'),resident('b','b')];
+ for(const [ticket,expected] of [[0,'a1'],[1,'a2'],[2,'b'],[3,'b']]){
+  const random=[(ticket+.5)/4,0];const pair=E.selectBattlePair(pool,'forced',null,pool,()=>random.shift());
+  assert.equal(pair[0].id,expected);assert.notEqual(pair[0].ownerUid,pair[1].ownerUid);
+ }
+});
+test('unsaved same-owner requests cancel without cost, hatch, records or unread changes, even below cost',async()=>{
+ for(const mode of ['forced','challenge','mine'])for(const balance of [0,1000]){
+  const pool=[resident('a','me',10),resident('b','me',1)],db=database({pool,balance,retry:true}),before=db.read('wallets/me'),owner=db.read('owners/me');
+  const op=db.operation(mode,['a','b']);
+  if(mode==='forced' && balance===0)delete op.data.walletVersion; // Original pending format also cancels.
+  const result=await db.run(op);assert.equal(result.cancelled,true);
+  assert.deepEqual(db.read('wallets/me'),before);assert.deepEqual(db.read('owners/me'),owner);
+  assert.equal(db.read('meta/game').battleSeq,0);assert.equal(db.read('emojins/a').recordVersion,0);
+  assert.match(db.local.upgradeNotice,/同じオーナー/);assert.equal(db.local.cancelledOperations.length,1);
+ }
+});
+test('already saved historical same-owner battle returns the old result without re-settlement',async()=>{
+ const pool=[resident('a','me',10),resident('b','me',1)],db=database({pool}),op=db.operation('forced',['a','b']);
+ const log=E.battle(...pool,E.seeded(1),100,'test');log.seq=17;db.put('battles/test',{seq:17,json:JSON.stringify(log)});
+ const before=db.read('wallets/me'),result=await db.run(op);assert.deepEqual(clone(result.log),clone(log));
+ assert.equal(result.seq,17);assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.local.upgradeNotice,undefined);
 });

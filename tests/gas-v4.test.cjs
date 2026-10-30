@@ -149,3 +149,28 @@ test('new GAS refuses both old three-skull and ten-skull enabled gates without w
   assert.equal(c.scheduledStep_(store,100).paused,true);assert.equal(JSON.stringify([...records]),before);
  }
 });
+
+test('scheduler uses the shared compatible-pair selector and never pairs one human owner',()=>{
+ const data=initial();
+ for(let i=0;i<6;i++)data['emojins/own-'+i]=resident('own-'+i,'u1');
+ const {c,store}=runtime(data);
+ for(let hour=100;hour<130;hour++)runHour(c,store,hour);
+ const logs=store.query('battles');assert.ok(logs.length>0);
+ for(const row of logs){
+  const log=JSON.parse(row.data.json),[a,b]=log.before;assert.equal(c.EmojinEngine.canBattle(a,b),true);
+  assert.ok(a.isNpc||b.isNpc||a.ownerUid!==b.ownerUid);
+  const direct=c.EmojinEngine.battle(a,b,c.EmojinEngine.seeded(log.seed),log.battleAt,log.battleId);
+  for(const key of ['events','turns','result','awards','after'])assert.deepEqual(plain(direct[key]),log[key]);
+ }
+});
+test('same-owner-only world above thirty completes the hour without a match or retry loop',()=>{
+ const data={'config/battle':{rulesVersion:4,defeatLimit:5,maintenance:false},'meta/game':{battleSeq:0,legendSeq:0,hour:99},
+  'owners/u1':{uid:'u1',name:'Owner',createdAt:Date.now(),lastAccessAt:Date.now(),unreadBattleIds:[]}};
+ for(let i=0;i<40;i++)data['emojins/own-'+i]=resident('own-'+i,'u1');
+ const {c,store}=runtime(data,{retry:true});assert.equal(runHour(c,store,100).done,true);
+ assert.equal(store.get('meta/game').hour,100);assert.equal(store.get('meta/game').battleSeq,0);
+ assert.equal(store.query('battles').length,0);assert.equal(store.query('emojins',null,true).length,40);
+ assert.deepEqual(store.get('owners/u1').unreadBattleIds,[]);
+ for(const row of store.query('emojins',null,true)){assert.equal(row.data.stars,0);assert.equal(row.data.defeats,0);}
+ assert.equal(c.scheduledStep_(store,100).done,true);
+});

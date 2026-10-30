@@ -225,3 +225,28 @@ test('cannot keep a fifth-skull loser active or truncate inherited skulls',async
  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'emojins/a'),{...resident('a','u1'),defeats:9}));
  await assertFails(batchMatch(db,{aPrior:9,prior:4,mutate:log=>{log.after[0].defeats=5;}}).commit());
 });
+
+test('old clients cannot save same-owner battles or bypass the check with an after-state NPC flag',async()=>{
+ for(const fakeNpc of [false,true]){
+  const a=resident('a','u1'),b=resident('b','u1');
+  await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'emojins/b'),b);});
+  // Build an old-client payload directly; the new planner already rejects this pair.
+  const log=E.battle(a,b,E.seeded(1),10000,'b-friendly');
+  if(fakeNpc)log.after[0].isNpc=true;
+  const db=env.authenticatedContext('u1').firestore(),batch=writeBatch(db);
+  log.after.forEach(e=>batch.set(doc(db,'emojins/'+e.id),plain(e)));
+  batch.set(doc(db,'battles/b-friendly'),plain(E.battleDocument(log)));
+  batch.set(doc(db,'wallets/u1'),{uid:'u1',wallet:{balance:900,updatedAt:10000},hatch:1,revision:2});
+  await assertFails(batch.commit());
+  assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
+  assert.equal((await getDoc(doc(db,'emojins/a'))).data().recordVersion,0);
+  assert.equal((await getDoc(doc(db,'battles/b-friendly'))).exists(),false);
+ }
+});
+test('NPC versus NPC battles remain writable under the owner restriction',async()=>{
+ const a={...resident('a','npc'),isNpc:true},b={...resident('b','npc'),isNpc:true};
+ await env.withSecurityRulesDisabled(async c=>{await Promise.all([setDoc(doc(c.firestore(),'emojins/a'),a),setDoc(doc(c.firestore(),'emojins/b'),b)]);});
+ const log=E.battle(a,b,E.seeded(1),10000,'b-npcs'),db=env.authenticatedContext('u1').firestore(),batch=writeBatch(db);
+ log.after.forEach(e=>batch.set(doc(db,'emojins/'+e.id),plain(e)));
+ batch.set(doc(db,'battles/b-npcs'),plain(E.battleDocument(log)));await assertSucceeds(batch.commit());
+});

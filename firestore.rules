@@ -60,6 +60,12 @@ service cloud.firestore {
         && d.recordVersion == 0 && log.rulesVersion == 4 && log.defeatLimit == 5
         && id.matches(d.lastBattleId + '-npc-[0-9]+');
     }
+    function validOpponents(aId,bId) {
+      let a = get(/databases/$(database)/documents/emojins/$(aId)).data;
+      let b = get(/databases/$(database)/documents/emojins/$(bId)).data;
+      return a.isNpc == true || b.isNpc == true || a.ownerUid == 'npc' || b.ownerUid == 'npc'
+        || a.ownerUid != b.ownerUid;
+    }
     match /emojins/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && ready() && validRecord(request.resource.data)
@@ -71,6 +77,7 @@ service cloud.firestore {
       allow update: if signedIn() && ready() && resource.data.status == 'active'
         && validRecord(request.resource.data)
         && request.resource.data.id == resource.data.id && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.isNpc == resource.data.isNpc
         && request.resource.data.maxHp == resource.data.maxHp
         && request.resource.data.recordVersion == resource.data.recordVersion + 1
         && validDefeatTransition(resource.data, request.resource.data)
@@ -83,6 +90,7 @@ service cloud.firestore {
       allow create: if signedIn() && ready() && request.resource.data.rulesVersion == 4 && request.resource.data.defeatLimit == 5
         && request.resource.data.emojinIds.size() == 2 && request.resource.data.after.size() == 2
         && request.resource.data.emojinIds[0] != request.resource.data.emojinIds[1]
+        && validOpponents(request.resource.data.emojinIds[0],request.resource.data.emojinIds[1])
         && request.resource.data.after[0].lastBattleId == id && request.resource.data.after[1].lastBattleId == id
         && validRecord(request.resource.data.after[0]) && validRecord(request.resource.data.after[1])
         && getAfter(/databases/$(database)/documents/emojins/$(request.resource.data.emojinIds[0])).data == request.resource.data.after[0]

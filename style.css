@@ -88,6 +88,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);out
 .announcement-item{padding:17px 0;border-top:1px solid #54786266}
 .announcement-item p{margin:0;font-size:14px;font-weight:400;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}
 .announcement-item.is-unread p{font-weight:700}
+.announcement-item:not(.is-unread) p{opacity:.5}
 .announcement-status{margin:20px 0;text-align:center;color:#bdd0bf;font-size:13px;line-height:1.8}
 .modal-close{position:absolute;top:16px;left:16px;width:36px;height:36px;display:grid;place-items:center;border-radius:3px;background:var(--panel-light);color:var(--muted);font-size:23px;font-weight:300;z-index:3}
 .detail-panel{text-align:center;padding-top:30px}

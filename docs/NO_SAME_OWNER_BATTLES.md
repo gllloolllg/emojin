@@ -15,6 +15,8 @@
 
 ## 本番適用の順序
 
+2026-10-30の適用状況：ユーザーからGAS停止、Code.gs/Engine.gsの差し替え保存、Firestoreルール公開の完了報告を受領。フロント公開へ進む。本番のmaintenance解除・トリガー再登録の完了は未受領。
+
 GAS・Firestore管理者への直接接続は未設定。以下の管理画面操作はユーザーが行い、完了後にこちらでフロントを本番公開する。作業ブランチは`feat/no-same-owner-battles`。個体・wallet・過去ログのデータ移行は不要。`migrateToV4`は実行しない。
 
 1. 稼働中のGASの`Code.gs`・`Engine.gs`、Firestoreルールをコピーして控える。GASで既存の`pauseForV4Migration`を実行し、hourlyBattleトリガーを削除、実行中のhourlyBattleが終了したことを確認する。maintenanceで手動保存も一時停止する。既存のMigration.gsはそのまま使える。

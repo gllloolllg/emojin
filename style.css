@@ -19,7 +19,8 @@ body{overscroll-behavior:none; height: 100dvh;}
 button,input{font:inherit}
 button{color:inherit;cursor:pointer;touch-action:manipulation;-webkit-appearance:none;appearance:none;border:0;user-select:none}
 button:disabled{cursor:default;opacity:.48}
-button:focus-visible,input:focus-visible{outline:2px solid var(--rose-light);outline-offset:4px}
+input:focus-visible{outline:2px solid var(--rose-light);outline-offset:4px}
+button:focus,button:focus-visible{outline:none;text-decoration:none}
 .hidden{display:none!important}
 #app{
   position:fixed;
@@ -908,7 +909,7 @@ body.daily-draw-open .city-header .mo-reading{visibility:hidden}
 .slot-bet-set{display:block;width:100%;min-height:44px;margin-top:12px;border:1px solid #e8ad77;border-radius:8px;background:linear-gradient(#b94e55,#802d42);color:#fff0db;font-size:18px;letter-spacing:.12em}
 .slot-bet-button,.slot-bet-set{-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent}
 .slot-bet-button:focus,.slot-bet-set:focus{outline:none}
-.slot-bet-button:focus-visible,.slot-bet-set:focus-visible{color:#f4d98e;text-decoration:underline;text-underline-offset:4px}
+.slot-bet-button:focus-visible,.slot-bet-set:focus-visible{color:#f4d98e}
 .slot-bet-up,.slot-bet-down{display:block;width:100%;min-height:44px;border:0;background:transparent;color:#f6ce83;font-size:23px}
 .slot-bet-up:disabled,.slot-bet-down:disabled{opacity:.25}
 .slot-bet-value{display:block;font-size:42px;line-height:1.3;font-variant-numeric:tabular-nums}

@@ -27,6 +27,9 @@ async def main():
     await page.evaluate('mockCloud.wallet.balance=8;window.dispatchEvent(new Event("emojin-wallet"))')
     await page.locator('#slotBetButton').click()
     assert await page.locator('.slot-bet-down').is_disabled()
+    for selector in ['.slot-bet-up','.slot-bet-set']:
+     await page.locator(selector).focus()
+     assert await page.locator(selector).evaluate('(el)=>{const s=getComputedStyle(el);return s.outlineStyle==="none"&&s.textDecorationLine==="none"}')
     for _ in range(9):await page.locator('.slot-bet-up').click()
     assert await page.locator('.slot-bet-value').text_content()=='80'
     assert await page.locator('.slot-bet-up').is_disabled()
@@ -37,6 +40,7 @@ async def main():
     assert await page.locator('.slot-bet-dialog .slot-bet-close').count()==0
     await page.locator('.slot-bet-set').click()
     assert await page.locator('#slotBetButton').evaluate('(el)=>getComputedStyle(el).outlineStyle')=='none'
+    assert await page.locator('#slotBetButton').evaluate('(el)=>getComputedStyle(el).textDecorationLine')=='none'
     await page.locator('#slotOddsButton').click()
     assert await page.locator('.spin-odds-item strong').first.text_content()=='1,280'
     await page.locator('.spin-odds-close').click()

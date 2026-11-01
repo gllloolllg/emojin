@@ -47,6 +47,7 @@ async def main():
      await page.locator('.announcements-panel .modal-close').tap()
      await page.wait_for_function("document.querySelector('#modalHost').classList.contains('hidden')")
     await open_notices()
+    assert await page.locator('.announcements-panel .modal-close').evaluate('el=>{const r=el.getBoundingClientRect(),p=el.closest(".announcements-panel").getBoundingClientRect();return r.left>p.left+p.width/2&&Math.abs(p.right-r.right-16)<2;}')
     assert await page.locator('.announcement-item p').all_text_contents()==['ズカンを追加しました。','バトル方式を更新しました。','これまでのお知らせです。']
     assert await page.locator('.announcement-item.is-unread').count()==2
     assert await page.locator('.announcement-item.is-unread p').first.evaluate('el=>getComputedStyle(el).fontWeight')=='700'

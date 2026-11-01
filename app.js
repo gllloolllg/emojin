@@ -2294,10 +2294,11 @@ function showSlotBet(){
   if(!session||$('slotBetButton').disabled||document.querySelector('.slot-bet-dialog'))return;
   const dialog=document.createElement('dialog');dialog.className='slot-bet-dialog';
   dialog.setAttribute('aria-labelledby','slotBetTitle');
-  dialog.innerHTML=`<button class="slot-bet-close" type="button" aria-label="BETを閉じる">×</button><h3 id="slotBetTitle">BET</h3>
+  dialog.innerHTML=`<h3 id="slotBetTitle">BET</h3>
     <button class="slot-bet-up" type="button" aria-label="BETを8増やす">▲</button>
     <output class="slot-bet-value" aria-live="polite"></output>
-    <button class="slot-bet-down" type="button" aria-label="BETを8減らす">▼</button>`;
+    <button class="slot-bet-down" type="button" aria-label="BETを8減らす">▼</button>
+    <button class="slot-bet-set" type="button">SET</button>`;
   const up=dialog.querySelector('.slot-bet-up'),down=dialog.querySelector('.slot-bet-down');
   function change(step){
     selectedSlotBet=Math.max(SLOT.BET,Math.min(SLOT.CONFIG.maxBet,selectedSlotBet+step));
@@ -2306,7 +2307,7 @@ function showSlotBet(){
     refreshSlotUI();
   }
   up.onclick=()=>change(SLOT.BET);down.onclick=()=>change(-SLOT.BET);
-  dialog.querySelector('.slot-bet-close').onclick=()=>dialog.close();
+  dialog.querySelector('.slot-bet-set').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{
     event.stopPropagation();
     if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}

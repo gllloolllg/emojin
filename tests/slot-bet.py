@@ -34,7 +34,9 @@ async def main():
     await page.screenshot(path=f'/tmp/emojin-bet-{width}.png')
     for _ in range(5):await page.locator('.slot-bet-down').click()
     assert await page.locator('.slot-bet-value').text_content()=='40'
-    await page.locator('.slot-bet-close').click()
+    assert await page.locator('.slot-bet-dialog .slot-bet-close').count()==0
+    await page.locator('.slot-bet-set').click()
+    assert await page.locator('#slotBetButton').evaluate('(el)=>getComputedStyle(el).outlineStyle')=='none'
     await page.locator('#slotOddsButton').click()
     assert await page.locator('.spin-odds-item strong').first.text_content()=='1,280'
     await page.locator('.spin-odds-close').click()

@@ -3,10 +3,11 @@
 'use strict';
 const PRIZES=Object.freeze([300,100,300,100,300]);
 function dayKey(at=Date.now()){return new Date(at+9*3600000).toISOString().slice(0,10);}
-function currentDay(at=Date.now()){return dayKey(at-30*60000);}
+function currentDay(at=Date.now()){return dayKey(at+5.5*3600000);}
 function times(day){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||dayKey(Date.parse(day+'T12:00:00+09:00'))!==day)throw Error('Invalid daily battle date');
-  return {openAt:Date.parse(day+'T00:30:00+09:00'),closeAt:Date.parse(day+'T18:30:00+09:00')};
+  const closeAt=Date.parse(day+'T18:30:00+09:00');
+  return {openAt:closeAt-86400000,closeAt};
 }
 function create(day,rng=Math.random){
   const E=root.EmojinEngine,{openAt,closeAt}=times(day),kana=Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');

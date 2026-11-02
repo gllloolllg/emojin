@@ -11,27 +11,43 @@ service cloud.firestore {
     match /migrationBackups/{id} { allow read, write: if false; }
     match /dailyBattleSecrets/{day} { allow read, write: if false; }
     match /dailyBattles/{day} { allow read: if signedIn(); allow write: if false; }
-    match /dailyBattleVotes/{uid}/days/{day} {
+    function validDailyVote(d,uid) {
+      let battle = get(/databases/$(database)/documents/dailyBattles/$(d.day)).data;
+      return d.keys().hasOnly(['uid','day','choice','votedAt','settled','settledAt'])
+        && d.uid == uid && d.choice is int && d.choice >= 0 && d.choice <= 4
+        && d.settled == false && d.settledAt == null && d.votedAt == request.time
+        && battle.status == 'open'
+        && request.time.toMillis() >= battle.openAt && request.time.toMillis() < battle.closeAt;
+    }
+    function dailyBattleReceipt(uid,day,choice) {
+      let receipt = getAfter(/databases/$(database)/documents/wallets/$(uid)/operations/$('daily-battle-' + day)).data;
+      return receipt.kind == 'dailyBattle' && receipt.day == day
+        && receipt.amount == ((choice == 1 || choice == 3) ? 100 : 300);
+    }
+    match /dailyBattlePlayers/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn() && ready() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid','day','choice','votedAt'])
-        && request.resource.data.uid == uid && request.resource.data.day == day
-        && request.resource.data.choice is int && request.resource.data.choice >= 0 && request.resource.data.choice <= 4
-        && request.resource.data.votedAt == request.time
-        && get(/databases/$(database)/documents/dailyBattles/$(day)).data.status == 'open'
-        && request.time.toMillis() >= get(/databases/$(database)/documents/dailyBattles/$(day)).data.openAt
-        && request.time.toMillis() < get(/databases/$(database)/documents/dailyBattles/$(day)).data.closeAt;
-      allow update, delete: if false;
+      allow create: if signedIn() && ready() && request.auth.uid == uid && validDailyVote(request.resource.data,uid);
+      allow update: if signedIn() && ready() && request.auth.uid == uid
+        && ((resource.data.settled == true && request.resource.data.day > resource.data.day && validDailyVote(request.resource.data,uid))
+          || (resource.data.settled == false && request.resource.data.settled == true
+            && request.resource.data.settledAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settled','settledAt'])
+            && get(/databases/$(database)/documents/dailyBattles/$(resource.data.day)).data.status == 'finished'
+            && (resource.data.choice != get(/databases/$(database)/documents/dailyBattles/$(resource.data.day)).data.outcome
+              || dailyBattleReceipt(uid,resource.data.day,resource.data.choice))));
+      allow delete: if false;
     }
     function validDailyBattleClaim(uid,id) {
       let d = request.resource.data;
       let battle = get(/databases/$(database)/documents/dailyBattles/$(d.day)).data;
-      let vote = get(/databases/$(database)/documents/dailyBattleVotes/$(uid)/days/$(d.day)).data;
+      let vote = get(/databases/$(database)/documents/dailyBattlePlayers/$(uid)).data;
+      let nextVote = getAfter(/databases/$(database)/documents/dailyBattlePlayers/$(uid)).data;
       let before = get(/databases/$(database)/documents/wallets/$(uid)).data;
       let after = getAfter(/databases/$(database)/documents/wallets/$(uid)).data;
       return id == 'daily-battle-' + d.day && d.kind == 'dailyBattle'
         && d.keys().hasOnly(['kind','day','amount','at'])
-        && battle.status == 'finished' && vote.choice == battle.outcome
+        && battle.status == 'finished' && vote.day == d.day && vote.settled == false && vote.choice == battle.outcome
+        && nextVote.day == vote.day && nextVote.settled == true
         && d.amount == ((vote.choice == 1 || vote.choice == 3) ? 100 : 300)
         && after.revision == before.revision + 1 && after.wallet.balance >= before.wallet.balance + d.amount
         && id in after.recentOperations;

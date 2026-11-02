@@ -597,10 +597,11 @@ root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluateAnyBonus,eva
 'use strict';
 const PRIZES=Object.freeze([300,100,300,100,300]);
 function dayKey(at=Date.now()){return new Date(at+9*3600000).toISOString().slice(0,10);}
-function currentDay(at=Date.now()){return dayKey(at-30*60000);}
+function currentDay(at=Date.now()){return dayKey(at+5.5*3600000);}
 function times(day){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||dayKey(Date.parse(day+'T12:00:00+09:00'))!==day)throw Error('Invalid daily battle date');
-  return {openAt:Date.parse(day+'T00:30:00+09:00'),closeAt:Date.parse(day+'T18:30:00+09:00')};
+  const closeAt=Date.parse(day+'T18:30:00+09:00');
+  return {openAt:closeAt-86400000,closeAt};
 }
 function create(day,rng=Math.random){
   const E=root.EmojinEngine,{openAt,closeAt}=times(day),kana=Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');
@@ -894,13 +895,15 @@ async function createCloud() {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists())return {ok:true,record:existing.data(),account};
         await requireMatchRules(tx);
-        const battle=await tx.get(ref('dailyBattles',day)),vote=await tx.get(F.doc(db,'dailyBattleVotes',uid,'days',day));
-        if(!battle.exists()||battle.data().status!=='finished'||!vote.exists()||vote.data().choice!==battle.data().outcome)throw Error('受け取れる賞金がありません。');
+        const playerRef=ref('dailyBattlePlayers',uid),battle=await tx.get(ref('dailyBattles',day)),vote=await tx.get(playerRef);
+        if(!battle.exists()||battle.data().status!=='finished'||!vote.exists()||vote.data().day!==day||vote.data().settled||vote.data().choice!==battle.data().outcome)throw Error('受け取れる賞金がありません。');
         const amount=window.DailyBattle.PRIZES[vote.data().choice],wallet=E.accrueMoji(account.wallet,Date.now());
         wallet.balance+=amount;
         const record={kind:'dailyBattle',day,amount,at:Date.now()};
         const next=nextAccount(account,{wallet},op.id);
-        tx.set(accountRef,next);tx.set(receipt,record);return {ok:true,record,account:next};
+        tx.set(accountRef,next);tx.set(receipt,record);
+        tx.set(playerRef,{...vote.data(),settled:true,settledAt:F.serverTimestamp()});
+        return {ok:true,record,account:next};
       }
       if(op.action==='dailyDraw') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
@@ -1062,20 +1065,37 @@ async function createCloud() {
       window.DailyBattle.times(day);
       const snap=await F.getDocFromServer(ref('dailyBattles',day));return snap.exists()?snap.data():null;
     },
-    async getDailyBattleVotes(){
-      const snap=await F.getDocsFromServer(F.collection(db,'dailyBattleVotes',uid,'days'));
-      return snap.docs.map(d=>d.data()).sort((a,b)=>b.day.localeCompare(a.day));
+    async getDailyBattlePlayer(){
+      const snap=await F.getDocFromServer(ref('dailyBattlePlayers',uid));return snap.exists()?snap.data():null;
     },
     async voteDailyBattle(day,choice){
       window.DailyBattle.times(day);
       if(!Number.isInteger(choice)||choice<0||choice>4)throw Error('投票先が不正です。');
-      const owner=uid,voteRef=F.doc(db,'dailyBattleVotes',owner,'days',day);
+      const owner=uid,playerRef=ref('dailyBattlePlayers',owner);
       return retry(()=>F.runTransaction(db,async tx=>{
-        const previous=await tx.get(voteRef);
-        if(previous.exists())return previous.data();
+        const previous=await tx.get(playerRef),old=previous.exists()?previous.data():null;
+        if(old?.day===day)return old;
+        if(old&&!old.settled)throw Error('前回の結果確認・賞金受領を先に完了してください。');
         const snap=await tx.get(ref('dailyBattles',day));
         if(!snap.exists()||snap.data().status!=='open')throw Error('投票は終了しました。');
-        const vote={day,uid:owner,choice,votedAt:F.serverTimestamp()};tx.set(voteRef,vote);return vote;
+        const vote={day,uid:owner,choice,votedAt:F.serverTimestamp(),settled:false,settledAt:null};
+        tx.set(playerRef,vote);return vote;
+      }));
+    },
+    async completeLosingDailyBattle(day){
+      window.DailyBattle.times(day);
+      const playerRef=ref('dailyBattlePlayers',uid);
+      return retry(()=>F.runTransaction(db,async tx=>{
+        const snap=await tx.get(playerRef),old=snap.exists()?snap.data():null;
+        if(!old||old.day!==day||old.settled)return old;
+        const result=await tx.get(ref('dailyBattles',day));
+        if(!result.exists()||result.data().status!=='finished'||old.choice===result.data().outcome)throw Error('的中した賞金を先に受け取ってください。');
+        const next={...old,settled:true,settledAt:F.serverTimestamp()};tx.set(playerRef,next);return next;
+      }).catch(async error=>{
+        if(error.code!=='permission-denied')throw error;
+        const fresh=await F.getDocFromServer(playerRef);
+        if(fresh.exists()&&(fresh.data().day!==day||fresh.data().settled))return fresh.data();
+        throw error;
       }));
     },
     async claimDailyBattle(day){
@@ -1084,9 +1104,6 @@ async function createCloud() {
       const result=await enqueue('dailyBattleClaim',data,id);
       const saved=result.results?.[id]||await retry(()=>writeOperation({action:'dailyBattleClaim',data,id}));
       return saved.record;
-    },
-    async getDailyBattleClaim(day){
-      const snap=await F.getDocFromServer(receiptRef('daily-battle-'+day));return snap.exists()?snap.data():null;
     },
     async getDailyDraw(day){
       window.DailyMojiDraw.validateDay(day);
@@ -2312,49 +2329,42 @@ async function slotCueD(session,spin){
     ]);
   }finally{layer.getAnimations({subtree:true}).forEach(a=>a.cancel());layer.remove();session.cueLayer=null;}
 }
-/* Daily Battle lobby and history; votes/claims are authoritative Firestore records. */
-let dailyBattleReplay=false,dailyRevealCount=3,dailyBadgeChecked=0,dailyBadgeLoading=false;
-const dailySeenMemory=new Set();
-function dailySeenKey(day){return 'emojin.dailyBattle.seen.'+FIREBASE_CONFIG.projectId+'.'+cloud.uid+'.'+day;}
-function dailySeen(day){if(dailySeenMemory.has(dailySeenKey(day)))return true;try{return localStorage.getItem(dailySeenKey(day))==='1';}catch{return false;}}
-function dailyMarkSeen(day){dailySeenMemory.add(dailySeenKey(day));try{localStorage.setItem(dailySeenKey(day),'1');}catch{}dailyBadgeChecked=0;}
+/* Daily Battle: one latest vote per owner; finish it before entering the next vote. */
+let dailyBattleReplay=false,dailyRevealCount=3;
 function dailyVoteIcons(b){return [b.fighters[0].emoji+'💪',b.fighters[0].emoji,'🌀',b.fighters[1].emoji+'💪',b.fighters[1].emoji+'💪'];}
 function dailyVoteText(b,choice){return choice===2?'引き分ける':b.fighters[choice<2?0:1].name+(choice===0||choice===4?'が圧勝':'が勝つ');}
-async function refreshDailyBadge(){
-  const button=$('dailyBattleButton');if(!button)return;
-  button.disabled=!store?.player||busy||!!playback;
-  if(!store?.player||!cloud.getDailyBattleVotes||dailyBadgeLoading||Date.now()-dailyBadgeChecked<60000)return;
-  dailyBadgeLoading=true;const owner=cloud.uid;
-  try{
-    const votes=await cloud.getDailyBattleVotes(),today=window.DailyBattle.currentDay();
-    const pending=votes.filter(v=>v.day<today&&!dailySeen(v.day));
-    const battles=await Promise.all(pending.map(v=>cloud.getDailyBattle(v.day)));
-    if(owner===cloud.uid){button.classList.toggle('has-unseen',battles.some(b=>b?.status==='finished'));dailyBadgeChecked=Date.now();}
-  }catch(error){console.warn('Daily battle history',error);dailyBadgeChecked=Date.now();}
-  finally{dailyBadgeLoading=false;}
+function refreshDailyBattleButton(){
+  const button=$('dailyBattleButton');if(button)button.disabled=!store?.player||busy||!!playback;
 }
 function dailyFighterMarkup(e,side,revealed=false){
   return `<section class="daily-contestant daily-side-${side}"><div class="daily-portrait">${esc(e.emoji)}</div><div class="daily-contestant-info"><h3>${esc(e.name)}</h3><div class="daily-hp">HP ${Number(e.currentHp??8)} / 8</div><div class="daily-slots">${Array.from({length:6},(_,i)=>i<3||revealed?slot(e.slots[i],i,false,false):'<div class="slot daily-secret" aria-label="非公開スロット">?</div>').join('')}</div></div></section>`;
 }
-async function showDailyBattle(day=window.DailyBattle.currentDay(),historical=false,afterReplay=false){
+async function showDailyBattle({awardBattle=null,replayError=false}={}){
   if(busy||playback||!store?.player)return;
-  openModal('<header class="daily-heading"><h2>デイリーバトル</h2><button id="dailyHistory" type="button">過去のバトル</button></header><div id="dailyContent" class="daily-content"><p class="daily-message">読み込み中…</p></div>',
+  openModal('<header class="daily-heading"><h2>デイリーバトル</h2></header><div id="dailyContent" class="daily-content"><p class="daily-message">読み込み中…</p></div>',
     'デイリーバトル',{panelClass:'daily-battle-panel'});
   const panel=$('modalHost').querySelector('.daily-battle-panel'),owner=cloud.uid;
-  $('dailyHistory').onclick=showDailyHistory;
-  $('dailyHistory').classList.toggle('has-unseen',$('dailyBattleButton')?.classList.contains('has-unseen'));
-  let battle,vote,claimed,submitting=false,lastPoll=0,polling=false;
+  let battle,vote,day,submitting=false,polling=false,lastPoll=0,award=false;
   const live=()=>panel.isConnected&&owner===cloud.uid&&!modalClosing;
   async function load(){
-    [battle,vote,claimed]=await Promise.all([cloud.getDailyBattle(day),cloud.getDailyBattleVotes().then(v=>v.find(x=>x.day===day)),cloud.getDailyBattleClaim(day)]);
-    if(live())render();
+    const latest=await cloud.getDailyBattlePlayer();
+    if(!live())return;
+    day=latest&&!latest.settled?latest.day:window.DailyBattle.currentDay();
+    vote=latest?.day===day?latest:null;
+    battle=await cloud.getDailyBattle(day);
+    if(!live())return;
+    award=!!(awardBattle?.day===day&&vote&&!vote.settled&&battle?.status==='finished'&&vote.choice===battle.outcome);
+    if(vote&&!vote.settled&&battle?.status==='finished'&&!award&&!replayError&&!document.hidden){await replayDailyBattle(battle,vote);return;}
+    render();
   }
   function render(){
     if(!battle){$('dailyContent').innerHTML='<p class="daily-message">次のバトルを準備しています。</p>';return;}
-    const watched=afterReplay,icons=dailyVoteIcons(battle);
-    const full=watched&&battle.log?battle.log.finalState:battle.fighters;
-    $('dailyContent').innerHTML=`<div class="daily-date">${esc(day)} · 18:30</div><div class="daily-arena">${dailyFighterMarkup(full[1],1,watched)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,watched)}</div>
-      <div class="daily-vote-popup" id="dailyVotePopup" hidden></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span><small>${window.DailyBattle.PRIZES[i]} モジ</small></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`;
+    if(award){
+      modalOptions.closable=false;panel.querySelector('.modal-close')?.remove();$('modalHost').querySelector('.modal-backdrop')?.removeAttribute('data-close-modal');
+    }
+    const full=award?battle.log.finalState:battle.fighters,icons=dailyVoteIcons(battle);
+    $('dailyContent').innerHTML=`<div class="daily-date">${esc(day)} · 18:30</div><div class="daily-arena">${dailyFighterMarkup(full[1],1,award)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,award)}</div>
+      ${award?'':`<div class="daily-vote-popup" id="dailyVotePopup" hidden></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span><small>${window.DailyBattle.PRIZES[i]} モジ</small></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`}`;
     panel.querySelectorAll('[data-daily-choice]').forEach(button=>button.onclick=()=>{
       const choice=Number(button.dataset.dailyChoice),popup=$('dailyVotePopup');
       popup.hidden=false;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVoteText(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
@@ -2362,7 +2372,7 @@ async function showDailyBattle(day=window.DailyBattle.currentDay(),historical=fa
       $('dailyConfirmVote').onclick=async()=>{
         if(submitting)return;submitting=true;
         panel.querySelectorAll('[data-daily-choice],#dailyConfirmVote').forEach(b=>b.disabled=true);
-        try{vote=await cloud.voteDailyBattle(day,choice);dailyBadgeChecked=0;if(live())render();}
+        try{await cloud.voteDailyBattle(day,choice);if(live())await load();}
         catch(error){if(live()){reportError(error);await load().catch(reportError);}}
         finally{submitting=false;}
       };
@@ -2372,49 +2382,33 @@ async function showDailyBattle(day=window.DailyBattle.currentDay(),historical=fa
   function center(){
     if(!live()||!battle||!$('dailyCenter'))return;
     const host=$('dailyCenter');
-    if(battle.status==='finished'){
+    if(award){
       if(host.dataset.ready)return;host.dataset.ready='1';
-      host.innerHTML=watchedMarkup();
-      $('dailyReplay')?.addEventListener('click',()=>replayDailyBattle(battle,historical));
-      $('dailyClaim')?.addEventListener('click',async event=>{
-        const button=event.currentTarget;button.disabled=true;button.textContent='受け取り中…';
-        try{await cloud.claimDailyBattle(day);claimed=true;if(live()){host.innerHTML='<p>賞金を受け取りました</p>';refreshNav();}}
+      host.innerHTML=`<p class="daily-battle-result">${esc(dailyVoteText(battle,battle.outcome))}</p><button id="dailyClaim" type="button">賞金を受け取る<small>${window.DailyBattle.PRIZES[vote.choice]} モジ</small></button><p>受け取ると次の投票へ進みます</p>`;
+      $('dailyClaim').onclick=async event=>{
+        const button=event.currentTarget;button.disabled=true;button.textContent='受け取り中…';submitting=true;
+        try{await cloud.claimDailyBattle(day);if(live()){toast('賞金を受け取りました');refreshNav();await showDailyBattle();}}
         catch(error){if(live()){button.disabled=false;button.textContent='賞金を受け取る';reportError(error);}}
-      });
+        finally{submitting=false;}
+      };
+    }else if(battle.status==='finished'&&vote&&!vote.settled){
+      if(host.dataset.ready)return;host.dataset.ready='1';
+      host.innerHTML='<button id="dailyReplay" type="button">結果を見る</button>';
+      $('dailyReplay').onclick=()=>replayDailyBattle(battle,vote);
     }else{
       const remaining=Math.max(0,Math.ceil((battle.closeAt-Date.now())/1000));
       host.innerHTML=remaining?`<span>バトル開始まで</span><strong>${[Math.floor(remaining/3600),Math.floor(remaining/60)%60,remaining%60].map(n=>String(n).padStart(2,'0')).join(':')}</strong>`:'<span>結果を確認中…</span>';
       if(!remaining){panel.querySelectorAll('[data-daily-choice]').forEach(b=>b.disabled=true);const popup=$('dailyVotePopup');if(popup)popup.hidden=true;}
     }
   }
-  function watchedMarkup(){
-    if(!afterReplay)return '<button id="dailyReplay" type="button">結果を見る</button>';
-    const label=dailyVoteText(battle,battle.outcome),reward=vote?.choice===battle.outcome;
-    return `<p class="daily-battle-result">${esc(label)}</p>${reward?(claimed?'<p>賞金受け取り済み</p>':`<button id="dailyClaim" type="button">賞金を受け取る<small>${window.DailyBattle.PRIZES[vote.choice]} モジ</small></button>`):'<p>'+ (vote?'今回は的中しませんでした':'このバトルには投票していません')+'</p>'}<button id="dailyReplay" class="daily-replay-again" type="button">もう一度見る</button>`;
-  }
   try{await load();}catch(error){if(live())$('dailyContent').innerHTML='<p class="daily-message">読み込めませんでした。閉じて再度お試しください。</p>';console.warn(error);}
   const timer=setInterval(async()=>{
     if(!live()){clearInterval(timer);return;}
     center();
-    if(!historical&&window.DailyBattle.currentDay()!==day){clearInterval(timer);showDailyBattle();return;}
-    if(!submitting&&!polling&&Date.now()-lastPoll>=15000&&(!battle||Date.now()>=battle.closeAt&&battle.status!=='finished')){
+    if(!award&&!submitting&&!polling&&!document.hidden&&Date.now()-lastPoll>=15000&&(!battle||Date.now()>=battle.closeAt||day!==window.DailyBattle.currentDay())){
       polling=true;lastPoll=Date.now();try{await load();}catch(error){console.warn(error);}finally{polling=false;}
     }
   },1000);
-}
-async function showDailyHistory(){
-  if(busy||playback)return;
-  openModal('<h2 class="daily-history-title">過去のバトル</h2><div id="dailyHistoryList">読み込み中…</div>','過去のデイリーバトル',{panelClass:'daily-battle-panel daily-history-panel'});
-  const host=$('dailyHistoryList'),owner=cloud.uid;
-  try{
-    const today=window.DailyBattle.currentDay(),votes=(await cloud.getDailyBattleVotes()).filter(v=>v.day<today);
-    const battles=await Promise.all(votes.map(v=>cloud.getDailyBattle(v.day)));
-    if(!host.isConnected||owner!==cloud.uid)return;
-    host.innerHTML=battles.map((b,i)=>b?.status==='finished'?`<button class="daily-history-entry${dailySeen(b.day)?'':' unseen'}" data-history-day="${esc(b.day)}" type="button"><span>${esc(b.day)} ${esc(b.fighters[0].emoji)} vs ${esc(b.fighters[1].emoji)}</span><small>${dailySeen(b.day)?'再生済み':'未再生'} · ${esc(dailyVoteText(b,votes[i].choice))}</small></button>`:'').join('')||'<p class="daily-message">参加した過去のバトルはありません。</p>';
-    host.querySelectorAll('[data-history-day]').forEach(button=>button.onclick=async()=>{
-      const b=battles.find(b=>b?.day===button.dataset.historyDay);await replayDailyBattle(b,true);
-    });
-  }catch(error){if(host.isConnected)host.textContent='読み込めませんでした。閉じて再度お試しください。';console.warn(error);}
 }
 async function revealDailySlots(log){
   for(let i=3;i<6;i++){
@@ -2427,20 +2421,33 @@ async function revealDailySlots(log){
     await battleWait(1100);
   }
 }
-async function replayDailyBattle(battle,historical=false){
-  if(busy||playback||!battle?.log)return;
+async function replayDailyBattle(battle,vote){
+  if(busy||playback||!battle?.log||!vote||vote.settled)return;
+  const owner=cloud.uid;
   await closeModal(true);busy=true;playback={skip:false};dailyBattleReplay=true;dailyRevealCount=3;
   const speed=replaySpeed;replaySpeed=1;$('battleScreen').classList.add('daily-replay');
   let complete=false;
-  try{await playBattle(battle.log,0,1);complete=true;dailyMarkSeen(battle.day);}
+  try{await playBattle(battle.log,0,1);complete=true;}
   catch(error){console.error(error);toast('再生を中断しました。もう一度お試しください。');}
   finally{
     $('battleScreen').getAnimations({subtree:true}).forEach(a=>a.cancel());
     $('battleScreen').classList.add('hidden');$('battleScreen').classList.remove('daily-replay');
     $('battleFx').innerHTML='';$('battleRecordFx').innerHTML='';clearBattleSlotFocus();
-    dailyBattleReplay=false;replaySpeed=speed;playback=null;busy=false;currentBattle=null;
-    refreshNav();await showDailyBattle(battle.day,historical,complete);
+    dailyBattleReplay=false;replaySpeed=speed;playback=null;currentBattle=null;
   }
+  if(owner!==cloud.uid){busy=false;refreshNav();return;}
+  if(complete&&vote.choice!==battle.outcome){
+    async function finish(){
+      await cloud.completeLosingDailyBattle(battle.day);busy=false;refreshNav();toast('今回は的中しませんでした');await showDailyBattle();
+    }
+    try{await finish();}catch(error){
+      busy=false;
+      openModal('<h2>結果の確認を保存できませんでした</h2><p>通信を確認して再試行してください。</p><button id="dailyCompleteRetry" class="primary-button" type="button">再試行</button>',
+        'デイリーバトル',{panelClass:'daily-battle-panel',closable:false});
+      $('dailyCompleteRetry').onclick=async event=>{const button=event.currentTarget;button.disabled=true;try{await finish();}catch(e){button.disabled=false;reportError(e);}};
+      reportError(error);
+    }
+  }else{busy=false;refreshNav();await showDailyBattle(complete?{awardBattle:battle}:{replayError:true});}
 }
 
 function installSlotButton(){
@@ -2454,7 +2461,7 @@ function installSlotButton(){
     button.type='button';button.textContent='💪';button.setAttribute('aria-label','デイリーバトル');
     document.querySelector('.mo-meter').appendChild(button);button.onclick=()=>showDailyBattle();
   }
-  refreshDailyBadge();
+  refreshDailyBattleButton();
   if(!$('mojiSpinFonts')){
     const link=document.createElement('link');link.id='mojiSpinFonts';link.rel='stylesheet';
     link.href='https://fonts.googleapis.com/css2?family=Aldrich&family=Skranji:wght@700&display=swap';document.head.appendChild(link);

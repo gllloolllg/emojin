@@ -1523,6 +1523,7 @@ function openModal(html, kind, {closable=true,panelClass="",focus=null,tapToClos
   if(modalKind===null)oldFocus=document.activeElement;
   modalRevision++;modalClosing=false;modalOptions={closable,tapToClose};modalKind=kind;
   const host=$("modalHost");host.classList.remove("is-closing");
+  host.classList.toggle('daily-battle-host',panelClass.split(' ').includes('daily-battle-panel'));
   host.innerHTML=`<div class="modal-backdrop" ${closable?'data-close-modal="true"':""}></div><section class="modal-panel ${panelClass}" tabindex="-1" role="dialog" aria-modal="true" aria-label="${esc(kind)}">${closable&&!tapToClose&&!hideClose?`<button class="modal-close" data-close-modal="true" aria-label="閉じる">${closeSvg()}</button>`:""}${html}</section>`;
   host.classList.remove("hidden");
   animate(host.querySelector(".modal-backdrop"),[{opacity:0},{opacity:1}],260);
@@ -2331,8 +2332,12 @@ async function slotCueD(session,spin){
 }
 /* Daily Battle: one latest vote per owner; finish it before entering the next vote. */
 let dailyBattleReplay=false,dailyRevealCount=3;
-function dailyVoteIcons(b){return [b.fighters[0].emoji+'💪',b.fighters[0].emoji,'🌀',b.fighters[1].emoji+'💪',b.fighters[1].emoji+'💪'];}
+function dailyVoteIcons(b){return [b.fighters[0].emoji+'💪',b.fighters[0].emoji,'🌀',b.fighters[1].emoji,b.fighters[1].emoji+'💪'];}
 function dailyVoteText(b,choice){return choice===2?'引き分ける':b.fighters[choice<2?0:1].name+(choice===0||choice===4?'が圧勝':'が勝つ');}
+function dailyVotePrompt(b,choice){
+  if(choice===2)return '引き分けると300モジGET';
+  return b.fighters[choice<2?0:1].name+(choice===0||choice===4?'が圧勝すると300モジGET':'が勝利すると100モジGET');
+}
 function refreshDailyBattleButton(){
   const button=$('dailyBattleButton');if(button)button.disabled=!store?.player||busy||!!playback;
 }
@@ -2363,11 +2368,13 @@ async function showDailyBattle({awardBattle=null,replayError=false}={}){
       modalOptions.closable=false;panel.querySelector('.modal-close')?.remove();$('modalHost').querySelector('.modal-backdrop')?.removeAttribute('data-close-modal');
     }
     const full=award?battle.log.finalState:battle.fighters,icons=dailyVoteIcons(battle);
-    $('dailyContent').innerHTML=`<div class="daily-date">${esc(day)} · 18:30</div><div class="daily-arena">${dailyFighterMarkup(full[1],1,award)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,award)}</div>
-      ${award?'':`<div class="daily-vote-popup" id="dailyVotePopup" hidden></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span><small>${window.DailyBattle.PRIZES[i]} モジ</small></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`}`;
+    $('dailyContent').classList.toggle('daily-award-content',award);
+    $('dailyContent').dataset.day=day;
+    $('dailyContent').innerHTML=`<div class="daily-arena">${dailyFighterMarkup(full[1],1,award)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,award)}</div>
+      ${award?'':`<div class="daily-vote-space"><div class="daily-vote-popup" id="dailyVotePopup" hidden></div></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`}`;
     panel.querySelectorAll('[data-daily-choice]').forEach(button=>button.onclick=()=>{
       const choice=Number(button.dataset.dailyChoice),popup=$('dailyVotePopup');
-      popup.hidden=false;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVoteText(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
+      popup.hidden=false;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVotePrompt(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
       popup.animate([{opacity:0,transform:'translateY(10px) scale(.9)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:220,easing:'ease-out'});
       $('dailyConfirmVote').onclick=async()=>{
         if(submitting)return;submitting=true;

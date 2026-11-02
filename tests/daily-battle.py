@@ -46,7 +46,7 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
     assert await page.locator('#skipButton').is_hidden();assert await page.locator('#speedButton').is_hidden()
     assert await page.locator('.daily-replay .record-badge').count()==0
     await release();await page.wait_for_selector('#dailyClaim',timeout=20000)
-    assert fixture['older'] in await page.locator('.daily-date').text_content()
+    assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['older']
     assert await page.locator('#dailyHistory').count()==0
     assert await page.locator('.daily-vote').count()==0
     assert await page.locator('.daily-battle-panel .modal-close').count()==0
@@ -58,21 +58,45 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
     await page.reload();await start();await release();await page.wait_for_selector('#dailyClaim',timeout=20000)
     await page.evaluate('dailyData.failClaim=false');await page.locator('#dailyClaim').click();await page.wait_for_selector('.daily-vote:enabled')
     assert await page.evaluate('mockCloud.wallet.balance')==4300
-    assert fixture['day'] in await page.locator('.daily-date').text_content()
+    assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['day']
     assert await page.locator('.daily-secret').count()==6
+    await page.wait_for_timeout(50)
+    panel=page.locator('.daily-battle-panel');bounds=await panel.bounding_box()
+    assert abs(bounds['x'])<1 and abs(bounds['y'])<1 and abs(bounds['width']-width)<1 and abs(bounds['height']-height)<1,bounds
+    assert await page.locator('.daily-date').count()==0
+    assert await page.locator('.daily-heading h2').evaluate("el=>getComputedStyle(el).fontFamily.includes('Monomaniac One')")
+    title=await page.locator('.daily-heading h2').bounding_box();assert abs(title['x']+title['width']/2-width/2)<1
+    close=await panel.locator('.modal-close').bounding_box();assert close['x']>width*.75
+    assert await page.locator('#dailyCenter strong').evaluate("el=>parseFloat(getComputedStyle(el).fontSize)>=42&&getComputedStyle(el).fontFamily.includes('Aldrich')")
+    assert await page.locator('.daily-vote small').count()==0
+    icons=await page.locator('.daily-vote>span').all_text_contents()
+    left=fixture['battles'][fixture['day']]['fighters'][0];right=fixture['battles'][fixture['day']]['fighters'][1]
+    assert icons==[left['emoji']+'💪',left['emoji'],'🌀',right['emoji'],right['emoji']+'💪']
+    prompts=[left['name']+'が圧勝すると300モジGET',left['name']+'が勝利すると100モジGET','引き分けると300モジGET',right['name']+'が勝利すると100モジGET',right['name']+'が圧勝すると300モジGET']
+    space=await page.locator('.daily-vote-space').bounding_box();assert space['height']>=140
+    buttons=await page.locator('.daily-votes').bounding_box()
+    assert buttons['y']+buttons['height']<=height,buttons
+    await page.locator('#toast').wait_for(state='hidden')
+    await page.screenshot(path=f'/tmp/emojin-daily-red-empty-{width}.png')
     for i in range(5):
      await page.locator(f'[data-daily-choice="{i}"]').tap();assert await page.locator('#dailyVotePopup').is_visible();assert await page.locator('.daily-vote:enabled').count()==5
-    await page.locator('[data-daily-choice="1"]').tap();await page.screenshot(path=f'/tmp/emojin-daily-next-vote-{width}.png')
+     assert await page.locator('#dailyVotePopup p').text_content()==prompts[i]
+     moved=await page.locator('.daily-votes').bounding_box();assert abs(moved['y']-buttons['y'])<1
+    await page.wait_for_timeout(250)
+    await page.locator('[data-daily-choice="1"]').tap();await page.wait_for_timeout(250);await page.screenshot(path=f'/tmp/emojin-daily-next-vote-{width}.png')
     await page.locator('#dailyConfirmVote').tap();await page.wait_for_selector('.daily-vote.chosen');assert await page.locator('.daily-vote:disabled').count()==5
     # After 18:30, the next round is available, but the previous losing vote replays first.
     await page.evaluate('()=>{dailyData.battles[dailyFixture.day]=dailyFixture.finished;dailyData.targetDay=dailyFixture.next;openDailyTest();}')
     await page.wait_for_function('!!window.dailyStartReveal');await release()
     await page.wait_for_function('dailyData.lossCalls===1');await page.wait_for_selector('.daily-vote:enabled')
-    assert fixture['next'] in await page.locator('.daily-date').text_content()
+    assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['next']
     assert await page.locator('#dailyClaim').count()==0
     assert await page.evaluate('dailyData.speeds.every(s=>s===1)')
     assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
     assert await page.evaluate("Object.keys(localStorage).filter(k=>k.includes('dailyBattle')).length")==0
+    await page.locator('.daily-battle-panel .modal-close').click();await page.wait_for_selector('.daily-battle-panel',state='detached')
+    await page.locator('#mojiSpinButton').click();await page.wait_for_selector('.moji-spin-panel')
+    assert await page.locator('#modalHost').evaluate("el=>!el.classList.contains('daily-battle-host')")
     assert not errors,errors
     print(f'PASS {width}: latest participated round prioritized, automatic x1 replay, forced prize/retry/reload, next-vote gate, losing completion, no history/local flags')
     await ctx.close()

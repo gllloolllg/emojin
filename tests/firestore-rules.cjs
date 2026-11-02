@@ -158,7 +158,7 @@ function gasRuntime() {
    return {getResponseCode:()=>status,getContentText:()=>body};
   }}};
  vm.createContext(c);
- for(const file of ['Engine.gs','Code.gs','Migration.gs','Announcements.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
+ for(const file of ['Engine.gs','Code.gs','Migration.gs','Announcements.gs','DailyBattleEngine.gs','DailyBattleScheduler.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
  return c;
 }
 test('GAS REST scheduler commits a complete match with real Firestore transactions and resumes idempotently',async()=>{
@@ -268,4 +268,68 @@ test('manual GAS post creates one readable announcement with real Timestamp even
  assert.equal(value.body,'お知らせの本文です。\n二行目も表示できます。');assert.equal(value.published,true);
  assert.ok(value.publishedAt instanceof Timestamp);assert.ok(value.publishedAt.toMillis()>=started&&value.publishedAt.toMillis()<=Date.now());
  assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,1000);
+});
+
+async function dailyBattleFixture({closed=false,finished=false,choice=0}={}){
+ const at=Date.now(),day='2026-11-02';
+ await env.withSecurityRulesDisabled(async c=>{
+  await setDoc(doc(c.firestore(),'dailyBattles',day),{day,status:finished?'finished':'open',openAt:at-100000,closeAt:closed?at-1000:at+600000,outcome:choice});
+  await setDoc(doc(c.firestore(),'dailyBattleSecrets',day),{seed:123,slots:['attack1']});
+ });return day;
+}
+test('daily battle secrets/admin writes are private; votes are own-only, before server deadline, immutable and single-choice',async()=>{
+ const {serverTimestamp}=dep('firebase/firestore'),db=env.authenticatedContext('u1').firestore(),other=env.authenticatedContext('u2').firestore(),anon=env.unauthenticatedContext().firestore();
+ const day=await dailyBattleFixture(),ref=doc(db,'dailyBattleVotes/u1/days/'+day),vote={uid:'u1',day,choice:0,votedAt:serverTimestamp()};
+ await assertSucceeds(getDoc(doc(db,'dailyBattles',day)));await assertFails(getDoc(doc(anon,'dailyBattles',day)));
+ await assertFails(getDoc(doc(db,'dailyBattleSecrets',day)));await assertFails(setDoc(doc(db,'dailyBattles',day),{status:'finished'}));
+ await assertFails(setDoc(doc(other,'dailyBattleVotes/u1/days/'+day),vote));
+ await assertFails(setDoc(ref,{...vote,choice:5}));await assertFails(setDoc(ref,{...vote,votedAt:Timestamp.fromMillis(1)}));
+ await assertSucceeds(setDoc(ref,vote));await assertSucceeds(getDoc(ref));await assertFails(getDoc(doc(other,'dailyBattleVotes/u1/days/'+day)));
+ await assertFails(setDoc(ref,{...vote,choice:1}));
+ await dailyBattleFixture({closed:true});await assertFails(setDoc(doc(other,'dailyBattleVotes/u2/days/'+day),{uid:'u2',day,choice:2,votedAt:serverTimestamp()}));
+});
+function dailyBattleClaimClient(db){
+ const c={E,uid:'u1',auth:{currentUser:{uid:'u1'}},db,window:{DailyBattle:ctx.DailyBattle},local:{},ensureWallet:async()=>{},applyAccount:()=>{},persist:()=>{},
+  F:{doc,getDocFromServer:dep('firebase/firestore').getDocFromServer,runTransaction:(db,callback)=>runTransaction(db,tx=>callback({get:ref=>tx.get(ref),set:(ref,value)=>tx.set(ref,plain(value))}))},
+  ref:(name,id)=>doc(db,name,id),walletRef:()=>doc(db,'wallets/u1'),receiptRef:id=>doc(db,'wallets/u1/operations/'+id)};
+ vm.createContext(c);
+ for(const [start,end]of [['  async function requireMatchRules(','  // One live subscription'],['  function nextAccount(','  function ensureWallet('],['  writeOperation=async op=>{','  // Pending operations keep their IDs']])vm.runInContext(source.slice(source.indexOf(start),source.indexOf(end)),c);
+ return day=>c.writeOperation({action:'dailyBattleClaim',id:'daily-battle-'+day,data:{uid:'u1',day}});
+}
+test('daily battle real concurrent award transactions credit once, preserve >3000 and reject wrong/absent vote and early claims',async()=>{
+ const day=await dailyBattleFixture({finished:true});
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();await setDoc(doc(db,'dailyBattleVotes/u1/days/'+day),{uid:'u1',day,choice:0,votedAt:Timestamp.now()});
+  const ref=doc(db,'wallets/u1'),old=(await getDoc(ref)).data();await setDoc(ref,{...old,wallet:{balance:3500,updatedAt:Date.now()}});
+ });
+ const a=env.authenticatedContext('u1').firestore(),b=env.authenticatedContext('u1').firestore();
+ const [x,y]=await Promise.all([dailyBattleClaimClient(a)(day),dailyBattleClaimClient(b)(day)]);
+ assert.equal(x.record.amount,300);assert.equal(y.record.amount,300);assert.equal((await getDoc(doc(a,'wallets/u1'))).data().wallet.balance,3800);
+ await dailyBattleClaimClient(a)(day);assert.equal((await getDoc(doc(a,'wallets/u1'))).data().wallet.balance,3800);
+ const fake=doc(a,'wallets/u1/operations/daily-battle-2026-11-03');await assertFails(setDoc(fake,{kind:'dailyBattle',day:'2026-11-03',amount:300,at:Date.now()}));
+});
+test('daily battle absent/losing votes and unfinished results cannot receive or forge a reward',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),day=await dailyBattleFixture({finished:true});
+ await assert.rejects(dailyBattleClaimClient(db)(day),/賞金/);
+ await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'dailyBattleVotes/u1/days/'+day),{uid:'u1',day,choice:1,votedAt:Timestamp.now()});});
+ await assert.rejects(dailyBattleClaimClient(db)(day),/賞金/);
+ await assertFails(setDoc(doc(db,'wallets/u1/operations/daily-battle-'+day),{kind:'dailyBattle',day,amount:300,at:Date.now()}));
+ await dailyBattleFixture({finished:true,choice:1});
+ // A correct vote alone cannot create a receipt without the corresponding wallet revision/credit.
+ await assertFails(setDoc(doc(db,'wallets/u1/operations/daily-battle-'+day),{kind:'dailyBattle',day,amount:100,at:Date.now()}));
+ await dailyBattleFixture({finished:false,choice:1});await assert.rejects(dailyBattleClaimClient(db)(day),/賞金/);
+ await dailyBattleFixture({finished:true,choice:1});
+ const result=await dailyBattleClaimClient(db)(day);assert.equal(result.record.amount,100);
+});
+test('Daily Battle GAS REST writes isolated public/private records, then publishes one saved result with no regular world effects',()=>{
+ const gas=gasRuntime(),store=gas.firestore_(),D=gas.DailyBattle,day='2026-11-02',times=D.times(day);
+ const world=JSON.stringify(store.query('emojins')),wallets=JSON.stringify(store.query('wallets')),meta=JSON.stringify(store.get('meta/game'));
+ gas.dailyBattleTick_(store,times.openAt);
+ const secret=store.get('dailyBattleSecrets/'+day),pub=store.get('dailyBattles/'+day);
+ assert.ok(secret.seed>=0);assert.equal(pub.status,'open');assert.equal(pub.seed,undefined);assert.ok(pub.fighters.every(f=>f.slots.length===3));
+ gas.dailyBattleTick_(store,times.closeAt-1);assert.equal(store.get('dailyBattles/'+day).status,'open');
+ gas.dailyBattleTick_(store,times.closeAt);const result=store.get('dailyBattles/'+day);assert.equal(result.status,'finished');
+ assert.deepEqual(plain(result.log),plain(D.settle(secret).log));
+ assert.equal(gas.dailyBattleTick_(store,times.closeAt+60000).writes,0);
+ assert.equal(JSON.stringify(store.query('emojins')),world);assert.equal(JSON.stringify(store.query('wallets')),wallets);assert.equal(JSON.stringify(store.get('meta/game')),meta);
 });

@@ -145,6 +145,7 @@ function hourlyBattle() {
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return;
   try {
     const store=firestore_(),deadline=Date.now()+210000;
+    if(typeof dailyBattleTick_==='function'){try{dailyBattleTick_(store);}catch(error){console.error('Daily Battle scheduler',error);}}
     do {if(scheduledStep_(store,Math.floor(Date.now()/3600000)).done)return;} while(Date.now()<deadline);
     // If trimming population needs more time, the next minute resumes the same hour/ordinal.
   } finally {lock.releaseLock();}

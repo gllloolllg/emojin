@@ -9,6 +9,33 @@ service cloud.firestore {
     // Only the IAM-authorized migration/scheduler can alter rollout gates/backups.
     match /config/{id} { allow read: if signedIn(); allow write: if false; }
     match /migrationBackups/{id} { allow read, write: if false; }
+    match /dailyBattleSecrets/{day} { allow read, write: if false; }
+    match /dailyBattles/{day} { allow read: if signedIn(); allow write: if false; }
+    match /dailyBattleVotes/{uid}/days/{day} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && ready() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid','day','choice','votedAt'])
+        && request.resource.data.uid == uid && request.resource.data.day == day
+        && request.resource.data.choice is int && request.resource.data.choice >= 0 && request.resource.data.choice <= 4
+        && request.resource.data.votedAt == request.time
+        && get(/databases/$(database)/documents/dailyBattles/$(day)).data.status == 'open'
+        && request.time.toMillis() >= get(/databases/$(database)/documents/dailyBattles/$(day)).data.openAt
+        && request.time.toMillis() < get(/databases/$(database)/documents/dailyBattles/$(day)).data.closeAt;
+      allow update, delete: if false;
+    }
+    function validDailyBattleClaim(uid,id) {
+      let d = request.resource.data;
+      let battle = get(/databases/$(database)/documents/dailyBattles/$(d.day)).data;
+      let vote = get(/databases/$(database)/documents/dailyBattleVotes/$(uid)/days/$(d.day)).data;
+      let before = get(/databases/$(database)/documents/wallets/$(uid)).data;
+      let after = getAfter(/databases/$(database)/documents/wallets/$(uid)).data;
+      return id == 'daily-battle-' + d.day && d.kind == 'dailyBattle'
+        && d.keys().hasOnly(['kind','day','amount','at'])
+        && battle.status == 'finished' && vote.choice == battle.outcome
+        && d.amount == ((vote.choice == 1 || vote.choice == 3) ? 100 : 300)
+        && after.revision == before.revision + 1 && after.wallet.balance >= before.wallet.balance + d.amount
+        && id in after.recentOperations;
+    }
     match /announcements/{id} {
       allow read: if signedIn() && resource.data.published == true;
       allow write: if false;
@@ -30,11 +57,12 @@ service cloud.firestore {
       allow delete: if false;
       match /operations/{id} {
         allow read: if signedIn() && request.auth.uid == uid;
-        allow create: if signedIn() && ready() && request.auth.uid == uid;
+        allow create: if signedIn() && ready() && request.auth.uid == uid
+          && (!id.matches('daily-battle-.*') || validDailyBattleClaim(uid,id));
         allow update, delete: if false;
       }
     }
-    match /meta/{id} { allow read: if signedIn(); allow write: if signedIn() && ready(); }
+    match /meta/{id} { allow read: if signedIn(); allow write: if signedIn() && ready() && id != 'dailyBattle'; }
     function validRecord(d) {
       return d.rulesVersion == 4 && d.defeats is int && d.defeats >= 0 && d.defeats <= 10
         && d.stars is int && d.stars >= 0 && d.stars <= 50

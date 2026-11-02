@@ -1,5 +1,7 @@
 # エモジンの開発方針
 
+- デイリーバトルは [docs/DAILY_BATTLE.md](docs/DAILY_BATTLE.md) を参照。日本時間0:30作成/18:30締切・決着、専用データ・1日1票・賞金receiptを使う。非公開3枠とseedはGAS専用。既存の毎分トリガーを維持し、GAS・ルール適用確認後にフロントを公開する。
+
 - まず [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) の仕様・確認状況を読む。実装と依頼の差異は報告し、独断で仕様を変更しない。
 - 最大10ターン方式は [docs/MATCH_V4.md](docs/MATCH_V4.md) を優先する。共通エンジン変更後は `node scripts/sync-gas-engine.cjs` と `--check` を行う。移行はプレビュー提示・対象確認後に実行し、ゲートで旧クライアントの書き込みを防ぐ。
 - 💀5個以上でボチの最新仕様は [docs/FIVE_DEFEATS.md](docs/FIVE_DEFEATS.md)。DEFEAT_LIMIT=5、config/battleと新ログのdefeatLimit=5を揃える。既存activeの💀5〜9は次に💀を獲得するまで生存し、勝利・同点では退場させない。個数は切り捨てず、過去のボチは維持する。旧3/10個方式の新規保存を拒否する。

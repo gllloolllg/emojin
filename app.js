@@ -592,6 +592,42 @@ root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluateAnyBonus,eva
   root.DailyMojiDraw=Object.freeze({CONFIG,dayKey,validateDay,createRound,validateRound,validateRecord});
 })(globalThis);
 
+/* Daily Battle: public schedule and result categories; secret draws stay in GAS. */
+(function(root){
+'use strict';
+const PRIZES=Object.freeze([300,100,300,100,300]);
+function dayKey(at=Date.now()){return new Date(at+9*3600000).toISOString().slice(0,10);}
+function currentDay(at=Date.now()){return dayKey(at-30*60000);}
+function times(day){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||dayKey(Date.parse(day+'T12:00:00+09:00'))!==day)throw Error('Invalid daily battle date');
+  return {openAt:Date.parse(day+'T00:30:00+09:00'),closeAt:Date.parse(day+'T18:30:00+09:00')};
+}
+function create(day,rng=Math.random){
+  const E=root.EmojinEngine,{openAt,closeAt}=times(day),kana=Array.from('アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ');
+  const fighters=Array.from({length:2},(_,side)=>{
+    const emoji=E.EMOJIS[Math.min(E.EMOJIS.length-1,Math.floor(rng()*E.EMOJIS.length))];
+    const basic=()=>{let n=rng()*100;for(const face of E.BASIC){n-=face.weight;if(n<0)return face.id;}return 'counter';};
+    return {id:'daily-'+day+'-'+side,name:Array.from({length:3},()=>kana[Math.min(kana.length-1,Math.floor(rng()*kana.length))]).join('')+'ン',
+      emoji,ownerUid:'npc',ownerName:'NPC',isNpc:true,maxHp:8,currentHp:8,
+      slots:[...Array.from({length:5},basic),'attack1'],stars:0,defeats:0,status:'active',poisoned:false,cursedSlots:[],rulesVersion:4,recordVersion:0};
+  });
+  return {day,version:1,openAt,closeAt,fighters,seed:Math.floor(rng()*4294967296)>>>0};
+}
+function publicBattle(secret){return {day:secret.day,version:1,openAt:secret.openAt,closeAt:secret.closeAt,status:'open',
+  fighters:secret.fighters.map(e=>({name:e.name,emoji:e.emoji,maxHp:8,slots:e.slots.slice(0,3)}))};}
+function outcome(result){
+  if(result.winner===null)return 2;
+  if(![0,1].includes(result.winner)||!['knockout','hp'].includes(result.kind))throw Error('Invalid battle result');
+  return result.winner===0?(result.kind==='knockout'?0:1):(result.kind==='knockout'?4:3);
+}
+function settle(secret){
+  const E=root.EmojinEngine,log=E.battle(secret.fighters[0],secret.fighters[1],E.seeded(secret.seed),secret.closeAt,'daily-'+secret.day);
+  return {...publicBattle(secret),status:'finished',outcome:outcome(log.result),log};
+}
+root.DailyBattle=Object.freeze({PRIZES,dayKey,currentDay,times,create,publicBattle,outcome,settle});
+})(globalThis);
+/* End Daily Battle engine. */
+
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
@@ -852,6 +888,20 @@ async function createCloud() {
         tx.set(accountRef,next);tx.set(receipt,record);
         return {ok:true,record,account:next};
       }
+      if(op.action==='dailyBattleClaim') {
+        const day=op.data.day;window.DailyBattle.times(day);
+        if(op.id!=='daily-battle-'+day)throw Error('受領IDが不正です。');
+        const receipt=receiptRef(op.id),existing=await tx.get(receipt);
+        if(existing.exists())return {ok:true,record:existing.data(),account};
+        await requireMatchRules(tx);
+        const battle=await tx.get(ref('dailyBattles',day)),vote=await tx.get(F.doc(db,'dailyBattleVotes',uid,'days',day));
+        if(!battle.exists()||battle.data().status!=='finished'||!vote.exists()||vote.data().choice!==battle.data().outcome)throw Error('受け取れる賞金がありません。');
+        const amount=window.DailyBattle.PRIZES[vote.data().choice],wallet=E.accrueMoji(account.wallet,Date.now());
+        wallet.balance+=amount;
+        const record={kind:'dailyBattle',day,amount,at:Date.now()};
+        const next=nextAccount(account,{wallet},op.id);
+        tx.set(accountRef,next);tx.set(receipt,record);return {ok:true,record,account:next};
+      }
       if(op.action==='dailyDraw') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists()) {
@@ -943,6 +993,14 @@ async function createCloud() {
       plan.legends.forEach(l=>tx.set(ref('legends',String(l.seq)),{seq:l.seq,json:JSON.stringify(l)}));
       tx.set(metaRef,{...plan.meta,revision:Number(meta.revision||0)+1});tx.set(accountRef,next);
       return {ok:true,seq:plan.log.seq,log:plan.log,npcs:plan.npcs,legends:plan.legends,account:next};
+    }).catch(async error=>{
+      // A simultaneous claim can commit first: strict wallet revision checks may
+      // reject this stale transaction before the SDK reports a retryable conflict.
+      if(op.action!=='dailyBattleClaim'||error.code!=='permission-denied')throw error;
+      const saved=await F.getDocFromServer(receiptRef(op.id));
+      if(!saved.exists()||saved.data().kind!=='dailyBattle'||saved.data().day!==op.data.day)throw error;
+      const current=await F.getDocFromServer(walletRef());
+      return {ok:true,record:saved.data(),account:current.data()};
     });
     applyAccount(result.account);
     if(result.cancelled) {
@@ -1000,6 +1058,36 @@ async function createCloud() {
     saveDraft(value){if(value?.id===local.draft?.id){local.draft=E.clone(value);persist();}},
     addLoot(amount,id){const task=enqueue('walletReward',{uid,amount},id);task.catch(()=>resumeWrites());return task;},
     get slotPending(){return !!local.account?.slotRound || local.pending.some(op=>op.action==='slotSpin'&&op.data.uid===uid);},
+    async getDailyBattle(day){
+      window.DailyBattle.times(day);
+      const snap=await F.getDocFromServer(ref('dailyBattles',day));return snap.exists()?snap.data():null;
+    },
+    async getDailyBattleVotes(){
+      const snap=await F.getDocsFromServer(F.collection(db,'dailyBattleVotes',uid,'days'));
+      return snap.docs.map(d=>d.data()).sort((a,b)=>b.day.localeCompare(a.day));
+    },
+    async voteDailyBattle(day,choice){
+      window.DailyBattle.times(day);
+      if(!Number.isInteger(choice)||choice<0||choice>4)throw Error('投票先が不正です。');
+      const owner=uid,voteRef=F.doc(db,'dailyBattleVotes',owner,'days',day);
+      return retry(()=>F.runTransaction(db,async tx=>{
+        const previous=await tx.get(voteRef);
+        if(previous.exists())return previous.data();
+        const snap=await tx.get(ref('dailyBattles',day));
+        if(!snap.exists()||snap.data().status!=='open')throw Error('投票は終了しました。');
+        const vote={day,uid:owner,choice,votedAt:F.serverTimestamp()};tx.set(voteRef,vote);return vote;
+      }));
+    },
+    async claimDailyBattle(day){
+      window.DailyBattle.times(day);
+      const id='daily-battle-'+day,data={uid,day};
+      const result=await enqueue('dailyBattleClaim',data,id);
+      const saved=result.results?.[id]||await retry(()=>writeOperation({action:'dailyBattleClaim',data,id}));
+      return saved.record;
+    },
+    async getDailyBattleClaim(day){
+      const snap=await F.getDocFromServer(receiptRef('daily-battle-'+day));return snap.exists()?snap.data():null;
+    },
     async getDailyDraw(day){
       window.DailyMojiDraw.validateDay(day);
       await ensureWallet();await flush();
@@ -2224,12 +2312,149 @@ async function slotCueD(session,spin){
     ]);
   }finally{layer.getAnimations({subtree:true}).forEach(a=>a.cancel());layer.remove();session.cueLayer=null;}
 }
+/* Daily Battle lobby and history; votes/claims are authoritative Firestore records. */
+let dailyBattleReplay=false,dailyRevealCount=3,dailyBadgeChecked=0,dailyBadgeLoading=false;
+const dailySeenMemory=new Set();
+function dailySeenKey(day){return 'emojin.dailyBattle.seen.'+FIREBASE_CONFIG.projectId+'.'+cloud.uid+'.'+day;}
+function dailySeen(day){if(dailySeenMemory.has(dailySeenKey(day)))return true;try{return localStorage.getItem(dailySeenKey(day))==='1';}catch{return false;}}
+function dailyMarkSeen(day){dailySeenMemory.add(dailySeenKey(day));try{localStorage.setItem(dailySeenKey(day),'1');}catch{}dailyBadgeChecked=0;}
+function dailyVoteIcons(b){return [b.fighters[0].emoji+'💪',b.fighters[0].emoji,'🌀',b.fighters[1].emoji+'💪',b.fighters[1].emoji+'💪'];}
+function dailyVoteText(b,choice){return choice===2?'引き分ける':b.fighters[choice<2?0:1].name+(choice===0||choice===4?'が圧勝':'が勝つ');}
+async function refreshDailyBadge(){
+  const button=$('dailyBattleButton');if(!button)return;
+  button.disabled=!store?.player||busy||!!playback;
+  if(!store?.player||!cloud.getDailyBattleVotes||dailyBadgeLoading||Date.now()-dailyBadgeChecked<60000)return;
+  dailyBadgeLoading=true;const owner=cloud.uid;
+  try{
+    const votes=await cloud.getDailyBattleVotes(),today=window.DailyBattle.currentDay();
+    const pending=votes.filter(v=>v.day<today&&!dailySeen(v.day));
+    const battles=await Promise.all(pending.map(v=>cloud.getDailyBattle(v.day)));
+    if(owner===cloud.uid){button.classList.toggle('has-unseen',battles.some(b=>b?.status==='finished'));dailyBadgeChecked=Date.now();}
+  }catch(error){console.warn('Daily battle history',error);dailyBadgeChecked=Date.now();}
+  finally{dailyBadgeLoading=false;}
+}
+function dailyFighterMarkup(e,side,revealed=false){
+  return `<section class="daily-contestant daily-side-${side}"><div class="daily-portrait">${esc(e.emoji)}</div><div class="daily-contestant-info"><h3>${esc(e.name)}</h3><div class="daily-hp">HP ${Number(e.currentHp??8)} / 8</div><div class="daily-slots">${Array.from({length:6},(_,i)=>i<3||revealed?slot(e.slots[i],i,false,false):'<div class="slot daily-secret" aria-label="非公開スロット">?</div>').join('')}</div></div></section>`;
+}
+async function showDailyBattle(day=window.DailyBattle.currentDay(),historical=false,afterReplay=false){
+  if(busy||playback||!store?.player)return;
+  openModal('<header class="daily-heading"><h2>デイリーバトル</h2><button id="dailyHistory" type="button">過去のバトル</button></header><div id="dailyContent" class="daily-content"><p class="daily-message">読み込み中…</p></div>',
+    'デイリーバトル',{panelClass:'daily-battle-panel'});
+  const panel=$('modalHost').querySelector('.daily-battle-panel'),owner=cloud.uid;
+  $('dailyHistory').onclick=showDailyHistory;
+  $('dailyHistory').classList.toggle('has-unseen',$('dailyBattleButton')?.classList.contains('has-unseen'));
+  let battle,vote,claimed,submitting=false,lastPoll=0,polling=false;
+  const live=()=>panel.isConnected&&owner===cloud.uid&&!modalClosing;
+  async function load(){
+    [battle,vote,claimed]=await Promise.all([cloud.getDailyBattle(day),cloud.getDailyBattleVotes().then(v=>v.find(x=>x.day===day)),cloud.getDailyBattleClaim(day)]);
+    if(live())render();
+  }
+  function render(){
+    if(!battle){$('dailyContent').innerHTML='<p class="daily-message">次のバトルを準備しています。</p>';return;}
+    const watched=afterReplay,icons=dailyVoteIcons(battle);
+    const full=watched&&battle.log?battle.log.finalState:battle.fighters;
+    $('dailyContent').innerHTML=`<div class="daily-date">${esc(day)} · 18:30</div><div class="daily-arena">${dailyFighterMarkup(full[1],1,watched)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,watched)}</div>
+      <div class="daily-vote-popup" id="dailyVotePopup" hidden></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span><small>${window.DailyBattle.PRIZES[i]} モジ</small></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`;
+    panel.querySelectorAll('[data-daily-choice]').forEach(button=>button.onclick=()=>{
+      const choice=Number(button.dataset.dailyChoice),popup=$('dailyVotePopup');
+      popup.hidden=false;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVoteText(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
+      popup.animate([{opacity:0,transform:'translateY(10px) scale(.9)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:220,easing:'ease-out'});
+      $('dailyConfirmVote').onclick=async()=>{
+        if(submitting)return;submitting=true;
+        panel.querySelectorAll('[data-daily-choice],#dailyConfirmVote').forEach(b=>b.disabled=true);
+        try{vote=await cloud.voteDailyBattle(day,choice);dailyBadgeChecked=0;if(live())render();}
+        catch(error){if(live()){reportError(error);await load().catch(reportError);}}
+        finally{submitting=false;}
+      };
+    });
+    center();panel.scrollTop=0;
+  }
+  function center(){
+    if(!live()||!battle||!$('dailyCenter'))return;
+    const host=$('dailyCenter');
+    if(battle.status==='finished'){
+      if(host.dataset.ready)return;host.dataset.ready='1';
+      host.innerHTML=watchedMarkup();
+      $('dailyReplay')?.addEventListener('click',()=>replayDailyBattle(battle,historical));
+      $('dailyClaim')?.addEventListener('click',async event=>{
+        const button=event.currentTarget;button.disabled=true;button.textContent='受け取り中…';
+        try{await cloud.claimDailyBattle(day);claimed=true;if(live()){host.innerHTML='<p>賞金を受け取りました</p>';refreshNav();}}
+        catch(error){if(live()){button.disabled=false;button.textContent='賞金を受け取る';reportError(error);}}
+      });
+    }else{
+      const remaining=Math.max(0,Math.ceil((battle.closeAt-Date.now())/1000));
+      host.innerHTML=remaining?`<span>バトル開始まで</span><strong>${[Math.floor(remaining/3600),Math.floor(remaining/60)%60,remaining%60].map(n=>String(n).padStart(2,'0')).join(':')}</strong>`:'<span>結果を確認中…</span>';
+      if(!remaining){panel.querySelectorAll('[data-daily-choice]').forEach(b=>b.disabled=true);const popup=$('dailyVotePopup');if(popup)popup.hidden=true;}
+    }
+  }
+  function watchedMarkup(){
+    if(!afterReplay)return '<button id="dailyReplay" type="button">結果を見る</button>';
+    const label=dailyVoteText(battle,battle.outcome),reward=vote?.choice===battle.outcome;
+    return `<p class="daily-battle-result">${esc(label)}</p>${reward?(claimed?'<p>賞金受け取り済み</p>':`<button id="dailyClaim" type="button">賞金を受け取る<small>${window.DailyBattle.PRIZES[vote.choice]} モジ</small></button>`):'<p>'+ (vote?'今回は的中しませんでした':'このバトルには投票していません')+'</p>'}<button id="dailyReplay" class="daily-replay-again" type="button">もう一度見る</button>`;
+  }
+  try{await load();}catch(error){if(live())$('dailyContent').innerHTML='<p class="daily-message">読み込めませんでした。閉じて再度お試しください。</p>';console.warn(error);}
+  const timer=setInterval(async()=>{
+    if(!live()){clearInterval(timer);return;}
+    center();
+    if(!historical&&window.DailyBattle.currentDay()!==day){clearInterval(timer);showDailyBattle();return;}
+    if(!submitting&&!polling&&Date.now()-lastPoll>=15000&&(!battle||Date.now()>=battle.closeAt&&battle.status!=='finished')){
+      polling=true;lastPoll=Date.now();try{await load();}catch(error){console.warn(error);}finally{polling=false;}
+    }
+  },1000);
+}
+async function showDailyHistory(){
+  if(busy||playback)return;
+  openModal('<h2 class="daily-history-title">過去のバトル</h2><div id="dailyHistoryList">読み込み中…</div>','過去のデイリーバトル',{panelClass:'daily-battle-panel daily-history-panel'});
+  const host=$('dailyHistoryList'),owner=cloud.uid;
+  try{
+    const today=window.DailyBattle.currentDay(),votes=(await cloud.getDailyBattleVotes()).filter(v=>v.day<today);
+    const battles=await Promise.all(votes.map(v=>cloud.getDailyBattle(v.day)));
+    if(!host.isConnected||owner!==cloud.uid)return;
+    host.innerHTML=battles.map((b,i)=>b?.status==='finished'?`<button class="daily-history-entry${dailySeen(b.day)?'':' unseen'}" data-history-day="${esc(b.day)}" type="button"><span>${esc(b.day)} ${esc(b.fighters[0].emoji)} vs ${esc(b.fighters[1].emoji)}</span><small>${dailySeen(b.day)?'再生済み':'未再生'} · ${esc(dailyVoteText(b,votes[i].choice))}</small></button>`:'').join('')||'<p class="daily-message">参加した過去のバトルはありません。</p>';
+    host.querySelectorAll('[data-history-day]').forEach(button=>button.onclick=async()=>{
+      const b=battles.find(b=>b?.day===button.dataset.historyDay);await replayDailyBattle(b,true);
+    });
+  }catch(error){if(host.isConnected)host.textContent='読み込めませんでした。閉じて再度お試しください。';console.warn(error);}
+}
+async function revealDailySlots(log){
+  for(let i=3;i<6;i++){
+    dailyRevealCount=i+1;paintBattle(log.before);
+    for(const side of [0,1]){
+      const tile=infoEl(side).querySelector(`[data-slot="${i}"]`);
+      if(tile)animate(tile,[{transform:'rotateY(90deg) scale(.3)',filter:'brightness(4)',opacity:0},{transform:'rotateY(0) scale(1.7)',filter:'brightness(2)',opacity:1,offset:.55},{transform:'scale(1)',filter:'brightness(1)',opacity:1}],850,{easing:'ease-out'});
+      const point=localPoint(side);particles($('battleFx'),point.x,point.y,'#7effdf',34,140);
+    }
+    await battleWait(1100);
+  }
+}
+async function replayDailyBattle(battle,historical=false){
+  if(busy||playback||!battle?.log)return;
+  await closeModal(true);busy=true;playback={skip:false};dailyBattleReplay=true;dailyRevealCount=3;
+  const speed=replaySpeed;replaySpeed=1;$('battleScreen').classList.add('daily-replay');
+  let complete=false;
+  try{await playBattle(battle.log,0,1);complete=true;dailyMarkSeen(battle.day);}
+  catch(error){console.error(error);toast('再生を中断しました。もう一度お試しください。');}
+  finally{
+    $('battleScreen').getAnimations({subtree:true}).forEach(a=>a.cancel());
+    $('battleScreen').classList.add('hidden');$('battleScreen').classList.remove('daily-replay');
+    $('battleFx').innerHTML='';$('battleRecordFx').innerHTML='';clearBattleSlotFocus();
+    dailyBattleReplay=false;replaySpeed=speed;playback=null;busy=false;currentBattle=null;
+    refreshNav();await showDailyBattle(battle.day,historical,complete);
+  }
+}
+
 function installSlotButton(){
   if(!$('mojiSpinButton')){
     const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
     button.type='button';button.textContent='🎰';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
     document.querySelector('.mo-meter').appendChild(button);button.onclick=showMojiSpin;
   }
+  if(!$('dailyBattleButton')){
+    const button=document.createElement('button');button.id='dailyBattleButton';button.className='daily-battle-launch';
+    button.type='button';button.textContent='💪';button.setAttribute('aria-label','デイリーバトル');
+    document.querySelector('.mo-meter').appendChild(button);button.onclick=()=>showDailyBattle();
+  }
+  refreshDailyBadge();
   if(!$('mojiSpinFonts')){
     const link=document.createElement('link');link.id='mojiSpinFonts';link.rel='stylesheet';
     link.href='https://fonts.googleapis.com/css2?family=Aldrich&family=Skranji:wght@700&display=swap';document.head.appendChild(link);
@@ -3281,7 +3506,7 @@ function paintBattle(states) {
     fighterEl(side).classList.toggle("cursed",shown.cursedSlots.length>0);
     fighterEl(side).classList.toggle("dead",e.status==="dead");
     const info=infoEl(side);
-    info.innerHTML=`<div class="battle-info-head"><h2 class="${my(e) ? "battle-my-name" : ""}">${esc(e.name)}</h2>${recordBadge(e)}</div>${hearts(e)}`;
+    info.innerHTML=`<div class="battle-info-head"><h2 class="${my(e) ? "battle-my-name" : ""}">${esc(e.name)}</h2>${dailyBattleReplay?'':recordBadge(e)}</div>${hearts(e)}${dailyBattleReplay?'<div class="daily-replay-slots">'+e.slots.map((face,i)=>i<dailyRevealCount?slot(face,i,false,false):'<div class="slot daily-secret">?</div>').join('')+'</div>':''}`;
   });
 }
 function queueCurseRecovery(side,slots) {
@@ -3376,6 +3601,10 @@ function setMatchEndingCaption(ev) {
   else if(ev.legendIds.length)setCaption('☆ 50到達 · レジェンドへ');
 }
 async function showMatchResult(ev,instant=false) {
+  if(dailyBattleReplay){
+    paintBattle(ev.state);setCaption(ev.result.winner===null?'引き分け':ev.state[ev.result.winner].name+(ev.result.kind==='knockout'?' の圧勝':' の勝利'));
+    await battleWait(BATTLE_TIMING.resultHold);return;
+  }
   $('battleScreen').dataset.phase='finish';
   if(ev.turn)$('battleTurn').textContent=ev.turn+' / '+E.MAX_TURNS;
   const before=ev.state.map((e,side)=>({...e,stars:currentBattle.before[side].stars,
@@ -3625,6 +3854,7 @@ async function playBattle(log,i,total) {
   });
   try {
   await battleWait(BATTLE_TIMING.entrance+BATTLE_TIMING.beforeRoll);
+  if(dailyBattleReplay)await revealDailySlots(log);
   for(let n=0;n<log.events.length;n++){
     if(log.events[n].type==="finish" && deferredCurses.some(set=>set.size)) {
       await finishCurseAnimations();
@@ -3634,7 +3864,7 @@ async function playBattle(log,i,total) {
     if(n<log.events.length-1 && !(log.events[n].type==="impact"&&log.events[n+1].type==="counter"))await battleWait(BATTLE_TIMING.phaseGap);
   }
   $("battleProgress").style.setProperty("--progress",(((i+1)/total)*100)+"%");
-  await waitForBattleContinue(i===total-1);
+  if(!dailyBattleReplay)await waitForBattleContinue(i===total-1);
   } catch(error) {
     if(error.message!=='SKIP')throw error;
     playback.skip=false;advanceBattle();

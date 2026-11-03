@@ -970,11 +970,10 @@ body.daily-draw-open .city-header .mo-reading{visibility:hidden}
 .daily-name-edit:disabled{opacity:.3}
 .daily-name-dialog{width:min(330px,calc(100vw - 32px));margin:auto;padding:24px 20px 20px;border:1px solid #ce8c7d;border-radius:14px;background:linear-gradient(145deg,#652e3a,#351d28);color:#ffebe2;box-shadow:0 15px 60px #0009;animation:slot-bet-pop .22s ease-out}
 .daily-name-dialog::backdrop{background:#140b12bb}
-.daily-name-dialog h3{font-family:'Monomaniac One',sans-serif;text-align:center;font-size:26px;margin:0 25px 20px}
+.daily-name-dialog h3{font-family:'Monomaniac One',sans-serif;text-align:center;font-size:clamp(20px,5.7vw,24px);line-height:1.35;margin:20px 0 18px}
 .daily-name-close{position:absolute;right:4px;top:0;width:44px;height:44px;background:transparent;font-size:27px;color:#f3bdad}
 .daily-name-dialog label{display:block;font-size:13px;margin-bottom:8px}
 .daily-name-dialog input{display:block;width:100%;padding:12px;border:1px solid #bb7e7d;border-radius:7px;background:#2d1923;color:#fff0df;font:inherit;font-size:18px;min-width:0}
 .daily-name-meta{display:flex;justify-content:space-between;gap:6px;min-height:38px;padding-top:7px;font-size:11px;line-height:1.5;color:#f8baa7}
 #dailyNameCount{white-space:nowrap;color:#d8aaa1}
-#dailyNameCost{text-align:center;font-size:13px;margin:12px 0 16px}
 #dailyNameSubmit{display:block;width:100%;min-height:46px;border:1px solid #f0ad91;border-radius:8px;background:linear-gradient(#c56862,#833b48);color:#fff1df;font-size:17px}

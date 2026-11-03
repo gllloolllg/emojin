@@ -40,7 +40,8 @@ mockCloud.renameDailyBattle=async(day,side,name)=>{
     assert await page.locator('.daily-name-edit').count()==2
     await page.locator('[data-daily-name="0"]').tap();await page.wait_for_selector('.daily-name-dialog')
     inp=page.locator('#dailyNameInput');submit=page.locator('#dailyNameSubmit')
-    assert await page.locator('#dailyNameCost').text_content()=='100モジを消費して名前を決める'
+    assert await page.locator('#dailyNameTitle').text_content()=='100モジでメイメイする'
+    assert await page.locator('#dailyNameCost').count()==0
     assert await submit.is_disabled()
     await inp.fill('');assert await submit.is_disabled()
     await inp.fill('あいうえおかきくけ');assert await submit.is_disabled()

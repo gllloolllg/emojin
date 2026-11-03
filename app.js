@@ -2393,9 +2393,9 @@ function refreshDailyBattleButton(){
 function showDailyNameDialog(day,side,emojin,onSaved){
   if(document.querySelector('.daily-name-dialog'))return;
   const dialog=document.createElement('dialog');dialog.className='daily-name-dialog';dialog.setAttribute('aria-labelledby','dailyNameTitle');
-  dialog.innerHTML=`<button class="daily-name-close" type="button" aria-label="名前の編集を閉じる">×</button><h3 id="dailyNameTitle">名前を決める</h3>
-    <form id="dailyNameForm"><label for="dailyNameInput">${esc(emojin.emoji)} の名前</label><input id="dailyNameInput" type="text" autocomplete="off" autocapitalize="off" maxlength="40" value="${esc(emojin.name)}" aria-describedby="dailyNameCount dailyNameCost dailyNameError">
-    <div class="daily-name-meta"><span id="dailyNameError" role="status"></span><span id="dailyNameCount"></span></div><p id="dailyNameCost">100モジを消費して名前を決める</p><button id="dailyNameSubmit" type="submit">変更</button></form>`;
+  dialog.innerHTML=`<button class="daily-name-close" type="button" aria-label="名前の編集を閉じる">×</button><h3 id="dailyNameTitle">100モジでメイメイする</h3>
+    <form id="dailyNameForm"><label for="dailyNameInput">${esc(emojin.emoji)} の名前</label><input id="dailyNameInput" type="text" autocomplete="off" autocapitalize="off" maxlength="40" value="${esc(emojin.name)}" aria-describedby="dailyNameCount dailyNameError">
+    <div class="daily-name-meta"><span id="dailyNameError" role="status"></span><span id="dailyNameCount"></span></div><button id="dailyNameSubmit" type="submit">変更</button></form>`;
   const input=dialog.querySelector('input'),button=dialog.querySelector('#dailyNameSubmit'),close=dialog.querySelector('.daily-name-close'),error=dialog.querySelector('#dailyNameError');
   let saving=false,composing=false,taken=false,failure='';
   function update(){

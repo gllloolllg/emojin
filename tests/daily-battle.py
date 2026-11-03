@@ -67,7 +67,16 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
     assert await page.locator('.daily-heading h2').evaluate("el=>getComputedStyle(el).fontFamily.includes('Monomaniac One')")
     title=await page.locator('.daily-heading h2').bounding_box();assert abs(title['x']+title['width']/2-width/2)<1
     close=await panel.locator('.modal-close').bounding_box();assert close['x']>width*.75
-    assert await page.locator('#dailyCenter strong').evaluate("el=>parseFloat(getComputedStyle(el).fontSize)>=42&&getComputedStyle(el).fontFamily.includes('Aldrich')")
+    assert await page.locator('#dailyCenter strong').evaluate("el=>parseFloat(getComputedStyle(el).fontSize)>=42&&getComputedStyle(el).fontFamily.includes('monospace')")
+    assert await page.locator('#dailyCenter strong').evaluate("""el=>{
+      const original=el.textContent,boxes=[],glyphs=[];
+      for(const text of ['11:11:11','00:00:00','23:59:59']){
+        el.textContent=text;const box=el.getBoundingClientRect();boxes.push({left:box.left,width:box.width});
+        for(let i=0;i<text.length;i++){const range=document.createRange();range.setStart(el.firstChild,i);range.setEnd(el.firstChild,i+1);glyphs.push(range.getBoundingClientRect().width);}
+      }
+      el.textContent=original;
+      return boxes.every(b=>Math.abs(b.left-boxes[0].left)<.1&&Math.abs(b.width-boxes[0].width)<.1)&&Math.max(...glyphs)-Math.min(...glyphs)<.1;
+    }""")
     assert await page.locator('.daily-vote small').count()==0
     icons=await page.locator('.daily-vote>span').all_text_contents()
     left=fixture['battles'][fixture['day']]['fighters'][0];right=fixture['battles'][fixture['day']]['fighters'][1]

@@ -42,3 +42,21 @@ test('GAS/browser pure daily engine stays identical',()=>{
  const start=source.indexOf('/* Daily Battle: public schedule'),end=source.indexOf('/* End Daily Battle engine. */',start);
  assert.equal(fs.readFileSync(path.join(root,'gas/DailyBattleEngine.gs'),'utf8'),source.slice(start,end+'/* End Daily Battle engine. */'.length)+'\n');
 });
+test('daily names normalize whitespace/NFC and accept at most eight Unicode characters',()=>{
+ for(const name of ['あいうえおかきく','😀'.repeat(8),'abc12345'])assert.equal(c.validateDailyBattleName(name),name);
+ assert.equal(c.validateDailyBattleName('  は\u3099なな  '),'ばなな');
+ for(const name of ['', '   ',null,'あいうえおかきくけ','😀'.repeat(9)])assert.throws(()=>c.validateDailyBattleName(name));
+});
+test('GAS uses claimed names in the authoritative replay without changing the draw or completed history',()=>{
+ const s=scheduler(),day='2026-11-02';s.tick(day+'T12:00:00+09:00');
+ const secret=plain(s.records.get('dailyBattleSecrets/'+day));
+ s.records.set('dailyBattleNames/'+day+'/fighters/0',{name:'あたらしい名前'});
+ s.tick(day+'T18:30:00+09:00');const result=plain(s.records.get('dailyBattles/'+day));
+ assert.equal(result.fighters[0].name,'あたらしい名前');assert.equal(result.log.before[0].name,'あたらしい名前');
+ assert.equal(result.log.after[0].name,'あたらしい名前');
+ assert.deepEqual(result.log.result,plain(D.settle(secret).log.result));
+ assert.deepEqual(result.log.turns.map(t=>t.rolls),plain(D.settle(secret).log.turns.map(t=>t.rolls)));
+ assert.equal(s.records.get('dailyBattleSecrets/'+day).fighters[0].name,secret.fighters[0].name);
+ s.records.set('dailyBattleNames/'+day+'/fighters/0',{name:'履歴は変えない'});s.tick(day+'T18:31:00+09:00');
+ assert.deepEqual(s.records.get('dailyBattles/'+day),result);
+});

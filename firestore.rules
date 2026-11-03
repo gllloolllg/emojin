@@ -11,6 +11,46 @@ service cloud.firestore {
     match /migrationBackups/{id} { allow read, write: if false; }
     match /dailyBattleSecrets/{day} { allow read, write: if false; }
     match /dailyBattles/{day} { allow read: if signedIn(); allow write: if false; }
+    function dailyRenameWallet(wallet,at) {
+      let start = at < wallet.updatedAt ? at : wallet.updatedAt;
+      let elapsed = int(math.floor((at - start) / 60000.0));
+      let gained = elapsed > 0 ? elapsed : 0;
+      let uncapped = wallet.balance + gained;
+      let balance = wallet.balance >= 3000 ? wallet.balance : (uncapped > 3000 ? 3000 : uncapped);
+      return {'balance': balance - 100, 'updatedAt': balance >= 3000 ? at : start + gained * 60000};
+    }
+    function validDailyRename(day,side,d) {
+      let battle = get(/databases/$(database)/documents/dailyBattles/$(day)).data;
+      let before = get(/databases/$(database)/documents/wallets/$(request.auth.uid)).data;
+      let after = getAfter(/databases/$(database)/documents/wallets/$(request.auth.uid)).data;
+      let operation = 'daily-rename-' + day + '-' + side;
+      let receipt = getAfter(/databases/$(database)/documents/wallets/$(request.auth.uid)/operations/$(operation)).data;
+      return (side == '0' || side == '1') && !exists(/databases/$(database)/documents/dailyBattleNames/$(day)/fighters/$(side))
+        && d.keys().hasOnly(['day','side','name','uid','operationId','cost','renamedAt'])
+        && d.uid == request.auth.uid && d.day == day && d.side == (side == '0' ? 0 : 1)
+        && d.cost == 100 && d.operationId == operation && d.renamedAt == request.time
+        && d.name is string && d.name.matches('^.{1,8}$') && d.name == d.name.trim()
+        && d.name != battle.fighters[d.side].name
+        && battle.status == 'open' && request.time.toMillis() >= battle.openAt && request.time.toMillis() < battle.closeAt
+        && receipt.keys().hasOnly(['kind','day','side','name','cost','at'])
+        && receipt.kind == 'dailyBattleRename' && receipt.day == day && receipt.side == d.side && receipt.name == d.name && receipt.cost == 100
+        && receipt.at is int && receipt.at <= request.time.toMillis()+5000 && receipt.at >= request.time.toMillis()-60000
+        && after.wallet == dailyRenameWallet(before.wallet,receipt.at) && after.wallet.balance >= 0
+        && after.revision == before.revision + 1 && operation in after.recentOperations
+        && after.diff(before).affectedKeys().hasOnly(['wallet','revision','recentOperations']);
+    }
+    match /dailyBattleNames/{day}/fighters/{side} {
+      allow read: if signedIn();
+      allow create: if signedIn() && ready() && validDailyRename(day,side,request.resource.data);
+      allow update, delete: if false;
+    }
+    function validDailyRenameReceipt(id) {
+      let d = request.resource.data;
+      let side = d.side == 0 ? '0' : '1';
+      let naming = getAfter(/databases/$(database)/documents/dailyBattleNames/$(d.day)/fighters/$(side)).data;
+      return d.side is int && d.side >= 0 && d.side <= 1
+        && id == 'daily-rename-' + d.day + '-' + side && validDailyRename(d.day,side,naming);
+    }
     function validDailyVote(d,uid) {
       let battle = get(/databases/$(database)/documents/dailyBattles/$(d.day)).data;
       return d.keys().hasOnly(['uid','day','choice','votedAt','settled','settledAt'])
@@ -74,7 +114,8 @@ service cloud.firestore {
       match /operations/{id} {
         allow read: if signedIn() && request.auth.uid == uid;
         allow create: if signedIn() && ready() && request.auth.uid == uid
-          && (!id.matches('daily-battle-.*') || validDailyBattleClaim(uid,id));
+          && (!id.matches('daily-battle-.*') || validDailyBattleClaim(uid,id))
+          && (!id.matches('daily-rename-.*') || validDailyRenameReceipt(id));
         allow update, delete: if false;
       }
     }

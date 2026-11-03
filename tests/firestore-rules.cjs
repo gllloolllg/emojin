@@ -278,16 +278,16 @@ async function dailyBattleFixture({day='2026-11-02',closed=false,finished=false,
  });return day;
 }
 function dailyVote(uid,day,choice=0){return {uid,day,choice,votedAt:dep('firebase/firestore').serverTimestamp(),settled:false,settledAt:null};}
-function dailyBattleClient(db){
+function dailyBattleClient(db,uid='u1'){
  const sdk=dep('firebase/firestore');
  const value=v=>v instanceof sdk.Timestamp||v instanceof sdk.FieldValue?v:Array.isArray(v)?Array.from(v,value):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,value(x)])):v;
- const c={E,uid:'u1',auth:{currentUser:{uid:'u1'}},db,window:{DailyBattle:ctx.DailyBattle},local:{},ensureWallet:async()=>{},applyAccount:()=>{},persist:()=>{},retry:fn=>fn(),
+ const c={E,uid,auth:{currentUser:{uid}},db,window:{DailyBattle:ctx.DailyBattle},validateDailyBattleName:ctx.validateDailyBattleName,local:{},ensureWallet:async()=>{},applyAccount:()=>{},persist:()=>{},retry:fn=>fn(),
   F:{doc,serverTimestamp:sdk.serverTimestamp,getDocFromServer:sdk.getDocFromServer,runTransaction:(db,callback)=>runTransaction(db,tx=>callback({get:ref=>tx.get(ref),set:(ref,data)=>tx.set(ref,value(data))}))},
-  ref:(name,id)=>doc(db,name,id),walletRef:()=>doc(db,'wallets/u1'),receiptRef:id=>doc(db,'wallets/u1/operations/'+id)};
+  ref:(name,id)=>doc(db,name,id),walletRef:()=>doc(db,'wallets/'+uid),receiptRef:id=>doc(db,'wallets/'+uid+'/operations/'+id)};
  vm.createContext(c);
  for(const [start,end]of [['  async function requireMatchRules(','  // One live subscription'],['  function nextAccount(','  function ensureWallet('],['  writeOperation=async op=>{','  // Pending operations keep their IDs']])vm.runInContext(source.slice(source.indexOf(start),source.indexOf(end)),c);
- vm.runInContext('globalThis.api={'+source.slice(source.indexOf('    async getDailyBattlePlayer(){'),source.indexOf('    async getDailyDraw(day){'))+'}',c);
- return {vote:(day,choice)=>c.api.voteDailyBattle(day,choice),complete:day=>c.api.completeLosingDailyBattle(day),claim:day=>c.writeOperation({action:'dailyBattleClaim',id:'daily-battle-'+day,data:{uid:'u1',day}})};
+ vm.runInContext('globalThis.api={'+source.slice(source.indexOf('    async getDailyBattle(day){'),source.indexOf('    async getDailyDraw(day){'))+'}',c);
+ return {get:day=>c.api.getDailyBattle(day),rename:(day,side,name)=>c.writeOperation({action:'dailyBattleRename',id:'daily-rename-'+day+'-'+side,data:{uid,day,side,name}}),vote:(day,choice)=>c.api.voteDailyBattle(day,choice),complete:day=>c.api.completeLosingDailyBattle(day),claim:day=>c.writeOperation({action:'dailyBattleClaim',id:'daily-battle-'+day,data:{uid,day}})};
 }
 test('daily battle player record is private; votes are server-timed, immutable and block next voting until completion',async()=>{
  const db=env.authenticatedContext('u1').firestore(),other=env.authenticatedContext('u2').firestore(),anon=env.unauthenticatedContext().firestore();
@@ -338,4 +338,81 @@ test('Daily Battle GAS REST writes isolated public/private records, then publish
  assert.deepEqual(plain(result.log),plain(D.settle(secret).log));
  assert.equal(gas.dailyBattleTick_(store,times.closeAt+60000).writes,0);
  assert.equal(JSON.stringify(store.query('emojins')),world);assert.equal(JSON.stringify(store.query('wallets')),wallets);assert.equal(JSON.stringify(store.get('meta/game')),meta);
+});
+async function dailyNameFixture({balance=3500,updatedAt=Date.now(),closed=false,finished=false}={}){
+ const day=await dailyBattleFixture({closed,finished});
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore(),battle=(await getDoc(doc(db,'dailyBattles',day))).data();
+  await setDoc(doc(db,'dailyBattles',day),{...battle,fighters:[{name:'もとの左',emoji:'🐸',maxHp:8,slots:['attack1','heal','blank']},{name:'もとの右',emoji:'🐙',maxHp:8,slots:['guard','counter','attack2']}]});
+  for(const uid of ['u1','u2'])await setDoc(doc(db,'wallets',uid),{uid,wallet:{balance,updatedAt},hatch:7,revision:1,recentOperations:[],draft:{id:'preserved'},slotRound:'preserved-slot'});
+ });return day;
+}
+function renameBatch(db,uid,day,name,{side=0,cost=100,debit=100}={}){
+ const {serverTimestamp}=dep('firebase/firestore'),id='daily-rename-'+day+'-'+side,at=Date.now(),batch=writeBatch(db);
+ batch.set(doc(db,'dailyBattleNames',day,'fighters',String(side)),{day,side,name,uid,operationId:id,cost,renamedAt:serverTimestamp()});
+ batch.set(doc(db,'wallets',uid,'operations',id),{kind:'dailyBattleRename',day,side,name,cost,at});
+ batch.set(doc(db,'wallets',uid),{uid,wallet:{balance:3500-debit,updatedAt:at},hatch:7,revision:2,recentOperations:[id],draft:{id:'preserved'},slotRound:'preserved-slot'});
+ return batch;
+}
+test('daily renaming is global once per fighter, costs 100, preserves other state and retries without another debit',async()=>{
+ const day=await dailyNameFixture(),db=env.authenticatedContext('u1').firestore(),other=env.authenticatedContext('u2').firestore(),api=dailyBattleClient(db);
+ const a=await api.rename(day,0,'あいうえおかきく');assert.equal(a.record.name,'あいうえおかきく');
+ const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.wallet.balance,3400);assert.equal(wallet.hatch,7);assert.equal(wallet.draft.id,'preserved');assert.equal(wallet.slotRound,'preserved-slot');
+ const saved=doc(db,'dailyBattleNames',day,'fighters','0');assert.equal((await getDoc(saved)).data().uid,'u1');
+ const display=await api.get(day);assert.equal(display.fighters[0].name,'あいうえおかきく');assert.equal(display.fighters[0].renamed,true);assert.equal(display.fighters[0].slots.length,3);
+ await api.rename(day,0,'別の名前');assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,3400);
+ await assert.rejects(dailyBattleClient(other,'u2').rename(day,0,'上書き不可'),/既に/);
+ assert.equal((await getDoc(doc(other,'wallets/u2'))).data().wallet.balance,3500);
+ await assertFails(setDoc(saved,{...(await getDoc(saved)).data(),name:'上書き不可'}));
+ await api.rename(day,1,'😀'.repeat(8));assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,3300);
+ assert.equal((await getDoc(doc(db,'dailyBattles',day))).data().fighters[0].name,'もとの左');
+});
+test('concurrent users renaming the same fighter debit only the winner and cannot both create a claim',async()=>{
+ const day=await dailyNameFixture(),one=env.authenticatedContext('u1').firestore(),two=env.authenticatedContext('u2').firestore();
+ const outcomes=await Promise.allSettled([dailyBattleClient(one).rename(day,0,'左の一番'),dailyBattleClient(two,'u2').rename(day,0,'右の一番')]);
+ assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
+ const winner=(await getDoc(doc(one,'dailyBattleNames',day,'fighters','0'))).data().uid;
+ for(const [uid,db]of [['u1',one],['u2',two]]){
+  assert.equal((await getDoc(doc(db,'wallets',uid))).data().wallet.balance,uid===winner?3400:3500);
+  assert.equal((await getDoc(doc(db,'wallets',uid,'operations','daily-rename-'+day+'-0'))).exists(),uid===winner);
+ }
+});
+test('name rules reject standalone claims, incorrect cost/debit, overlength, blank and closed battles atomically',async()=>{
+ const day=await dailyNameFixture(),db=env.authenticatedContext('u1').firestore(),{serverTimestamp}=dep('firebase/firestore');
+ await assertFails(setDoc(doc(db,'dailyBattleNames',day,'fighters','0'),{day,side:0,name:'無料不可',uid:'u1',operationId:'daily-rename-'+day+'-0',cost:100,renamedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(db,'wallets/u1/operations/daily-rename-'+day+'-0'),{kind:'dailyBattleRename',day,side:0,name:'無料不可',cost:100,at:Date.now()}));
+ for(const [name,opts]of [['無料不可',{cost:0}],['少額不可',{debit:99}],['あいうえおかきくけ',{}],['😀'.repeat(9),{}],[' ',{}],['もとの左',{}]])await assertFails(renameBatch(db,'u1',day,name,opts).commit());
+ await dailyNameFixture({closed:true});await assertFails(renameBatch(db,'u1',day,'締切後不可').commit());
+ await dailyNameFixture({finished:true});await assertFails(renameBatch(db,'u1',day,'終了後不可').commit());
+ assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,3500);
+ assert.equal((await getDoc(doc(db,'dailyBattleNames',day,'fighters','0'))).exists(),false);
+});
+test('daily name cost respects 99/100 balance boundary, passive recovery and NFC normalization',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),api=dailyBattleClient(db);
+ let day=await dailyNameFixture({balance:99});await assert.rejects(api.rename(day,0,'足りない'),/100モジ/);
+ day=await dailyNameFixture({balance:100});await api.rename(day,0,'  は\u3099なな  ');assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,0);
+ assert.equal((await getDoc(doc(db,'dailyBattleNames',day,'fighters','0'))).data().name,'ばなな');
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'wallets/u1'),{uid:'u1',wallet:{balance:2999,updatedAt:Date.now()-60001},hatch:0,revision:1,recentOperations:[]}));
+ await api.rename(day,1,'自然回復分');assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,2900);
+});
+test('GAS REST finishes with renamed contestants in public record and replay, leaving regular residents unchanged',()=>{
+ const gas=gasRuntime(),store=gas.firestore_(),day='2026-11-02',times=gas.DailyBattle.times(day);
+ gas.dailyBattleTick_(store,times.openAt);const before=store.get('dailyBattleSecrets/'+day);
+ store.transaction(tx=>({writes:[tx.write('dailyBattleNames/'+day+'/fighters/0',{name:'命名しました'})],value:null}));
+ gas.dailyBattleTick_(store,times.closeAt);const after=store.get('dailyBattles/'+day);
+ assert.equal(after.fighters[0].name,'命名しました');assert.equal(after.log.before[0].name,'命名しました');assert.equal(after.log.finalState[0].name,'命名しました');
+ assert.deepEqual(plain(after.log.result),plain(gas.DailyBattle.settle(before).log.result));
+ assert.equal(store.get('emojins/a').name,'a');
+});
+test('two simultaneous retries by the same user return the one saved name and charge once',async()=>{
+ const day=await dailyNameFixture(),one=env.authenticatedContext('u1').firestore(),two=env.authenticatedContext('u1').firestore();
+ const results=await Promise.all([dailyBattleClient(one).rename(day,0,'最初の候補'),dailyBattleClient(two).rename(day,0,'別の候補')]);
+ assert.equal(results[0].record.name,results[1].record.name);
+ assert.equal((await getDoc(doc(one,'wallets/u1'))).data().wallet.balance,3400);
+ await env.withSecurityRulesDisabled(async c=>{
+  const ref=doc(c.firestore(),'dailyBattles',day),old=(await getDoc(ref)).data();await setDoc(ref,{...old,status:'finished',fighters:[{...old.fighters[0],name:'確定の名前'},old.fighters[1]]});
+ });
+ const after=await dailyBattleClient(one).rename(day,0,'終了後の再送');assert.equal(after.record.name,results[0].record.name);
+ assert.equal((await dailyBattleClient(one).get(day)).fighters[0].name,'確定の名前');
+ assert.equal((await getDoc(doc(one,'wallets/u1'))).data().wallet.balance,3400);
 });

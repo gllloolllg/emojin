@@ -629,6 +629,13 @@ root.DailyBattle=Object.freeze({PRIZES,dayKey,currentDay,times,create,publicBatt
 })(globalThis);
 /* End Daily Battle engine. */
 
+function validateDailyBattleName(value){
+  if(typeof value!=='string')throw Error('1〜8文字で入力してください。');
+  const name=value.normalize('NFC').trim().replace(/\s+/gu,' ');
+  if(!name||Array.from(name).length>8)throw Error('1〜8文字で入力してください。');
+  return name;
+}
+
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
@@ -889,6 +896,24 @@ async function createCloud() {
         tx.set(accountRef,next);tx.set(receipt,record);
         return {ok:true,record,account:next};
       }
+      if(op.action==='dailyBattleRename') {
+        const {day,side}=op.data;window.DailyBattle.times(day);
+        if(!Number.isInteger(side)||side<0||side>1||op.id!=='daily-rename-'+day+'-'+side)throw Error('名前変更の対象が不正です。');
+        const name=validateDailyBattleName(op.data.name),receipt=receiptRef(op.id),existing=await tx.get(receipt);
+        if(existing.exists())return {ok:true,record:existing.data(),account};
+        await requireMatchRules(tx);
+        const battleSnap=await tx.get(ref('dailyBattles',day)),nameRef=F.doc(db,'dailyBattleNames',day,'fighters',String(side)),renamed=await tx.get(nameRef);
+        const battle=battleSnap.exists()?battleSnap.data():null;
+        if(!battle||battle.status!=='open'||Date.now()<battle.openAt||Date.now()>=battle.closeAt)throw Error('開催前のバトルだけ名前を変更できます。');
+        if(renamed.exists())throw Object.assign(Error('このエモジンの名前は既に変更されています。'),{code:'daily-name-taken'});
+        if(name===battle.fighters[side].name)throw Error('今の名前と違う名前を入力してください。');
+        const at=Date.now(),wallet=E.accrueMoji(account.wallet,at);if(wallet.balance<100)throw Error('100モジ必要です。');
+        const record={kind:'dailyBattleRename',day,side,name,cost:100,at};
+        wallet.balance-=100;
+        const next=nextAccount(account,{wallet},op.id);
+        tx.set(nameRef,{day,side,name,uid,operationId:op.id,cost:100,renamedAt:F.serverTimestamp()});
+        tx.set(accountRef,next);tx.set(receipt,record);return {ok:true,record,account:next};
+      }
       if(op.action==='dailyBattleClaim') {
         const day=op.data.day;window.DailyBattle.times(day);
         if(op.id!=='daily-battle-'+day)throw Error('受領IDが不正です。');
@@ -999,9 +1024,9 @@ async function createCloud() {
     }).catch(async error=>{
       // A simultaneous claim can commit first: strict wallet revision checks may
       // reject this stale transaction before the SDK reports a retryable conflict.
-      if(op.action!=='dailyBattleClaim'||error.code!=='permission-denied')throw error;
+      if(!['dailyBattleClaim','dailyBattleRename'].includes(op.action)||error.code!=='permission-denied')throw error;
       const saved=await F.getDocFromServer(receiptRef(op.id));
-      if(!saved.exists()||saved.data().kind!=='dailyBattle'||saved.data().day!==op.data.day)throw error;
+      if(!saved.exists()||saved.data().kind!==(op.action==='dailyBattleClaim'?'dailyBattle':'dailyBattleRename')||saved.data().day!==op.data.day)throw error;
       const current=await F.getDocFromServer(walletRef());
       return {ok:true,record:saved.data(),account:current.data()};
     });
@@ -1063,7 +1088,31 @@ async function createCloud() {
     get slotPending(){return !!local.account?.slotRound || local.pending.some(op=>op.action==='slotSpin'&&op.data.uid===uid);},
     async getDailyBattle(day){
       window.DailyBattle.times(day);
-      const snap=await F.getDocFromServer(ref('dailyBattles',day));return snap.exists()?snap.data():null;
+      const snap=await F.getDocFromServer(ref('dailyBattles',day));if(!snap.exists())return null;
+      const battle=snap.data();if(battle.status!=='open')return battle;
+      const names=await Promise.all([0,1].map(side=>F.getDocFromServer(F.doc(db,'dailyBattleNames',day,'fighters',String(side)))));
+      return {...battle,fighters:battle.fighters.map((e,i)=>names[i].exists()?{...e,name:names[i].data().name,renamed:true}:e)};
+    },
+    watchDailyBattleNames(day,callback){
+      return F.onSnapshot(F.collection(db,'dailyBattleNames',day,'fighters'),snap=>{
+        if(!snap.metadata.fromCache)callback(Object.fromEntries(snap.docs.map(d=>[d.id,d.data()])));
+      },error=>console.warn('Daily battle names',error.code));
+    },
+    async renameDailyBattle(day,side,name){
+      name=validateDailyBattleName(name);
+      const id='daily-rename-'+day+'-'+side,data={uid,day,side,name};
+      try{
+        const result=await enqueue('dailyBattleRename',data,id);
+        const saved=result.results?.[id]||await retry(()=>writeOperation({action:'dailyBattleRename',data,id}));
+        return saved.record;
+      }catch(error){
+        if(error.code==='permission-denied'){
+          const current=await F.getDocFromServer(F.doc(db,'dailyBattleNames',day,'fighters',String(side)));
+          if(current.exists())throw Object.assign(Error('このエモジンの名前は既に変更されています。'),{code:'daily-name-taken'});
+          if(Date.now()>=window.DailyBattle.times(day).closeAt)throw Error('名前変更の受付は終了しました。');
+        }
+        throw error;
+      }
     },
     async getDailyBattlePlayer(){
       const snap=await F.getDocFromServer(ref('dailyBattlePlayers',uid));return snap.exists()?snap.data():null;
@@ -2341,15 +2390,47 @@ function dailyVotePrompt(b,choice){
 function refreshDailyBattleButton(){
   const button=$('dailyBattleButton');if(button)button.disabled=!store?.player||busy||!!playback;
 }
-function dailyFighterMarkup(e,side,revealed=false){
-  return `<section class="daily-contestant daily-side-${side}"><div class="daily-portrait">${esc(e.emoji)}</div><div class="daily-contestant-info"><h3>${esc(e.name)}</h3><div class="daily-hp">HP ${Number(e.currentHp??8)} / 8</div><div class="daily-slots">${Array.from({length:6},(_,i)=>i<3||revealed?slot(e.slots[i],i,false,false):'<div class="slot daily-secret" aria-label="非公開スロット">?</div>').join('')}</div></div></section>`;
+function showDailyNameDialog(day,side,emojin,onSaved){
+  if(document.querySelector('.daily-name-dialog'))return;
+  const dialog=document.createElement('dialog');dialog.className='daily-name-dialog';dialog.setAttribute('aria-labelledby','dailyNameTitle');
+  dialog.innerHTML=`<button class="daily-name-close" type="button" aria-label="名前の編集を閉じる">×</button><h3 id="dailyNameTitle">名前を決める</h3>
+    <form id="dailyNameForm"><label for="dailyNameInput">${esc(emojin.emoji)} の名前</label><input id="dailyNameInput" type="text" autocomplete="off" autocapitalize="off" maxlength="40" value="${esc(emojin.name)}" aria-describedby="dailyNameCount dailyNameCost dailyNameError">
+    <div class="daily-name-meta"><span id="dailyNameError" role="status"></span><span id="dailyNameCount"></span></div><p id="dailyNameCost">100モジを消費して名前を決める</p><button id="dailyNameSubmit" type="submit">変更</button></form>`;
+  const input=dialog.querySelector('input'),button=dialog.querySelector('#dailyNameSubmit'),close=dialog.querySelector('.daily-name-close'),error=dialog.querySelector('#dailyNameError');
+  let saving=false,composing=false,taken=false,failure='';
+  function update(){
+    const count=Array.from(normalName(input.value)).length;dialog.querySelector('#dailyNameCount').textContent=count+' / 8';
+    const expired=Date.now()>=window.DailyBattle.times(day).closeAt;
+    if(!saving){
+      error.textContent=taken?'この名前は既に変更されています。':expired?'名前変更の受付は終了しました。':cloud.wallet.balance<100?'100モジ必要です。':count>8?'1〜8文字で入力してください。':failure;
+      button.disabled=composing||taken||expired||cloud.wallet.balance<100||count<1||count>8||normalName(input.value)===emojin.name;
+    }
+  }
+  input.oninput=()=>{failure='';update();};input.oncompositionstart=()=>{composing=true;update();};input.oncompositionend=()=>{composing=false;update();};
+  close.onclick=()=>dialog.close();dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
+  dialog.addEventListener('keydown',event=>event.stopPropagation());dialog.addEventListener('click',event=>event.stopPropagation());
+  dialog.querySelector('form').onsubmit=async event=>{
+    event.preventDefault();if(saving||button.disabled||composing)return;
+    let name;try{name=validateDailyBattleName(input.value);}catch(e){error.textContent=e.message;return;}
+    failure='';saving=true;input.disabled=true;button.disabled=true;close.disabled=true;button.textContent='変更中…';
+    try{await cloud.renameDailyBattle(day,side,name);dialog.close();await onSaved();toast('名前を決めました');}
+    catch(e){taken=e.code==='daily-name-taken';failure=e.message||'変更できませんでした。';}
+    finally{saving=false;input.disabled=false;close.disabled=false;button.textContent='変更';if(dialog.open){update();if(failure)error.textContent=failure;}}
+  };
+  const timer=setInterval(update,1000);
+  dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();},{once:true});
+  document.body.appendChild(dialog);dialog.showModal();input.focus({preventScroll:true});input.select();update();
+}
+
+function dailyFighterMarkup(e,side,revealed=false,editable=false){
+  return `<section class="daily-contestant daily-side-${side}"><div class="daily-portrait">${esc(e.emoji)}</div><div class="daily-contestant-info"><div class="daily-name-heading"><h3>${esc(e.name)}</h3>${editable?`<button class="daily-name-edit" type="button" data-daily-name="${side}" aria-label="${esc(e.name)}の名前を変更">✏️</button>`:''}</div><div class="daily-hp">HP ${Number(e.currentHp??8)} / 8</div><div class="daily-slots">${Array.from({length:6},(_,i)=>i<3||revealed?slot(e.slots[i],i,false,false):'<div class="slot daily-secret" aria-label="非公開スロット">?</div>').join('')}</div></div></section>`;
 }
 async function showDailyBattle({awardBattle=null,replayError=false}={}){
   if(busy||playback||!store?.player)return;
   openModal('<header class="daily-heading"><h2>デイリーバトル</h2></header><div id="dailyContent" class="daily-content"><p class="daily-message">読み込み中…</p></div>',
     'デイリーバトル',{panelClass:'daily-battle-panel'});
   const panel=$('modalHost').querySelector('.daily-battle-panel'),owner=cloud.uid;
-  let battle,vote,day,submitting=false,polling=false,lastPoll=0,award=false;
+  let battle,vote,day,submitting=false,polling=false,lastPoll=0,award=false,stopNames=null,watchedDay=null;
   const live=()=>panel.isConnected&&owner===cloud.uid&&!modalClosing;
   async function load(){
     const latest=await cloud.getDailyBattlePlayer();
@@ -2358,6 +2439,17 @@ async function showDailyBattle({awardBattle=null,replayError=false}={}){
     vote=latest?.day===day?latest:null;
     battle=await cloud.getDailyBattle(day);
     if(!live())return;
+    if(watchedDay!==day){
+      stopNames?.();watchedDay=day;const watchDay=day;
+      stopNames=cloud.watchDailyBattleNames?.(day,names=>{
+        if(!live()||day!==watchDay||!battle||battle.status!=='open')return;
+        const fighters=battle.fighters.map((e,i)=>names[i]?{...e,name:names[i].name,renamed:true}:e);
+        if(fighters.every((e,i)=>e.name===battle.fighters[i].name&&!!e.renamed===!!battle.fighters[i].renamed))return;
+        const selected=$('dailyVotePopup')?.dataset.choice;
+        battle={...battle,fighters};render();
+        if(selected!==undefined&&!vote)panel.querySelector(`[data-daily-choice="${selected}"]`)?.click();
+      });
+    }
     award=!!(awardBattle?.day===day&&vote&&!vote.settled&&battle?.status==='finished'&&vote.choice===battle.outcome);
     if(vote&&!vote.settled&&battle?.status==='finished'&&!award&&!replayError&&!document.hidden){await replayDailyBattle(battle,vote);return;}
     render();
@@ -2368,13 +2460,17 @@ async function showDailyBattle({awardBattle=null,replayError=false}={}){
       modalOptions.closable=false;panel.querySelector('.modal-close')?.remove();$('modalHost').querySelector('.modal-backdrop')?.removeAttribute('data-close-modal');
     }
     const full=award?battle.log.finalState:battle.fighters,icons=dailyVoteIcons(battle);
+    const namingOpen=!award&&battle.status==='open'&&Date.now()>=battle.openAt&&Date.now()<battle.closeAt;
     $('dailyContent').classList.toggle('daily-award-content',award);
     $('dailyContent').dataset.day=day;
-    $('dailyContent').innerHTML=`<div class="daily-arena">${dailyFighterMarkup(full[1],1,award)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,award)}</div>
+    $('dailyContent').innerHTML=`<div class="daily-arena">${dailyFighterMarkup(full[1],1,award,namingOpen&&!full[1].renamed)}<div class="daily-center" id="dailyCenter"></div>${dailyFighterMarkup(full[0],0,award,namingOpen&&!full[0].renamed)}</div>
       ${award?'':`<div class="daily-vote-space"><div class="daily-vote-popup" id="dailyVotePopup" hidden></div></div><div class="daily-votes" aria-label="勝敗を予想して投票">${icons.map((label,i)=>`<button type="button" data-daily-choice="${i}" class="daily-vote${vote?.choice===i?' chosen':''}" ${vote||battle.status!=='open'||Date.now()>=battle.closeAt?'disabled':''}><span>${esc(label)}</span></button>`).join('')}</div><p class="daily-message">${vote?'投票済み：'+esc(dailyVoteText(battle,vote.choice)):'投票は無料・1日1票。投票後の変更はできません。'}</p>`}`;
+    panel.querySelectorAll('[data-daily-name]').forEach(button=>button.onclick=()=>{
+      const side=Number(button.dataset.dailyName);showDailyNameDialog(day,side,battle.fighters[side],load);
+    });
     panel.querySelectorAll('[data-daily-choice]').forEach(button=>button.onclick=()=>{
       const choice=Number(button.dataset.dailyChoice),popup=$('dailyVotePopup');
-      popup.hidden=false;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVotePrompt(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
+      popup.hidden=false;popup.dataset.choice=choice;popup.innerHTML=`<strong>${esc(icons[choice])}</strong><p>${esc(dailyVotePrompt(battle,choice))}</p><button type="button" id="dailyConfirmVote">投票</button>`;
       popup.animate([{opacity:0,transform:'translateY(10px) scale(.9)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:220,easing:'ease-out'});
       $('dailyConfirmVote').onclick=async()=>{
         if(submitting)return;submitting=true;
@@ -2405,12 +2501,12 @@ async function showDailyBattle({awardBattle=null,replayError=false}={}){
     }else{
       const remaining=Math.max(0,Math.ceil((battle.closeAt-Date.now())/1000));
       host.innerHTML=remaining?`<span>バトル開始まで</span><strong>${[Math.floor(remaining/3600),Math.floor(remaining/60)%60,remaining%60].map(n=>String(n).padStart(2,'0')).join(':')}</strong>`:'<span>結果を確認中…</span>';
-      if(!remaining){panel.querySelectorAll('[data-daily-choice]').forEach(b=>b.disabled=true);const popup=$('dailyVotePopup');if(popup)popup.hidden=true;}
+      if(!remaining){panel.querySelectorAll('[data-daily-name]').forEach(b=>b.disabled=true);panel.querySelectorAll('[data-daily-choice]').forEach(b=>b.disabled=true);const popup=$('dailyVotePopup');if(popup)popup.hidden=true;}
     }
   }
   try{await load();}catch(error){if(live())$('dailyContent').innerHTML='<p class="daily-message">読み込めませんでした。閉じて再度お試しください。</p>';console.warn(error);}
   const timer=setInterval(async()=>{
-    if(!live()){clearInterval(timer);return;}
+    if(!live()){clearInterval(timer);stopNames?.();return;}
     center();
     if(!award&&!submitting&&!polling&&!document.hidden&&Date.now()-lastPoll>=15000&&(!battle||Date.now()>=battle.closeAt||day!==window.DailyBattle.currentDay())){
       polling=true;lastPoll=Date.now();try{await load();}catch(error){console.warn(error);}finally{polling=false;}
@@ -4069,6 +4165,7 @@ function wireEvents() {
   },true);
   $("popoverHost").addEventListener("click",()=>closePopover());
   document.addEventListener("keydown",ev=>{
+    if(document.querySelector('.daily-name-dialog[open]'))return;
     if(ev.key==='Escape'&&!$('battleMenu').classList.contains('hidden')){ev.preventDefault();closeBattleMenu(true);return;}
     if(!$("popoverHost").classList.contains("hidden")&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat){ev.preventDefault();closePopover();return;}
     if(!$("detailHost").classList.contains("hidden")&&(ev.key==="Enter"||ev.key===" ")&&!ev.repeat&&!document.activeElement?.closest("button")){ev.preventDefault();closeDetailOverlay();return;}

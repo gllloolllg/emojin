@@ -954,7 +954,7 @@ body.daily-draw-open .city-header .mo-reading{visibility:hidden}
 .daily-vote-popup p{margin:0;align-self:center;font-size:15px;line-height:1.35;overflow-wrap:anywhere}
 #dailyConfirmVote{padding:7px 26px}
 .daily-replay{background:linear-gradient(145deg,#672f38,#29151c);--accent:#e99991;--rose-light:#ffd0c3}
-.daily-replay .battle-controls,.daily-replay #battleCount,.daily-replay #battleProgress,.daily-replay #battleNext{display:none!important}
+.daily-replay #skipButton,.daily-replay #battleCount,.daily-replay #battleProgress,.daily-replay #battleNext{display:none!important}
 .daily-replay .battle-info{width:210px;max-width:calc(100% - 110px);background:#4d252e;border-color:#cf8c80}
 .daily-replay .fighter-platform,.daily-replay .battle-roof{background:#632f3a;border-color:#ae706c}
 .daily-replay-slots{margin-top:7px}

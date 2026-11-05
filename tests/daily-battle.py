@@ -20,7 +20,7 @@ async def main():
    for width,height in [(390,844),(320,568)]:
     ctx=await browser.new_context(viewport={'width':width,'height':height},is_mobile=True,has_touch=True,service_workers='block',reduced_motion='reduce')
     mock='window.dailyFixture='+json.dumps(fixture)+';'+base.MOCK+r'''
-localStorage.setItem('emojin.battleSpeed','4');
+if(!localStorage.getItem('emojin.battleSpeed'))localStorage.setItem('emojin.battleSpeed','4');
 window.dailyData={targetDay:dailyFixture.day,battles:structuredClone(dailyFixture.battles),player:{uid:'me',day:dailyFixture.older,choice:0,settled:false},claims:{},claimCalls:0,lossCalls:0,speeds:[],fetches:[],failClaim:true};
 mockCloud.wallet.balance=4000;
 mockCloud.getDailyBattle=async day=>{dailyData.fetches.push(day);return structuredClone(dailyData.battles[day]);};
@@ -43,7 +43,13 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
      await page.evaluate('window.dailyStartReveal();window.dailyStartReveal=null')
     await page.goto('http://127.0.0.1:'+str(server.server_address[1])+'/');await start()
     assert await page.evaluate('dailyData.fetches')==[fixture['older']]
-    assert await page.locator('#skipButton').is_hidden();assert await page.locator('#speedButton').is_hidden()
+    assert await page.locator('#skipButton').is_hidden();assert await page.locator('#skipButton').is_disabled()
+    speed=page.locator('#speedButton');assert await speed.is_visible();assert await speed.text_content()=='4×'
+    pos=await speed.bounding_box();assert pos['x']>width/2 and pos['y']<80
+    await speed.click();assert await speed.text_content()=='1×'
+    await speed.click();assert await speed.text_content()=='2×'
+    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='2'
+    await page.screenshot(path=f'/tmp/emojin-daily-speed-{width}.png')
     assert await page.locator('.daily-replay .record-badge').count()==0
     await release();await page.wait_for_selector('#dailyClaim',timeout=20000)
     assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['older']
@@ -55,7 +61,7 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
     assert await page.evaluate('dailyData.player.settled')==False
     assert await page.evaluate('dailyData.fetches.includes(dailyFixture.day)')==False
     # A reload must still prioritize the old unreceived vote with no local seen flag.
-    await page.reload();await start();await release();await page.wait_for_selector('#dailyClaim',timeout=20000)
+    await page.reload();await start();assert await page.locator('#speedButton').text_content()=='2×';await release();await page.wait_for_selector('#dailyClaim',timeout=20000)
     await page.evaluate('dailyData.failClaim=false');await page.locator('#dailyClaim').click();await page.wait_for_selector('.daily-vote:enabled')
     assert await page.evaluate('mockCloud.wallet.balance')==4300
     assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['day']
@@ -100,14 +106,15 @@ mockCloud.claimDailyBattle=async day=>{dailyData.claimCalls++;if(dailyData.failC
     await page.wait_for_function('dailyData.lossCalls===1');await page.wait_for_selector('.daily-vote:enabled')
     assert await page.locator('#dailyContent').get_attribute('data-day')==fixture['next']
     assert await page.locator('#dailyClaim').count()==0
-    assert await page.evaluate('dailyData.speeds.every(s=>s===1)')
-    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
+    assert await page.evaluate('dailyData.speeds.length>0&&dailyData.speeds.every(s=>s===2)')
+    assert await page.evaluate('audit.animations.includes(425)')
+    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='2'
     assert await page.evaluate("Object.keys(localStorage).filter(k=>k.includes('dailyBattle')).length")==0
     await page.locator('.daily-battle-panel .modal-close').click();await page.wait_for_selector('.daily-battle-panel',state='detached')
     await page.locator('#mojiSpinButton').click();await page.wait_for_selector('.moji-spin-panel')
     assert await page.locator('#modalHost').evaluate("el=>!el.classList.contains('daily-battle-host')")
     assert not errors,errors
-    print(f'PASS {width}: latest participated round prioritized, automatic x1 replay, forced prize/retry/reload, next-vote gate, losing completion, no history/local flags')
+    print(f'PASS {width}: latest participated round prioritized, saved-speed replay with speed controls and no skip, forced prize/retry/reload, next-vote gate, losing completion, no history/local flags')
     await ctx.close()
    await browser.close()
  finally:server.shutdown()

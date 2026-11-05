@@ -2518,7 +2518,7 @@ async function revealDailySlots(log){
     dailyRevealCount=i+1;paintBattle(log.before);
     for(const side of [0,1]){
       const tile=infoEl(side).querySelector(`[data-slot="${i}"]`);
-      if(tile)animate(tile,[{transform:'rotateY(90deg) scale(.3)',filter:'brightness(4)',opacity:0},{transform:'rotateY(0) scale(1.7)',filter:'brightness(2)',opacity:1,offset:.55},{transform:'scale(1)',filter:'brightness(1)',opacity:1}],850,{easing:'ease-out'});
+      if(tile)animate(tile,[{transform:'rotateY(90deg) scale(.3)',filter:'brightness(4)',opacity:0},{transform:'rotateY(0) scale(1.7)',filter:'brightness(2)',opacity:1,offset:.55},{transform:'scale(1)',filter:'brightness(1)',opacity:1}],850/replaySpeed,{easing:'ease-out'});
       const point=localPoint(side);particles($('battleFx'),point.x,point.y,'#7effdf',34,140);
     }
     await battleWait(1100);
@@ -2528,7 +2528,7 @@ async function replayDailyBattle(battle,vote){
   if(busy||playback||!battle?.log||!vote||vote.settled)return;
   const owner=cloud.uid;
   await closeModal(true);busy=true;playback={skip:false};dailyBattleReplay=true;dailyRevealCount=3;
-  const speed=replaySpeed;replaySpeed=1;$('battleScreen').classList.add('daily-replay');
+  $('speedButton').textContent=replaySpeed+'×';$('battleScreen').classList.add('daily-replay');
   let complete=false;
   try{await playBattle(battle.log,0,1);complete=true;}
   catch(error){console.error(error);toast('再生を中断しました。もう一度お試しください。');}
@@ -2536,7 +2536,7 @@ async function replayDailyBattle(battle,vote){
     $('battleScreen').getAnimations({subtree:true}).forEach(a=>a.cancel());
     $('battleScreen').classList.add('hidden');$('battleScreen').classList.remove('daily-replay');
     $('battleFx').innerHTML='';$('battleRecordFx').innerHTML='';clearBattleSlotFocus();
-    dailyBattleReplay=false;replaySpeed=speed;playback=null;currentBattle=null;
+    dailyBattleReplay=false;playback=null;currentBattle=null;
   }
   if(owner!==cloud.uid){busy=false;refreshNav();return;}
   if(complete&&vote.choice!==battle.outcome){
@@ -3938,7 +3938,7 @@ async function playBattle(log,i,total) {
   $("battleNext").classList.add("hidden");$("battleNext").disabled=true;
   visualMap=log.before[1].ownerName===playerName()&&log.before[0].ownerName!==playerName()?[1,0]:[0,1];
   $("battleFx").innerHTML="";$("battleRecordFx").innerHTML="";
-  $("skipButton").disabled=false;
+  $("skipButton").disabled=dailyBattleReplay;
   [0,1].forEach(side=>{
     const el=fighterEl(side);
     el.getAnimations({subtree:true}).forEach(a=>a.cancel());

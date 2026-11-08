@@ -2641,7 +2641,45 @@ function showSlotBet(){
     up.disabled=selectedSlotBet===SLOT.CONFIG.maxBet;down.disabled=selectedSlotBet===SLOT.BET;
     refreshSlotUI();
   }
-  up.onclick=()=>change(SLOT.BET);down.onclick=()=>change(-SLOT.BET);
+  const events=new AbortController();
+  let hold=null,ignoredClick=null;
+  function stopHold(cancel=false){
+    const previous=hold;hold=null;
+    if(!previous)return;
+    clearTimeout(previous.delay);clearInterval(previous.interval);
+    if(previous.repeated||cancel)ignoredClick=previous.button;
+    if(previous.button.hasPointerCapture?.(previous.pointerId))previous.button.releasePointerCapture(previous.pointerId);
+  }
+  function repeat(){
+    if(!hold)return;
+    if(!dialog.open||!session.panel.isConnected||document.hidden||hold.button.disabled){stopHold(true);return;}
+    const button=hold.button;hold.repeated=true;change(hold.step);
+    if(button.disabled)stopHold(true);
+  }
+  for(const [button,step] of [[up,SLOT.BET],[down,-SLOT.BET]]){
+    button.addEventListener('pointerdown',event=>{
+      if(!event.isPrimary||event.button!==0||button.disabled)return;
+      stopHold(true);ignoredClick=null;
+      hold={button,step,pointerId:event.pointerId,repeated:false};
+      button.setPointerCapture?.(event.pointerId);
+      hold.delay=setTimeout(()=>{repeat();if(hold)hold.interval=setInterval(repeat,200);},1000);
+    },{signal:events.signal});
+    button.addEventListener('pointermove',event=>{
+      if(!hold||hold.pointerId!==event.pointerId)return;
+      const r=button.getBoundingClientRect();
+      if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)stopHold(true);
+    },{signal:events.signal});
+    button.addEventListener('lostpointercapture',event=>{if(hold?.button===button&&hold.pointerId===event.pointerId)stopHold();},{signal:events.signal});
+    button.addEventListener('contextmenu',event=>event.preventDefault(),{signal:events.signal});
+    button.onclick=event=>{
+      if(ignoredClick===button&&event.detail!==0){ignoredClick=null;return;}
+      change(step);
+    };
+  }
+  document.addEventListener('pointerup',event=>{if(hold?.pointerId===event.pointerId)stopHold();},{signal:events.signal});
+  document.addEventListener('pointercancel',event=>{if(hold?.pointerId===event.pointerId)stopHold(true);},{signal:events.signal});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopHold(true);},{signal:events.signal});
+  window.addEventListener('blur',()=>stopHold(true),{signal:events.signal});
   dialog.querySelector('.slot-bet-set').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{
     event.stopPropagation();
@@ -2651,7 +2689,7 @@ function showSlotBet(){
     event.stopPropagation();
     if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault();change(event.key==='ArrowUp'?SLOT.BET:-SLOT.BET);}
   });
-  dialog.addEventListener('close',()=>{dialog.remove();$('slotBetButton')?.focus({preventScroll:true});},{once:true});
+  dialog.addEventListener('close',()=>{stopHold(true);events.abort();dialog.remove();$('slotBetButton')?.focus({preventScroll:true});},{once:true});
   document.body.appendChild(dialog);change(0);dialog.showModal();
 }
 function showSlotOdds(){

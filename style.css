@@ -910,7 +910,7 @@ body.daily-draw-open .city-header .mo-reading{visibility:hidden}
 .slot-bet-button,.slot-bet-set{-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent}
 .slot-bet-button:focus,.slot-bet-set:focus{outline:none}
 .slot-bet-button:focus-visible,.slot-bet-set:focus-visible{color:#f4d98e}
-.slot-bet-up,.slot-bet-down{display:block;width:100%;min-height:44px;border:0;background:transparent;color:#f6ce83;font-size:23px}
+.slot-bet-up,.slot-bet-down{touch-action:none;-webkit-touch-callout:none;display:block;width:100%;min-height:44px;border:0;background:transparent;color:#f6ce83;font-size:23px}
 .slot-bet-up:disabled,.slot-bet-down:disabled{opacity:.25}
 .slot-bet-value{display:block;font-size:42px;line-height:1.3;font-variant-numeric:tabular-nums}
 @keyframes slot-bet-pop{from{opacity:0;transform:translateY(12px) scale(.85)}to{opacity:1;transform:translateY(0) scale(1)}}

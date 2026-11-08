@@ -30,6 +30,55 @@ async def main():
     for selector in ['.slot-bet-up','.slot-bet-set']:
      await page.locator(selector).focus()
      assert await page.locator(selector).evaluate('(el)=>{const s=getComputedStyle(el);return s.outlineStyle==="none"&&s.textDecorationLine==="none"}')
+    # Real pointer capture with a controlled clock: threshold, cadence and release.
+    await page.clock.install()
+    await page.clock.pause_at(await page.evaluate('Date.now()+100'))
+    up=page.locator('.slot-bet-up');down=page.locator('.slot-bet-down')
+    async def press(button):
+     box=await button.bounding_box()
+     await page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
+     await page.mouse.down()
+    await press(up);await page.clock.run_for(999)
+    assert await page.locator('.slot-bet-value').text_content()=='8'
+    await page.clock.run_for(1)
+    assert await page.locator('.slot-bet-value').text_content()=='16'
+    await page.clock.run_for(400)
+    assert await page.locator('.slot-bet-value').text_content()=='32'
+    await page.mouse.up();await page.clock.run_for(600)
+    assert await page.locator('.slot-bet-value').text_content()=='32'
+    await press(down);await page.clock.run_for(1200);await page.mouse.up()
+    assert await page.locator('.slot-bet-value').text_content()=='16'
+    await press(up);await page.clock.run_for(500);await page.mouse.up()
+    assert await page.locator('.slot-bet-value').text_content()=='24'
+    await press(up);await page.clock.run_for(1000)
+    box=await page.locator('.slot-bet-value').bounding_box()
+    await page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
+    await page.clock.run_for(1000);await page.mouse.up()
+    assert await page.locator('.slot-bet-value').text_content()=='32'
+    await press(down);await page.clock.run_for(2000);await page.mouse.up()
+    assert await page.locator('.slot-bet-value').text_content()=='8'
+    # Closing while held must cancel its timer, including after reopening.
+    await press(up);await page.clock.run_for(500)
+    await page.locator('.slot-bet-dialog').evaluate('(el)=>el.close()')
+    await page.clock.run_for(1);await page.mouse.up()
+    await page.locator('#slotBetButton').click();await page.clock.run_for(1500)
+    assert await page.locator('.slot-bet-value').text_content()=='8'
+    # Touch input uses the same cadence; cancellation also stops repetition.
+    cdp=await ctx.new_cdp_session(page)
+    box=await up.bounding_box();point={'x':box['x']+box['width']/2,'y':box['y']+box['height']/2}
+    await cdp.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[point]})
+    await page.clock.run_for(1200)
+    await cdp.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+    await page.clock.run_for(500)
+    assert await page.locator('.slot-bet-value').text_content()=='24'
+    await cdp.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[point]})
+    await page.clock.run_for(1000)
+    await cdp.send('Input.dispatchTouchEvent',{'type':'touchCancel','touchPoints':[]})
+    await page.clock.run_for(500)
+    assert await page.locator('.slot-bet-value').text_content()=='32'
+    await press(down);await page.clock.run_for(1800);await page.mouse.up()
+    assert await page.locator('.slot-bet-value').text_content()=='8'
+    await page.clock.resume()
     for _ in range(49):await page.locator('.slot-bet-up').click()
     assert await page.locator('.slot-bet-value').text_content()=='400'
     assert await page.locator('.slot-bet-up').is_disabled()
@@ -67,7 +116,7 @@ async def main():
     await page.reload();await page.wait_for_selector('#bootScreen',state='hidden');await page.locator('#mojiSpinButton').click();await base.idle(page)
     assert await page.locator('#spinBet').text_content()=='8'
     assert not errors,errors
-    print(f'PASS {width}: BET bounds, low balance, scaled odds/payout, save/finish locks, saved 80 BET recovery, reload default')
+    print(f'PASS {width}: hold timing, release/cancel/close, mouse/touch, BET bounds, low balance, scaled odds/payout, save/finish locks, saved 80 BET recovery, reload default')
     await ctx.close()
    await browser.close()
  finally:server.shutdown()

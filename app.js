@@ -453,7 +453,7 @@
 'use strict';
 const CONFIG=Object.freeze({
   version:3,
-  maxBet:80,
+  maxBet:400,
   lineBet:1,
   symbols:Object.freeze([
     {id:'wild',emoji:'🤡',weight:3,payout:256,name:'ワイルド'},
@@ -521,7 +521,7 @@ function roll(free=false,rng=random,bet=BET){
   return {...evaluate(Array.from({length:9},(_,i)=>free&&i===4?'wild':weighted(CONFIG.symbols,rng).id),CONFIG.version,bet),free};
 }
 function createRound(rng=random,bet=BET){
-  if(!validBet(bet))throw Error('BETは8〜80の8の倍数で指定してください。');
+  if(!validBet(bet))throw Error('BETは8〜400の8の倍数で指定してください。');
   const first=roll(false,rng,bet);
   const freeCount=first.cells[4]==='wild'?weighted(CONFIG.freeCounts,rng).count:0;
   const spins=[first];for(let i=0;i<freeCount;i++)spins.push(roll(true,rng,bet));

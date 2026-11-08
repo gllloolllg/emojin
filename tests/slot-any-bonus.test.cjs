@@ -196,7 +196,7 @@ test('offline pending legacy round is settled with the historical payout, not th
 });
 
 test('variable BET scales every normal/free line and ANY payout without changing draws',()=>{
- for(let bet=8;bet<=80;bet+=8){
+ for(let bet=8;bet<=400;bet+=8){
   const base=S.createRound(()=>0),round=S.createRound(()=>0,bet),factor=bet/8;
   S.validateRound(round);assert.equal(round.bet,bet);assert.equal(round.total,base.total*factor);
   assert.equal(round.freeCount,base.freeCount);
@@ -206,20 +206,20 @@ test('variable BET scales every normal/free line and ANY payout without changing
    for(const field of ['wins','anyWins'])assert.deepEqual(plain(spin[field]),plain(original[field].map(w=>({...w,payout:w.payout*factor}))));
   });
  }
- for(const bet of [0,-8,7,9,81,88,8.5,'40',null,NaN])assert.throws(()=>S.createRound(()=>.5,bet));
+ for(const bet of [0,-8,7,9,401,408,8.5,'40',null,NaN])assert.throws(()=>S.createRound(()=>.5,bet));
  const r=S.createRound(E.seeded(7),40);
  for(const change of [x=>x.bet=80,x=>x.total++,x=>x.spins[0].linePayout++,x=>x.version=2]){
   const bad=plain(r);change(bad);assert.throws(()=>S.validateRound(bad));
  }
 });
-test('40 BET settles once across retries, rejects insufficient funds, and preserves saved round on redirect',async()=>{
- const round=S.createRound(()=>.7,40),db=walletStore(40);
+for(const bet of [40,400])test(`${bet} BET settles once across retries, rejects insufficient funds, and preserves saved round on redirect`,async()=>{
+ const round=S.createRound(()=>.7,bet),db=walletStore(bet);
  await Promise.all([db.spin(round),db.spin(round)]);
  assert.equal(db.read('wallets/me').wallet.balance,round.total);
  await db.finish(round.id);await db.spin(round);
  assert.equal(db.read('wallets/me').wallet.balance,round.total);
- const poor=walletStore(39);await assert.rejects(poor.spin(round),/40モジ必要/);
- assert.equal(poor.read('wallets/me').wallet.balance,39);
+ const poor=walletStore(bet-1);await assert.rejects(poor.spin(round),new RegExp(`${bet}モジ必要`));
+ assert.equal(poor.read('wallets/me').wallet.balance,bet-1);
  const other=walletStore(100),first=S.createRound(()=>.7,80);await other.spin(first);
  const redirected=await other.spin(round);assert.equal(redirected.record.round.bet,80);
  assert.equal(other.read('wallets/me').wallet.balance,100-80+first.total);

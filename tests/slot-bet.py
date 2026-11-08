@@ -30,12 +30,12 @@ async def main():
     for selector in ['.slot-bet-up','.slot-bet-set']:
      await page.locator(selector).focus()
      assert await page.locator(selector).evaluate('(el)=>{const s=getComputedStyle(el);return s.outlineStyle==="none"&&s.textDecorationLine==="none"}')
-    for _ in range(9):await page.locator('.slot-bet-up').click()
-    assert await page.locator('.slot-bet-value').text_content()=='80'
+    for _ in range(49):await page.locator('.slot-bet-up').click()
+    assert await page.locator('.slot-bet-value').text_content()=='400'
     assert await page.locator('.slot-bet-up').is_disabled()
     assert await page.locator('#slotSpinButton').is_disabled()
     await page.screenshot(path=f'/tmp/emojin-bet-{width}.png')
-    for _ in range(5):await page.locator('.slot-bet-down').click()
+    for _ in range(45):await page.locator('.slot-bet-down').click()
     assert await page.locator('.slot-bet-value').text_content()=='40'
     assert await page.locator('.slot-bet-dialog .slot-bet-close').count()==0
     await page.locator('.slot-bet-set').click()

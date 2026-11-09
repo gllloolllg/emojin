@@ -45,7 +45,7 @@ mockCloud.claimDailyDraw=async(round,choice)=>{
  if(failDailyClaim)throw Error('offline');
  if(holdDailySave)await new Promise(resolve=>window.releaseDailySave=resolve);
  if(!dailyLedger[round.day]){
-  const reward=round.rewards[choice],moji=reward.kind==='moji'?reward.amount:0,hatch=reward.kind==='hatch'?Math.min(1,10-mockCloud.hatch):0;
+  const reward=round.rewards[choice],moji=reward.kind==='moji'?reward.amount:0,hatch=reward.kind==='hatch'?Math.min(1,20-mockCloud.hatch):0;
   mockCloud.wallet.balance+=moji;mockCloud.hatch+=hatch;mockCloud.hatchPending+=hatch;
   dailyLedger[round.day]={kind:'dailyDraw',round:structuredClone(round),choice,reward:structuredClone(reward),moji,hatch,at:Date.now()};
   localStorage.setItem('test.daily.ledger',JSON.stringify(dailyLedger));localStorage.setItem('test.daily.balance',String(mockCloud.wallet.balance));
@@ -145,13 +145,13 @@ window.DailyMojiDraw=Object.freeze({...dailyOriginal,createRound(day){audit.dail
     assert await page.evaluate('audit.dailyReveal')==1
     await page.screenshot(path=f'/tmp/emojin-daily-hatch-{width}.png');await finish_round(page)
     # Full gauge has no effect. Then high balances and two hatch normals remain valid.
-    await page.evaluate('mockCloud.hatch=10;mockCloud.hatchPending=0');await next_day(page)
+    await page.evaluate('mockCloud.hatch=20;mockCloud.hatchPending=0');await next_day(page)
     await page.locator('.daily-gift-button').nth(1).tap();await award_ready(page)
-    assert '満タン' in await page.locator('.daily-help').text_content();assert await page.evaluate('mockCloud.hatch')==10
+    assert '満タン' in await page.locator('.daily-help').text_content();assert await page.evaluate('mockCloud.hatch')==20
     assert await page.evaluate('audit.dailyReveal')==1;await finish_round(page)
     await page.evaluate("mockCloud.wallet.balance=4000;dailyRewards=[{kind:'hatch',amount:1,rare:false},{kind:'hatch',amount:1,rare:false},{kind:'moji',amount:600,rare:true}]")
     await next_day(page);await page.locator('.daily-gift-button').nth(2).tap();await award_ready(page)
-    assert await page.evaluate('mockCloud.wallet.balance')==4600;assert await page.evaluate('mockCloud.hatch')==10;await finish_round(page)
+    assert await page.evaluate('mockCloud.wallet.balance')==4600;assert await page.evaluate('mockCloud.hatch')==20;await finish_round(page)
     # Quit before settlement: the same round/choice auto-resumes, without a fresh draw.
     await page.evaluate("dailyRewards=[{kind:'moji',amount:100,rare:false},{kind:'hatch',amount:1,rare:false},{kind:'moji',amount:500,rare:true}]")
     await next_day(page);await page.evaluate('holdDailySave=true');await page.locator('.daily-gift-button').nth(0).tap()

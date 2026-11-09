@@ -117,9 +117,9 @@ for(const mode of ['forced','challenge','mine']){
     assert.equal(db.read('meta/game').battleSeq,1);
   });
 }
-test('new battle can spend the last 200 and hatch is capped at ten',async()=>{
-  const db=database({balance:200,hatch:9});await db.run(db.operation('mine'));
-  assert.equal(db.read('wallets/me').wallet.balance,0);assert.equal(db.read('wallets/me').hatch,10);
+test('new battle can spend the last 200 and hatch is capped at twenty',async()=>{
+  const db=database({balance:200,hatch:19});await db.run(db.operation('mine'));
+  assert.equal(db.read('wallets/me').wallet.balance,0);assert.equal(db.read('wallets/me').hatch,20);
 });
 test('insufficient funds do not change wallet, hatch or world',async()=>{
   const db=database({balance:199}),before=db.read('wallets/me');
@@ -275,4 +275,12 @@ test('already saved historical same-owner battle returns the old result without 
  const log=E.battle(...pool,E.seeded(1),100,'test');log.seq=17;db.put('battles/test',{seq:17,json:JSON.stringify(log)});
  const before=db.read('wallets/me'),result=await db.run(op);assert.deepEqual(clone(result.log),clone(log));
  assert.equal(result.seq,17);assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.local.upgradeNotice,undefined);
+});
+
+test('battle hatch rewards continue above ten and retain the existing per-mode increments',async()=>{
+ for(const mode of ['forced','challenge','mine']){
+  const db=database({hatch:10}),op=db.operation(mode);await db.run(op);
+  assert.equal(db.read('wallets/me').hatch,mode==='forced'?11:12);
+  const before=db.read('wallets/me');await db.run(op);assert.deepEqual(db.read('wallets/me'),before);
+ }
 });

@@ -456,7 +456,7 @@ const CONFIG=Object.freeze({
   maxBet:400,
   lineBet:1,
   symbols:Object.freeze([
-    {id:'wild',emoji:'🤡',weight:3,payout:256,name:'ワイルド'},
+    {id:'wild',emoji:'🤡',weight:2.5,payout:256,name:'ワイルド'},
     {id:'smile',emoji:'😄',weight:4,payout:128,name:'7'},
     {id:'gift',emoji:'🎁',weight:6,payout:64,name:'BAR'},
     {id:'bell',emoji:'🔔',weight:9,payout:32,name:'ベル'},
@@ -464,7 +464,7 @@ const CONFIG=Object.freeze({
     {id:'berry',emoji:'🍇',weight:13,payout:8,name:'グレープ'},
     {id:'orange',emoji:'🍊',weight:15,payout:4,name:'オレンジ'},
     {id:'cherry',emoji:'🍒',weight:18,payout:2,name:'チェリー'},
-    {id:'blank',emoji:'',weight:21,payout:0,name:'ブランク'}
+    {id:'blank',emoji:'',weight:21.5,payout:0,name:'ブランク'}
   ].map(Object.freeze)),
   anyBonus:Object.freeze(Object.fromEntries(Object.entries({
     cherry:{4:4,5:8,6:40,7:160,8:800,9:4000},
@@ -636,6 +636,11 @@ function validateDailyBattleName(value){
   return name;
 }
 
+// Reserved drafts can finish; the six-resident limit applies to new reservations.
+function generationLimitReached(emojins,ownerUid){
+  return emojins.filter(e=>e.status==='active'&&!e.isNpc&&e.ownerUid===ownerUid).length>=6;
+}
+
 /* Firebase configuration is public. Paste the Web app config from Firebase here. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB_OhdHIjV5vfE5gjZnAtBWS3bhRWeytnc",
@@ -652,7 +657,7 @@ let local = parse();
 const persist = () => localStorage.setItem(KEY, JSON.stringify(local));
 local.wallet ||= {balance:window.EmojinEngine.INITIAL_MOJI, updatedAt:Date.now()};
 local.pending ||= [];
-local.hatch = Math.max(0,Math.min(10,Number(local.hatch)||0));
+local.hatch = Math.max(0,Math.min(20,Number(local.hatch)||0));
 local.hatchPending = Math.max(0,Math.min(local.hatch,Number(local.hatchPending)||0));
 let uid = local.uid || '';
 let world = {emojins:[], battles:[], legends:[], nextSeq:1, nextLegendSeq:1, suspendedOwnerUids:[],dormantOwnerUids:[]};
@@ -940,7 +945,7 @@ async function createCloud() {
         const round=window.DailyMojiDraw.validateRound(op.data.round),choice=op.data.choice;
         if(op.id!=='daily-'+round.day || !Number.isInteger(choice) || choice<0 || choice>2)throw Error('くじの選択が正しくありません。');
         const reward=round.rewards[choice],wallet=E.accrueMoji(account.wallet,Date.now());
-        const moji=reward.kind==='moji'?reward.amount:0,hatch=reward.kind==='hatch'?Math.max(0,Math.min(1,10-account.hatch)):0;
+        const moji=reward.kind==='moji'?reward.amount:0,hatch=reward.kind==='hatch'?Math.max(0,Math.min(1,20-account.hatch)):0;
         wallet.balance+=moji;
         const next=nextAccount(account,{wallet,hatch:account.hatch+hatch},op.id);
         const record={kind:'dailyDraw',round,choice,reward,moji,hatch,at:Date.now()};
@@ -1014,7 +1019,7 @@ async function createCloud() {
       log.seed=req.seed;log.source=req.mode||'forced';
       const plan=E.planBattle(freshPool,owners,meta,log,E.seeded(req.seed^0x4e5043));
       if(op.data.walletVersion===2)wallet.balance-=rules.cost;
-      const next=nextAccount(account,{wallet,hatch:op.data.hatchReward?Math.min(10,account.hatch+rules.hatch):account.hatch},op.id);
+      const next=nextAccount(account,{wallet,hatch:op.data.hatchReward?Math.min(20,account.hatch+rules.hatch):account.hatch},op.id);
       plan.emojins.forEach(e=>tx.set(ref('emojins',e.id),e));
       tx.set(logRef,E.battleDocument(plan.log));
       Object.entries(plan.owners).forEach(([id,owner])=>tx.update(ref('owners',id),{unreadBattleIds:owner.unreadBattleIds,suspended:owner.suspended,suspendedAt:owner.suspendedAt,lastAccessAt:owner.lastAccessAt,dormant:owner.dormant}));
@@ -1315,12 +1320,13 @@ async function createCloud() {
         const accountRef=walletRef(),snap=await tx.get(accountRef),old=snap.data();
         await requireMatchRules(tx);
         if(old.draft)return old;
-        const wallet=E.accrueMoji(old.wallet,Date.now()),free=old.hatch>=10;
+        // A concurrent creation or battle changes meta and retries this population check.
+        await tx.get(metaRef);
+        const emojins=(await activeDocs()).docs.map(s=>s.data());
+        if(generationLimitReached(emojins,uid))throw Error('生きているマイエモジンが6体いるため、新しく生成できません。');
+        const wallet=E.accrueMoji(old.wallet,Date.now()),free=old.hatch>=20;
         let cost=0;
         if(!free) {
-          // Creation and battles update meta; reading it makes population changes retry this reservation.
-          await tx.get(metaRef);
-          const emojins=(await activeDocs()).docs.map(s=>s.data());
           cost=E.generationCost(emojins,uid);
           if(wallet.balance<cost)throw Error(`${cost}モジ必要です。`);
           wallet.balance-=cost;
@@ -2956,13 +2962,13 @@ function renderHatch() {
   if(!gauge){
     gauge=document.createElement('span');gauge.id='hatchGauge';gauge.className='hatch-gauge';
     gauge.setAttribute('role','progressbar');gauge.setAttribute('aria-label','孵化ゲージ');
-    gauge.setAttribute('aria-valuemin','0');gauge.setAttribute('aria-valuemax','10');
+    gauge.setAttribute('aria-valuemin','0');gauge.setAttribute('aria-valuemax','20');
     gauge.innerHTML='<span class="hatch-fill"></span>';button.querySelector('.nav-icon-wrap').appendChild(gauge);
   }
   const value=Math.max(0,(cloud.hatch||0)-(cloud.hatchPending||0));
-  gauge.firstElementChild.style.height=value*10+'%';gauge.setAttribute('aria-valuenow',value);
-  gauge.classList.toggle('full',value>=10);
-  button.classList.toggle('hatch-ready',(cloud.hatch||0)>=10);
+  gauge.firstElementChild.style.height=value*5+'%';gauge.setAttribute('aria-valuenow',value);
+  gauge.classList.toggle('full',value>=20);
+  button.classList.toggle('hatch-ready',(cloud.hatch||0)>=20);
 }
 async function animateHatchReward() {
   if(hatchAnimating || !(cloud.hatchPending>0) || !lootCanPlay())return;
@@ -2989,12 +2995,12 @@ function refreshNav() {
   renderHatch();
   refreshSlotUI();
   const cost=E.generationCost(store.emojins,cloud.uid);
-  const balance=Math.max(0,updateMoji()-lootPending), available=!!store.player && (!!store.draft||cloud.hatch>=10||balance>=cost), btn=$("generateButton");
+  const balance=Math.max(0,updateMoji()-lootPending), limited=generationLimitReached(store.emojins,cloud.uid), available=!!store.player && (!!store.draft||(!limited&&(cloud.hatch>=20||balance>=cost))), btn=$("generateButton");
   btn.classList.toggle("available",available);
   btn.disabled=!available;
-  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":(cloud.hatch>=10?"エモジンを生成、孵化ゲージを使用":`エモジンを生成、${cost}モジ`));
+  btn.setAttribute("aria-label",store.draft?"エモジンの生成を続ける":limited?"生きているマイエモジンは6体まで":(cloud.hatch>=20?"エモジンを生成、孵化ゲージを使用":`エモジンを生成、${cost}モジ`));
   btn.querySelector(".nav-cost").innerHTML =
-  store.draft ? 'つづき' : `${cost} <small>モジ</small>`;
+  store.draft ? 'つづき' : limited ? '6体まで' : `${cost} <small>モジ</small>`;
   $("forceBattleButton").disabled=!store.player||balance<BATTLE_COST||battlePool().length<2;
   const menuBlocked=!canOpenBattleMenu();
   // Overlays already cover this control. Do not leave it disabled after they close.
@@ -3197,7 +3203,8 @@ async function beginGeneration() {
     if(store.draft.stage==="special"){showSpecial();return;}
     showName();return;
   }
-  if(cloud.hatch<10 && updateMoji()<E.generationCost(store.emojins,cloud.uid)){refreshNav();return;}
+  if(generationLimitReached(store.emojins,cloud.uid)){refreshNav();return;}
+  if(cloud.hatch<20 && updateMoji()<E.generationCost(store.emojins,cloud.uid)){refreshNav();return;}
   busy=true;
   const reservation=cloud.startDraft().then(result=>({result}),error=>({error}));
   try {await showReveal('',reservation);}

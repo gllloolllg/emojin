@@ -18,7 +18,7 @@ function database({count=0,balance=2000,hatch=0,draft=null,retryCount=null,owner
  documents.set('config/battle',{rulesVersion:4,defeatLimit:5,maintenance:false});
  documents.set('meta/game',{battleSeq:0,legendSeq:0,revision:1});
  const snap=path=>({exists:()=>documents.has(path),data:()=>documents.has(path)?clone(documents.get(path)):undefined});
- const sandbox={E,crypto:webcrypto,uid:'me',local:{uid:'me',wallet:{balance:legacy,updatedAt:Date.now()},hatch:0,pending:[]},
+ const sandbox={E,generationLimitReached:engine.generationLimitReached,crypto:webcrypto,uid:'me',local:{uid:'me',wallet:{balance:legacy,updatedAt:Date.now()},hatch:0,pending:[]},
   db:{},walletRef:()=> 'wallets/me',metaRef:'meta/game',ref:(collection,id)=>collection+'/'+id,
   data:s=>s.exists()?s.data():null,defaultMeta:()=>({}),retry:fn=>fn(),flush:async()=>{},persist:()=>{},
   applyAccount:value=>{sandbox.applied=clone(value);},displayedWallet:()=>sandbox.applied.wallet,
@@ -52,7 +52,7 @@ test('all generation prices, including five-plus and non-owned/dead/legend/NPC e
   assert.equal(E.generationCost(all,'me'),[100,200,400,800,1000,1200][Math.min(n,5)]);
  }
 });
-for(let count=0;count<7;count++){
+for(let count=0;count<6;count++){
  test(`${count} living owned emojins: exact transaction price, reservation and no duplicate debit`,async()=>{
   const cost=[100,200,400,800,1000,1200][Math.min(count,5)],db=database({count,balance:cost});
   const first=await db.start();assert.equal(db.read('wallets/me').wallet.balance,0);
@@ -69,9 +69,9 @@ test('one moji short fails without reserving a draft or charging',async()=>{
  }
 });
 test('full hatch gauge takes precedence over moji pricing',async()=>{
- const db=database({count:6,balance:0,hatch:10});const result=await db.start();
+ const db=database({count:5,balance:0,hatch:20});const result=await db.start();
  assert.equal(result.draft.cost,0);assert.equal(result.draft.payment,'hatch');
- assert.equal(db.read('wallets/me').wallet.balance,0);assert.equal(db.read('wallets/me').hatch,10);
+ assert.equal(db.read('wallets/me').wallet.balance,0);assert.equal(db.read('wallets/me').hatch,20);
 });
 test('transaction retry recalculates population and price',async()=>{
  const db=database({count:0,balance:1000,retryCount:3});await db.start();
@@ -100,4 +100,33 @@ test('same-id migrated draft refreshes HP while retaining local name/choice/stag
  await db.ensure();assert.equal(db.sandbox.local.draft.maxHp,8);
  assert.equal(db.sandbox.local.draft.name,'My name');assert.equal(db.sandbox.local.draft.chosen,'poison');
  assert.equal(db.sandbox.local.draft.stage,'reels');
+});
+
+test('six or more living owned emojins block both moji and hatch reservations without changing the wallet',async()=>{
+ for(const count of [6,7])for(const hatch of [0,20]){
+  const db=database({count,balance:5000,hatch}),before=db.read('wallets/me');
+  await assert.rejects(db.start(),/6体/);assert.deepEqual(db.read('wallets/me'),before);
+ }
+});
+test('a retry that reaches six residents blocks a previously eligible reservation',async()=>{
+ const db=database({count:5,balance:5000,hatch:20,retryCount:6}),before=db.read('wallets/me');
+ await assert.rejects(db.start(),/6体/);assert.deepEqual(db.read('wallets/me'),before);
+});
+test('ten or nineteen hatch points are retained and do not grant free generation',async()=>{
+ for(const hatch of [10,19]){
+  const db=database({balance:100,hatch});await db.start();
+  assert.equal(db.read('wallets/me').draft.payment,'moji');assert.equal(db.read('wallets/me').hatch,hatch);
+ }
+});
+test('already reserved draft remains resumable above the population limit',async()=>{
+ const db=database({count:7,balance:37,hatch:10,draft:{id:'reserved',paid:true,payment:'hatch'}});
+ assert.equal((await db.start()).draft.id,'reserved');assert.equal(db.read('wallets/me').wallet.balance,37);
+});
+
+test('cached hatch values above the old cap survive reload without conversion',()=>{
+ const sandbox={crypto:webcrypto,localStorage:{getItem:()=>JSON.stringify({hatch:19,hatchPending:2})}};
+ sandbox.window=sandbox;vm.createContext(sandbox);
+ vm.runInContext(source.slice(0,source.indexOf('async function createCloud()')),sandbox);
+ assert.equal(vm.runInContext('local.hatch',sandbox),19);
+ assert.equal(vm.runInContext('local.hatchPending',sandbox),2);
 });

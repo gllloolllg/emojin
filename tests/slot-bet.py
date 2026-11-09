@@ -60,7 +60,9 @@ async def main():
     # Closing while held must cancel its timer, including after reopening.
     await press(up);await page.clock.run_for(500)
     await page.locator('.slot-bet-dialog').evaluate('(el)=>el.close()')
-    await page.clock.run_for(1);await page.mouse.up()
+    await page.clock.run_for(20)
+    await page.locator('.slot-bet-dialog').wait_for(state='detached')
+    await page.mouse.up()
     await page.locator('#slotBetButton').click();await page.clock.run_for(1500)
     assert await page.locator('.slot-bet-value').text_content()=='8'
     # Touch input uses the same cadence; cancellation also stops repetition.

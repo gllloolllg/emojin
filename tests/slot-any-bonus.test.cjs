@@ -8,7 +8,7 @@ const S=ctx.MojiSpinEngine,E=ctx.EmojinEngine,plain=x=>JSON.parse(JSON.stringify
 const old={crypto:webcrypto};vm.createContext(old);
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'fixtures/slot-v1-engine.cjs'),'utf8'),old);
 const ids=['wild','smile','gift','bell','melon','berry','orange','cherry','blank'];
-const weights=[3,4,6,9,11,13,15,18,21],payouts=[256,128,64,32,16,8,4,2,0];
+const weights=[2.5,4,6,9,11,13,15,18,21.5],payouts=[256,128,64,32,16,8,4,2,0];
 const bonus={cherry:[0,0,0,0,4,8,40,160,800,4000],orange:[0,0,0,0,4,8,60,240,1200,6000],
  berry:[0,0,0,0,4,16,80,320,1600,8000],melon:[0,0,0,0,8,24,120,480,2400,12000],
  bell:[0,0,0,4,8,32,160,640,3200,16000],gift:[0,0,0,4,12,60,240,960,4800,24000],

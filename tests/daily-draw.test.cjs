@@ -70,10 +70,10 @@ test('only the chosen reward is committed, money above 3000 is preserved, retrie
  const before=db.read('wallets/me'),writes=db.writes();await db.run(db.op(1));
  assert.deepEqual(db.read('wallets/me'),before);assert.equal(db.writes(),writes);
 });
-test('a hatch award caps at ten and awards nothing else when the gauge is full',async()=>{
- for(const hatch of [0,9,10]){
+test('a hatch award caps at twenty and awards nothing else when the gauge is full',async()=>{
+ for(const hatch of [0,9,10,19,20]){
   const db=database({balance:4000,hatch});const result=await db.run(db.op(1));
-  assert.equal(db.read('wallets/me').hatch,Math.min(10,hatch+1));assert.equal(result.record.hatch,hatch===10?0:1);
+  assert.equal(db.read('wallets/me').hatch,Math.min(20,hatch+1));assert.equal(result.record.hatch,hatch===20?0:1);
   assert.equal(db.read('wallets/me').wallet.balance,4000);assert.equal(result.record.moji,0);
  }
 });

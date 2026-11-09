@@ -29,6 +29,8 @@ init().catch(err=>{''')
     page=await ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     await page.goto('http://127.0.0.1:'+str(server.server_address[1])+'/')
     await page.wait_for_selector('#bootScreen',state='hidden')
+    assert await page.locator('#dailyBattleButton,.daily-battle-launch').count()==0
+    assert await page.evaluate('typeof DailyBattle')=='undefined'
     button=page.locator('#generateButton');gauge=page.locator('#hatchGauge')
     for hatch in [0,1,10,19,20]:
      await page.evaluate('h=>setEconomyForTest(5,h,0)',hatch)

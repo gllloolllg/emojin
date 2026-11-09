@@ -1,6 +1,6 @@
 # エモジンの開発方針
 
-- デイリーバトルは [docs/DAILY_BATTLE.md](docs/DAILY_BATTLE.md) を参照。日本時間18:30に決着し直後に次回受付を開始。本人の最新投票1件の再生・精算を終えるまで次の投票は禁止。履歴一覧・端末の確認済みフラグは作らず、専用DBと賞金receiptを使う。非公開3枠とseedはGAS専用。開催前の命名は全ユーザー共通で各個体1回/100モジ、専用名前記録・財布・receiptを原子的に保存し、決着時のGASログへ反映する。既存の毎分トリガーを維持し、GAS・ルール適用確認後にフロントを公開する。
+- デイリーバトルは廃止（未受け取り賞金も含めて終了）。画面・投票・命名・受領は再導入しない。GASのDailyBattleScheduler.gsを停止版へ差し替え、Firestoreの廃止ルール適用後にフロントを公開する。通常hourlyBattleの毎分トリガーは維持。保存済みデータとreceiptは削除しない。手順は [docs/DAILY_BATTLE.md](docs/DAILY_BATTLE.md)。
 
 - まず [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) の仕様・確認状況を読む。実装と依頼の差異は報告し、独断で仕様を変更しない。
 - 最大10ターン方式は [docs/MATCH_V4.md](docs/MATCH_V4.md) を優先する。共通エンジン変更後は `node scripts/sync-gas-engine.cjs` と `--check` を行う。移行はプレビュー提示・対象確認後に実行し、ゲートで旧クライアントの書き込みを防ぐ。

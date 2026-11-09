@@ -1,5 +1,7 @@
 # エモジン 開発引き継ぎ・実装確認
 
+**デイリーバトルは廃止。未受け取り賞金も含めて終了。適用順序と廃止後の扱いは [DAILY_BATTLE.md](DAILY_BATTLE.md) を参照。**
+
 **2026-10-30の全モードでの同オーナー対戦禁止は [NO_SAME_OWNER_BATTLES.md](NO_SAME_OWNER_BATTLES.md) を優先する。以下の「マイエモジン同士でもよい」は変更前の履歴。GAS・ルール・フロントを順に切り替える。**
 
 **最新の💀5個以上・次の💀獲得時にボチとなる仕様は [FIVE_DEFEATS.md](FIVE_DEFEATS.md) を参照。旧10個方式とメニュー配置の記録は [TEN_DEFEATS.md](TEN_DEFEATS.md)。**

@@ -44,6 +44,7 @@ async def main():
     assert await page.locator('.bingo-prize .bingo-hatch').count()==2
     assert await page.locator('.bingo-prize .daily-moji svg').count()==7
     await page.screenshot(path=f'/tmp/emojin-bingo-card-{width}.png')
+    assert await page.locator('.bingo-cell').first.evaluate('el=>{const s=getComputedStyle(el);return s.borderBottomWidth==="0px"&&s.borderTopWidth==="1px"&&s.borderLeftWidth==="1px"&&s.borderRightWidth==="1px"&&s.borderBottomLeftRadius==="0px"&&s.borderTopLeftRadius!=="0px"&&s.boxShadow==="none"}')
     # Egg auto-opens without a hint, then only the drawn tile can be punched.
     await page.locator('#bingoDraw').tap();await page.wait_for_selector('.bingo-focus',timeout=8000)
     assert await page.evaluate('EmojinCanReload()')==False
@@ -55,7 +56,10 @@ async def main():
     await page.wait_for_selector('.bingo-focus');assert await page.locator('.bingo-focus').text_content()==emoji
     await page.locator('.bingo-focus').tap();await page.wait_for_selector('.bingo-stage',state='detached')
     assert await page.locator('.bingo-cell.is-punched').count()==1
-    assert await page.locator('#bingoDraw').count()==0
+    assert await page.locator('.bingo-cell.is-punched').evaluate('el=>el.textContent===""&&getComputedStyle(el).backgroundColor==="rgb(0, 0, 0)"')
+    assert await page.locator('.bingo-tomorrow').count()==0
+    await page.screenshot(path=f'/tmp/emojin-bingo-punched-{width}.png')
+    assert await page.locator('#bingoDraw').is_disabled()
     assert await page.evaluate('bingoClaims.length')==0
     # Prepare a card one cell short of two lines; normal runtime handles the win.
     await page.locator('.bingo-panel .modal-close').tap();await page.wait_for_selector('.bingo-panel',state='detached')
@@ -76,14 +80,14 @@ async def main():
     assert await page.locator('.bingo-paid').text_content()=='5,000モジを獲得・孵化＋3'
     assert await page.locator('.bingo-cell.is-win').count()==7
     await page.screenshot(path=f'/tmp/emojin-bingo-win-{width}.png')
-    await page.locator('#bingoNewCard').tap();await page.wait_for_selector('.bingo-tomorrow')
+    await page.locator('#bingoNewCard').tap();await page.wait_for_selector('#bingoDraw:disabled')
     assert await page.locator('.bingo-cell.is-punched').count()==0
-    assert await page.locator('#bingoDraw').count()==0
+    assert await page.locator('#bingoDraw').is_disabled()
     await page.evaluate("testBingoNow=Date.parse('2026-11-10T15:00:00Z')")
-    await page.wait_for_selector('#bingoDraw',timeout=3000)
+    await page.wait_for_selector('#bingoDraw:enabled',timeout=3000)
     # A second tab reads the same card and cannot make a second same-day draw.
     second=await ctx.new_page();await second.goto('http://127.0.0.1:'+str(server.server_address[1])+'/');await second.wait_for_selector('#bootScreen',state='hidden');await second.locator('#dailyBingoButton').tap()
-    assert await second.locator('#bingoDraw').count()==0
+    assert await second.locator('#bingoDraw').is_disabled()
     await second.close()
     # The wallet commits but its response is lost: reload claims the same receipt.
     await page.locator('.bingo-panel .modal-close').tap();await page.wait_for_selector('.bingo-panel',state='detached')

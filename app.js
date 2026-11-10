@@ -2356,9 +2356,9 @@ async function showDailyBingo(){
     const award=(i,position)=>`<div class="bingo-prize${lines.includes(i)?' is-win':''}" style="${position}" aria-label="${i<4?'横':i<8?'縦':'斜め'}ラインの特典">${bingoRewardMarkup(prize(i))}</div>`;
     $('bingoContent').innerHTML=`<div class="bingo-card" aria-label="4行4列のビンゴカード">${award(8,'grid-column:1;grid-row:1')}
       ${Array.from({length:4},(_,r)=>award(r,`grid-column:1;grid-row:${r+2}`)).join('')}
-      ${state.card.cells.map((emoji,i)=>`<div class="bingo-cell${state.marks.includes(i)?' is-punched':''}${winning.has(i)?' is-win':''}" data-bingo-cell="${i}" style="grid-column:${i%4+2};grid-row:${Math.floor(i/4)+2}" role="img" aria-label="${esc(emoji)}${state.marks.includes(i)?' 済':''}">${state.marks.includes(i)?'<span class="bingo-hole"></span>':esc(emoji)}</div>`).join('')}
+      ${state.card.cells.map((emoji,i)=>`<div class="bingo-cell${state.marks.includes(i)?' is-punched':''}${winning.has(i)?' is-win':''}" data-bingo-cell="${i}" style="grid-column:${i%4+2};grid-row:${Math.floor(i/4)+2}" role="img" aria-label="${esc(emoji)}${state.marks.includes(i)?' 済':''}">${state.marks.includes(i)?'':esc(emoji)}</div>`).join('')}
       ${Array.from({length:4},(_,c)=>award(c+4,`grid-column:${c+2};grid-row:6`)).join('')}${award(9,'grid-column:1;grid-row:6')}
-    </div><div class="bingo-actions">${state.finished?`<p class="bingo-result">BINGO!</p><div class="bingo-awards">${B.rewards(state.card,state.marks).prizes.map(bingoRewardMarkup).join('')}</div><p class="bingo-paid">${state.award?.moji?state.award.moji.toLocaleString('ja-JP')+'モジを獲得':''}${state.award?.moji&&state.award?.hatch?'・':''}${state.award?.hatch?'孵化＋'+state.award.hatch:B.rewards(state.card,state.marks).prizes.some(r=>r.kind==='hatch')?'（孵化ゲージ満タン）':''}</p><button type="button" id="bingoNewCard">NEW CARD</button>`:state.pending?'<button type="button" id="bingoResume">'+(state.pending.phase==='claim'?'報酬を受け取る':'抽選のつづき')+'</button>':!state.lastDay||state.lastDay<B.dayKey()?'<button type="button" id="bingoDraw">BINGO</button>':'<p class="bingo-tomorrow">次の抽選は明日</p>'}</div><p class="bingo-status" role="status">${esc(lastError)}</p>`;
+    </div><div class="bingo-actions">${state.finished?`<p class="bingo-result">BINGO!</p><div class="bingo-awards">${B.rewards(state.card,state.marks).prizes.map(bingoRewardMarkup).join('')}</div><p class="bingo-paid">${state.award?.moji?state.award.moji.toLocaleString('ja-JP')+'モジを獲得':''}${state.award?.moji&&state.award?.hatch?'・':''}${state.award?.hatch?'孵化＋'+state.award.hatch:B.rewards(state.card,state.marks).prizes.some(r=>r.kind==='hatch')?'（孵化ゲージ満タン）':''}</p><button type="button" id="bingoNewCard">NEW CARD</button>`:state.pending?'<button type="button" id="bingoResume">'+(state.pending.phase==='claim'?'報酬を受け取る':'抽選のつづき')+'</button>':!state.lastDay||state.lastDay<B.dayKey()?'<button type="button" id="bingoDraw">BINGO</button>':'<button type="button" id="bingoDraw" disabled>BINGO</button>'}</div><p class="bingo-status" role="status">${esc(lastError)}</p>`;
     $('bingoDraw')?.addEventListener('click',async()=>{
       if(working)return;
       await perform(async()=>{state=await mutate(s=>B.draw(s));await playPending();});
@@ -2437,7 +2437,6 @@ async function showDailyBingo(){
     const target=stage.querySelector('button');Object.assign(target.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
     await tapped(target);if(!live())return;
     state=await mutate(s=>s.card.id===cardId&&s.pending?.index===index&&s.pending.phase==='mark'?B.mark(s):s);
-    await target.animate([{transform:'scale(1)',opacity:1},{transform:'translateY(18px) scale(.65)',opacity:0}],{duration:450,easing:'ease-in'}).finished;
     stage.remove();render();
     if(state.pending?.phase==='claim')await claim();
   }

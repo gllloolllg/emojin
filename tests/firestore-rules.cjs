@@ -289,3 +289,22 @@ test('retired daily battles reject archived reads, voting, naming and unclaimed 
  await assertSucceeds(getDoc(doc(db,'wallets/u1/operations/daily-battle-old')));
  await assertFails(setDoc(doc(db,'wallets/u1/operations/daily-battle-old'),{amount:600}));
 });
+
+test('daily bingo pays all completed lines once using the existing private wallet receipt rules',async()=>{
+ const B=ctx.DailyBingo,db=env.authenticatedContext('u1').firestore(),other=env.authenticatedContext('u1').firestore();
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'wallets/u1'),{uid:'u1',wallet:{balance:4321,updatedAt:Date.now()},hatch:18,revision:1,recentOperations:[]}));
+ const card=B.createCard(()=>.4,'bingo-emulator');card.prizes=['moji-5000','hatch-10','moji-50','moji-100','moji-3000','hatch-3','moji-500','moji-1000','moji-2000','miss'];
+ function client(db){
+  const c={E,uid:'u1',auth:{currentUser:{uid:'u1'}},db,window:{DailyBingo:B},local:{},ensureWallet:async()=>{},applyAccount:()=>{},persist:()=>{},
+   F:{runTransaction:(db,fn)=>runTransaction(db,tx=>fn({get:ref=>tx.get(ref),set:(ref,value)=>tx.set(ref,plain(value))})),getDocFromServer:dep('firebase/firestore').getDocFromServer},
+   ref:(name,id)=>doc(db,name,id),walletRef:()=>doc(db,'wallets/u1'),receiptRef:id=>doc(db,'wallets/u1/operations/'+id)};
+  vm.createContext(c);
+  for(const [a,b]of [['  async function requireMatchRules(','  // One live subscription'],['  function nextAccount(','  function ensureWallet('],['  writeOperation=async op=>{','  // Pending operations keep their IDs']])vm.runInContext(source.slice(source.indexOf(a),source.indexOf(b)),c);
+  return marks=>c.writeOperation({id:card.id,action:'dailyBingo',data:{uid:'u1',card,marks,day:'2026-11-10'}});
+ }
+ const first=client(db),second=client(other),marks=[0,1,2,3,4,8,12];
+ const [a,b]=await Promise.all([first(marks),second(marks)]);assert.deepEqual(plain(a.record),plain(b.record));
+ const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.wallet.balance,12321);assert.equal(wallet.hatch,18);assert.equal(wallet.revision,2);
+ await first(marks);assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,12321);
+ await assertFails(getDoc(doc(env.authenticatedContext('u2').firestore(),'wallets/u1/operations/'+card.id)));
+});

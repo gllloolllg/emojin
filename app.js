@@ -592,6 +592,76 @@ root.MojiSpinEngine=Object.freeze({CONFIG,BET,byId,weighted,evaluateAnyBonus,eva
   root.DailyMojiDraw=Object.freeze({CONFIG,dayKey,validateDay,createRound,validateRound,validateRecord});
 })(globalThis);
 
+/* Daily Bingo: local cards, deterministic validation, immutable reward receipts. */
+(function(root){
+'use strict';
+const REWARDS=Object.freeze([
+ {id:'miss',kind:'miss',amount:0},
+ ...[50,100,500,1000,2000,3000,5000].map(amount=>({id:'moji-'+amount,kind:'moji',amount})),
+ ...[3,10].map(amount=>({id:'hatch-'+amount,kind:'hatch',amount}))
+].map(Object.freeze));
+const LINES=Object.freeze([
+ ...Array.from({length:4},(_,r)=>Array.from({length:4},(_,c)=>r*4+c)),
+ ...Array.from({length:4},(_,c)=>Array.from({length:4},(_,r)=>r*4+c)),
+ [0,5,10,15],[12,9,6,3]
+].map(Object.freeze));
+const copy=x=>JSON.parse(JSON.stringify(x));
+function dayKey(at=Date.now()){return new Date(at+9*3600000).toISOString().slice(0,10);}
+function validateDay(day){
+ if(typeof day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(day)||new Date(day+'T00:00:00Z').toISOString().slice(0,10)!==day)throw Error('ビンゴの日付が正しくありません。');
+ return day;
+}
+function shuffle(values,rng){
+ const result=[...values];for(let i=result.length-1;i>0;i--){const j=Math.min(i,Math.floor(rng()*(i+1)));[result[i],result[j]]=[result[j],result[i]];}return result;
+}
+function createCard(rng=Math.random,id='bingo-'+root.crypto.randomUUID()){
+ return {version:1,id,cells:shuffle(root.EmojinEngine.EMOJIS,rng).slice(0,16),prizes:shuffle(REWARDS.map(r=>r.id),rng)};
+}
+function validateCard(card){
+ if(!card||card.version!==1||!/^bingo-[\w-]{1,100}$/.test(card.id)||!Array.isArray(card.cells)||card.cells.length!==16
+  ||new Set(card.cells).size!==16||card.cells.some(e=>!root.EmojinEngine.EMOJIS.includes(e))
+  ||!Array.isArray(card.prizes)||card.prizes.length!==10||new Set(card.prizes).size!==10||card.prizes.some(id=>!REWARDS.some(r=>r.id===id)))throw Error('ビンゴカードを確認できませんでした。');
+ return card;
+}
+function validateMarks(marks){
+ if(!Array.isArray(marks)||marks.length>16||new Set(marks).size!==marks.length||marks.some(i=>!Number.isInteger(i)||i<0||i>15))throw Error('ビンゴのマスを確認できませんでした。');
+ return marks;
+}
+function completed(marks){validateMarks(marks);return LINES.flatMap((line,i)=>line.every(n=>marks.includes(n))?[i]:[]);}
+function rewards(card,marks){
+ validateCard(card);const lines=completed(marks);
+ return {lines,prizes:lines.map(i=>REWARDS.find(r=>r.id===card.prizes[i]))};
+}
+function createState(lastDay=null){return {version:1,card:createCard(),marks:[],lastDay,pending:null,finished:false};}
+function validateState(state){
+ if(!state||state.version!==1||typeof state.finished!=='boolean')throw Error('ビンゴの保存内容を確認できませんでした。');
+ validateCard(state.card);validateMarks(state.marks);if(state.lastDay!==null)validateDay(state.lastDay);
+ const win=completed(state.marks).length>0;
+ if(state.pending){
+  const p=state.pending;validateDay(p.day);
+  if(p.day!==state.lastDay||!['egg','mark','claim'].includes(p.phase)||!Number.isInteger(p.index)||p.index<0||p.index>15||state.finished
+   ||(p.phase==='claim'?(!win||!state.marks.includes(p.index)):state.marks.includes(p.index)))throw Error('ビンゴの途中結果を確認できませんでした。');
+ }
+ if(state.finished&&!win||win&&!state.finished&&state.pending?.phase!=='claim')throw Error('ビンゴの成立状態を確認できませんでした。');
+ return copy(state);
+}
+function draw(state,day=dayKey(),rng=Math.random){
+ const next=validateState(state);validateDay(day);
+ if(next.finished||next.pending||next.lastDay&&next.lastDay>=day)throw Error('本日の抽選は終了しました。');
+ const remaining=next.card.cells.flatMap((_,i)=>next.marks.includes(i)?[]:[i]);
+ const index=remaining[Math.min(remaining.length-1,Math.floor(rng()*remaining.length))];
+ next.lastDay=day;next.pending={day,index,phase:'egg'};return next;
+}
+function mark(state){
+ const next=validateState(state);if(next.pending?.phase!=='mark')throw Error('抽選結果を先に確認してください。');
+ next.marks.push(next.pending.index);next.marks.sort((a,b)=>a-b);
+ if(completed(next.marks).length)next.pending.phase='claim';else next.pending=null;
+ return next;
+}
+root.DailyBingo=Object.freeze({REWARDS,LINES,dayKey,validateDay,createCard,validateCard,validateMarks,completed,rewards,createState,validateState,draw,mark});
+})(globalThis);
+/* End Daily Bingo engine. */
+
 // Reserved drafts can finish; the six-resident limit applies to new reservations.
 function generationLimitReached(emojins,ownerUid){
   return emojins.filter(e=>e.status==='active'&&!e.isNpc&&e.ownerUid===ownerUid).length>=6;
@@ -864,6 +934,24 @@ async function createCloud() {
         return existing.exists()?{ok:true,record:existing.data(),account}:
           {ok:true,cancelled:true,cancelReason:'デイリーバトルは終了しました。',account};
       }
+      if(op.action==='dailyBingo') {
+        const B=window.DailyBingo,card=B.validateCard(op.data.card),day=B.validateDay(op.data.day);
+        if(op.id!==card.id)throw Error('ビンゴの報酬IDが正しくありません。');
+        const receipt=receiptRef(op.id),existing=await tx.get(receipt);
+        if(existing.exists()){
+          const record=existing.data();if(record.kind!=='dailyBingo'||record.cardId!==card.id)throw Error('ビンゴの報酬記録を確認してください。');
+          return {ok:true,record,account};
+        }
+        const reward=B.rewards(card,op.data.marks);if(!reward.lines.length)throw Error('まだビンゴが成立していません。');
+        await requireMatchRules(tx);
+        const wallet=E.accrueMoji(account.wallet,Date.now());
+        const moji=reward.prizes.filter(r=>r.kind==='moji').reduce((n,r)=>n+r.amount,0);
+        const hatch=Math.max(0,Math.min(20-account.hatch,reward.prizes.filter(r=>r.kind==='hatch').reduce((n,r)=>n+r.amount,0)));
+        wallet.balance+=moji;
+        const record={kind:'dailyBingo',cardId:card.id,day,lines:reward.lines,moji,hatch,at:Date.now()};
+        const next=nextAccount(account,{wallet,hatch:account.hatch+hatch},op.id);
+        tx.set(accountRef,next);tx.set(receipt,record);return {ok:true,record,account:next};
+      }
       if(op.action==='dailyDraw') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists()) {
@@ -1012,6 +1100,13 @@ async function createCloud() {
     saveDraft(value){if(value?.id===local.draft?.id){local.draft=E.clone(value);persist();}},
     addLoot(amount,id){const task=enqueue('walletReward',{uid,amount},id);task.catch(()=>resumeWrites());return task;},
     get slotPending(){return !!local.account?.slotRound || local.pending.some(op=>op.action==='slotSpin'&&op.data.uid===uid);},
+    async claimDailyBingo(card,marks,day){
+      window.DailyBingo.validateCard(card);window.DailyBingo.validateDay(day);
+      const data={uid,card,marks,day},id=card.id;
+      const result=await enqueue('dailyBingo',data,id);
+      const saved=result.results?.[id]||await retry(()=>writeOperation({action:'dailyBingo',data,id}));
+      return saved.record;
+    },
     async getDailyDraw(day){
       window.DailyMojiDraw.validateDay(day);
       await ensureWallet();await flush();
@@ -2237,11 +2332,137 @@ async function slotCueD(session,spin){
     ]);
   }finally{layer.getAnimations({subtree:true}).forEach(a=>a.cancel());layer.remove();session.cueLayer=null;}
 }
+/* Daily Bingo keeps the card on this device; only winning rewards touch the wallet. */
+function bingoRewardMarkup(reward){
+  if(reward.kind==='miss')return '<span class="bingo-miss" role="img" aria-label="はずれ">💩</span>';
+  if(reward.kind==='hatch')return `<span class="bingo-hatch" role="img" aria-label="孵化ポイント＋${reward.amount}">🥚<strong>＋${reward.amount}</strong></span>`;
+  return dailyRewardMarkup(reward).replace(reward.amount+'モジ',reward.amount.toLocaleString('en-US'));
+}
+async function showDailyBingo(){
+  if(busy||playback||!store?.player)return;
+  const B=window.DailyBingo,owner=cloud.uid,key='emojin.dailyBingo.'+FIREBASE_CONFIG.projectId+'.'+owner;
+  openModal('<h2 class="bingo-title">デイリービンゴ</h2><div id="bingoContent"></div>','デイリービンゴ',{panelClass:'bingo-panel'});
+  const panel=$('modalHost').querySelector('.bingo-panel');let state,working=false,lastError='',renderedDay='';
+  const live=()=>panel.isConnected&&owner===cloud.uid&&!modalClosing;
+  function read(){const value=localStorage.getItem(key);return value?B.validateState(JSON.parse(value)):B.createState();}
+  async function mutate(fn){
+    const run=()=>{const next=B.validateState(fn(read()));localStorage.setItem(key,JSON.stringify(next));return next;};
+    return navigator.locks?navigator.locks.request(key,run):run();
+  }
+  function prize(i){return B.REWARDS.find(r=>r.id===state.card.prizes[i]);}
+  function render(){
+    if(!live())return;renderedDay=B.dayKey();
+    const lines=B.completed(state.marks),winning=new Set(lines.flatMap(i=>B.LINES[i]));
+    const award=(i,position)=>`<div class="bingo-prize${lines.includes(i)?' is-win':''}" style="${position}" aria-label="${i<4?'横':i<8?'縦':'斜め'}ラインの特典">${bingoRewardMarkup(prize(i))}</div>`;
+    $('bingoContent').innerHTML=`<div class="bingo-card" aria-label="4行4列のビンゴカード">${award(8,'grid-column:1;grid-row:1')}
+      ${Array.from({length:4},(_,r)=>award(r,`grid-column:1;grid-row:${r+2}`)).join('')}
+      ${state.card.cells.map((emoji,i)=>`<div class="bingo-cell${state.marks.includes(i)?' is-punched':''}${winning.has(i)?' is-win':''}" data-bingo-cell="${i}" style="grid-column:${i%4+2};grid-row:${Math.floor(i/4)+2}" role="img" aria-label="${esc(emoji)}${state.marks.includes(i)?' 済':''}">${state.marks.includes(i)?'<span class="bingo-hole"></span>':esc(emoji)}</div>`).join('')}
+      ${Array.from({length:4},(_,c)=>award(c+4,`grid-column:${c+2};grid-row:6`)).join('')}${award(9,'grid-column:1;grid-row:6')}
+    </div><div class="bingo-actions">${state.finished?`<p class="bingo-result">BINGO!</p><div class="bingo-awards">${B.rewards(state.card,state.marks).prizes.map(bingoRewardMarkup).join('')}</div><p class="bingo-paid">${state.award?.moji?state.award.moji.toLocaleString('ja-JP')+'モジを獲得':''}${state.award?.moji&&state.award?.hatch?'・':''}${state.award?.hatch?'孵化＋'+state.award.hatch:B.rewards(state.card,state.marks).prizes.some(r=>r.kind==='hatch')?'（孵化ゲージ満タン）':''}</p><button type="button" id="bingoNewCard">NEW CARD</button>`:state.pending?'<button type="button" id="bingoResume">'+(state.pending.phase==='claim'?'報酬を受け取る':'抽選のつづき')+'</button>':!state.lastDay||state.lastDay<B.dayKey()?'<button type="button" id="bingoDraw">BINGO</button>':'<p class="bingo-tomorrow">次の抽選は明日</p>'}</div><p class="bingo-status" role="status">${esc(lastError)}</p>`;
+    $('bingoDraw')?.addEventListener('click',async()=>{
+      if(working)return;
+      await perform(async()=>{state=await mutate(s=>B.draw(s));await playPending();});
+    });
+    $('bingoResume')?.addEventListener('click',()=>perform(playPending));
+    $('bingoNewCard')?.addEventListener('click',()=>perform(async()=>{
+      state=await mutate(s=>s.finished?B.createState(s.lastDay):s);
+      if(live()){render();await panel.querySelector('.bingo-card').animate([{transform:'rotateY(90deg) scale(.8)',opacity:0},{transform:'rotateY(0) scale(1)',opacity:1}],{duration:600,easing:'ease-out'}).finished;}
+    }));
+  }
+  async function perform(task){
+    if(working||!live())return;working=true;busy=true;lastError='';document.body.classList.add('bingo-drawing');
+    const close=panel.querySelector('.modal-close');if(close)close.disabled=true;
+    panel.querySelectorAll('.bingo-actions button').forEach(b=>b.disabled=true);
+    try{await task();}
+    catch(error){lastError=error.message||'通信を確認して再試行してください。';console.warn('Daily bingo',error);try{state=read();}catch{}}
+    finally{
+      document.querySelector('.bingo-stage')?.remove();document.body.classList.remove('bingo-drawing');
+      working=false;busy=false;if(close)close.disabled=false;
+      if(live()&&state)render();refreshNav();
+    }
+  }
+  function sparkle(host){
+    const colors=['#ffe179','#8a6cff','#7df2de'];
+    for(let i=0;i<36;i++){
+      const dot=document.createElement('i');dot.className='bingo-spark';dot.style.background=colors[i%3];host.appendChild(dot);
+      dot.animate([{transform:'translate(0,0) scale(1)',opacity:1},{transform:`translate(${(Math.random()-.5)*360}px,${(Math.random()-.5)*440}px) rotate(240deg) scale(0)`,opacity:0}],{duration:1000+Math.random()*500,easing:'ease-out'}).finished.then(()=>dot.remove()).catch(()=>dot.remove());
+    }
+  }
+  function tapped(button,timeout=null){
+    return new Promise(resolve=>{
+      let timer;
+      const done=()=>{clearTimeout(timer);button.removeEventListener('click',done);resolve();};
+      button.addEventListener('click',done,{once:true});if(timeout!==null)timer=setTimeout(done,timeout);
+      button.focus({preventScroll:true});
+    });
+  }
+  async function claim(){
+    if(!live()||state.pending?.phase!=='claim')return;
+    const cardId=state.card.id;
+    render();panel.querySelectorAll('.bingo-actions button').forEach(b=>b.disabled=true);
+    const card=panel.querySelector('.bingo-card');
+    await card.animate([{filter:'brightness(1)'},{filter:'brightness(1.8)',offset:.4},{filter:'brightness(1)'}],{duration:950,easing:'ease-out'}).finished;
+    if(!live())return;
+    const record=await cloud.claimDailyBingo(state.card,state.marks,state.pending.day);
+    if(!live())return;
+    state=await mutate(s=>s.card.id===cardId&&s.pending?.phase==='claim'?{...s,pending:null,finished:true,award:{moji:record.moji,hatch:record.hatch}}:s);
+    render();
+    const result=panel.querySelector('.bingo-result');
+    if(result){
+      result.animate([{transform:'scale(.5)',opacity:0},{transform:'scale(1.2)',offset:.6},{transform:'scale(1)',opacity:1}],{duration:650,easing:'ease-out'});sparkle(card);
+    }
+  }
+  async function playPending(){
+    state=read();if(!live()||!state.pending)return;
+    if(state.pending.phase==='claim'){await claim();return;}
+    const {index}=state.pending,cardId=state.card.id;
+    const stage=document.createElement('div');stage.className='bingo-stage';stage.setAttribute('role','dialog');stage.setAttribute('aria-label','ビンゴの抽選');stage.setAttribute('aria-modal','true');document.body.appendChild(stage);
+    stage.addEventListener('keydown',event=>{if(event.key==='Tab'||event.key==='Escape'){event.preventDefault();stage.querySelector('button')?.focus({preventScroll:true});}});
+    if(state.pending.phase==='egg'){
+      stage.innerHTML='<button class="bingo-egg" type="button" aria-label="卵を開く">🥚</button>';
+      const egg=stage.querySelector('button');sparkle(stage);
+      const tap=tapped(egg,2000);
+      await egg.animate([{transform:'translateY(-75vh) rotate(-20deg) scale(.6)',opacity:0},{transform:'translateY(12px) rotate(8deg) scale(1.15)',opacity:1,offset:.75},{transform:'translateY(0) rotate(0) scale(1)',opacity:1}],{duration:850,easing:'cubic-bezier(.2,.6,.3,1)'}).finished;
+      await tap;if(!live())return;
+      sparkle(stage);
+      await egg.animate([{transform:'scale(1)'},{transform:'scale(1.35) rotate(-12deg)',offset:.5},{transform:'scale(1.8)',opacity:0}],{duration:400,easing:'ease-out'}).finished;
+      egg.textContent=state.card.cells[index];egg.setAttribute('aria-label',state.card.cells[index]);
+      await egg.animate([{transform:'scale(.3)',opacity:0,filter:'brightness(3)'},{transform:'scale(1.2)',opacity:1,offset:.6},{transform:'scale(1)',filter:'brightness(1)'}],{duration:600,easing:'ease-out'}).finished;
+      await delay(650);
+      state=await mutate(s=>s.card.id===cardId&&s.pending?.index===index&&s.pending.phase==='egg'?{...s,pending:{...s.pending,phase:'mark'}}:s);
+    }
+    if(!live()||state.card.id!==cardId||state.pending?.phase!=='mark')return;
+    render();const tile=panel.querySelector(`[data-bingo-cell="${index}"]`),rect=tile.getBoundingClientRect();
+    stage.innerHTML=`<button class="bingo-focus" type="button" aria-label="${esc(state.card.cells[index])}のマスを抜く">${esc(state.card.cells[index])}</button>`;
+    const target=stage.querySelector('button');Object.assign(target.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+    await tapped(target);if(!live())return;
+    state=await mutate(s=>s.card.id===cardId&&s.pending?.index===index&&s.pending.phase==='mark'?B.mark(s):s);
+    await target.animate([{transform:'scale(1)',opacity:1},{transform:'translateY(18px) scale(.65)',opacity:0}],{duration:450,easing:'ease-in'}).finished;
+    stage.remove();render();
+    if(state.pending?.phase==='claim')await claim();
+  }
+  try{state=await mutate(s=>s);render();if(state.pending)await perform(playPending);}
+  catch(error){if(live())$('bingoContent').innerHTML='<p class="bingo-status">保存内容を読み込めませんでした。端末の保存設定を確認してください。</p>';console.warn('Bingo state',error);}
+  if(!live())return;
+  const sync=()=>{if(live()&&!working){try{state=read();render();}catch(error){console.warn(error);}}};
+  const events=new AbortController(),watch=new MutationObserver(()=>{
+    if(!panel.isConnected){events.abort();watch.disconnect();}
+  });
+  watch.observe($('modalHost'),{childList:true});
+  window.addEventListener('storage',event=>{if(event.key===key)sync();},{signal:events.signal});
+  const timer=setInterval(()=>{if(!live())clearInterval(timer);else if(!working&&state&&renderedDay!==B.dayKey())render();},1000);
+}
+
 function installSlotButton(){
   if(!$('mojiSpinButton')){
     const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
     button.type='button';button.textContent='🎰';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
     document.querySelector('.mo-meter').appendChild(button);button.onclick=showMojiSpin;
+  }
+  if(!$('dailyBingoButton')){
+    const button=document.createElement('button');button.id='dailyBingoButton';button.className='bingo-launch';
+    button.type='button';button.textContent='🔢';button.setAttribute('aria-label','デイリービンゴ');
+    document.querySelector('.mo-meter').appendChild(button);button.onclick=showDailyBingo;
   }
   if(!$('mojiSpinFonts')){
     const link=document.createElement('link');link.id='mojiSpinFonts';link.rel='stylesheet';
@@ -2249,6 +2470,8 @@ function installSlotButton(){
   }
 }
 function refreshSlotUI(){
+  const bingo=$('dailyBingoButton');if(bingo)bingo.disabled=!store?.player;
+
   const launch=$('mojiSpinButton');
   if(launch){launch.disabled=!store?.player;launch.classList.toggle('has-round',!!cloud.slotPending);}
   const session=slotSession;if(!session||!session.panel.isConnected)return;

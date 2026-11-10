@@ -914,3 +914,40 @@ body.daily-draw-open .city-header .mo-reading{visibility:hidden}
 .slot-bet-up:disabled,.slot-bet-down:disabled{opacity:.25}
 .slot-bet-value{display:block;font-size:42px;line-height:1.3;font-variant-numeric:tabular-nums}
 @keyframes slot-bet-pop{from{opacity:0;transform:translateY(12px) scale(.85)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* Daily Bingo: ink, violet, mint and gold. */
+.bingo-launch{position:absolute;top:153px;left:8px;width:56px;height:56px;border-radius:50%;border:2px solid #7df2de;background:linear-gradient(145deg,#8a6cff,#493388);box-shadow:0 3px 10px #0005,inset 0 2px 3px #fff5;font-size:31px;padding:0;pointer-events:auto}
+.modal-panel.bingo-panel{--bingo-ink:#201c3c;--bingo-mint:#7df2de;--bingo-gold:#ffe179;width:min(420px,calc(100% - 16px));padding:32px 14px 20px;background:radial-gradient(ellipse at 80% 0,#8a6cff66,transparent 70%),var(--bingo-ink);border:1px solid #8a6cff;border-radius:20px;color:#fff9e7;overflow-y:auto}
+.bingo-panel .modal-close{left:auto;right:4px;top:0;color:#7df2de}
+.bingo-title{font-family:'Monomaniac One',sans-serif;font-size:clamp(25px,7vw,34px);text-align:center;margin:0 0 5px;color:#ffe179;line-height:1.4}
+.bingo-card{display:grid;grid-template-columns:48px repeat(4,minmax(0,1fr));grid-template-rows:48px repeat(4,1fr) 52px;gap:5px;position:relative;isolation:isolate}
+.bingo-cell{aspect-ratio:1;min-width:0;display:grid;place-items:center;font-size:clamp(25px,8vw,39px);background:#8a6cff;border:1px solid #b3a0ff;border-radius:11px;box-shadow:inset 0 -4px 0 #493388;position:relative}
+.bingo-cell.is-punched{background:#7df2de;border-color:#7df2de;box-shadow:inset 0 -4px 0 #4faeaa}
+.bingo-hole{display:block;width:76%;height:83%;align-self:end;border-radius:13px 13px 0 0;background:var(--bingo-ink);box-shadow:inset 0 3px 4px #08061888}
+.bingo-cell.is-win{border:2px solid #ffe179;box-shadow:0 0 14px #ffe17988}
+.bingo-prize{display:grid;place-items:center;position:relative;min-width:0;align-self:center;height:47px;overflow:visible}
+.bingo-prize.is-win{filter:drop-shadow(0 0 8px #ffe179)}
+.bingo-prize:first-child::after{content:'↘';position:absolute;right:-3px;bottom:-1px;font-size:15px;color:#ffe179}
+.bingo-prize:last-child::after{content:'↗';position:absolute;right:-3px;top:-3px;font-size:15px;color:#ffe179}
+.bingo-miss{font-size:30px;line-height:1}
+.bingo-hatch{display:grid;place-items:center;position:relative;font-size:34px;line-height:1.1;min-width:39px;height:45px}
+.bingo-hatch strong{position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);font-size:13px;color:#fff9e7;font-weight:800;white-space:nowrap;text-shadow:0 1px 3px #201c3c,1px 0 3px #201c3c}
+.bingo-panel .daily-reward{width:43px;height:47px;display:grid;place-items:center;position:relative}
+.bingo-panel .daily-moji svg{width:37px;height:45px}
+.bingo-panel .daily-reward strong{position:absolute;left:50%;top:auto;bottom:0;transform:translateX(-50%);font-size:12px;line-height:1.1;white-space:nowrap;color:#fff9e7;text-shadow:0 1px 3px #201c3c,1px 0 3px #201c3c}
+.bingo-actions{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:18px;min-height:51px}
+.bingo-actions button{min-height:46px;min-width:170px;padding:9px 20px;border-radius:13px;border:1px solid #ffe179;background:linear-gradient(#ffe179,#d3a94f);color:#201c3c;font-family:'Aldrich',ui-monospace,monospace;font-size:21px;letter-spacing:.08em;box-shadow:0 4px 0 #8a6cff}
+.bingo-actions button:disabled{opacity:.5}
+.bingo-result{font-family:'Monomaniac One',sans-serif;font-size:37px;line-height:1.1;margin:0;color:#ffe179;text-shadow:0 0 13px #ffe17988}
+.bingo-status,.bingo-tomorrow,.bingo-paid{font-size:12px;text-align:center;line-height:1.5;margin:8px 0 0;color:#7df2de}
+.bingo-status:empty{display:none}
+.bingo-awards{display:flex;justify-content:center;gap:10px;margin-top:6px}
+.bingo-stage{position:fixed;inset:0;z-index:220;background:#080614b8;overflow:hidden;touch-action:manipulation}
+.bingo-egg{position:absolute;left:calc(50% - 90px);top:27%;width:180px;height:190px;font-size:140px;line-height:1;padding:0;background:transparent;border:0;filter:drop-shadow(0 0 25px #ffe179);color:#fff9e7}
+.bingo-spark{position:absolute;left:50%;top:40%;width:8px;height:8px;border-radius:2px;pointer-events:none;z-index:2;box-shadow:0 0 10px currentColor}
+.bingo-focus{position:fixed;display:grid;place-items:center;border:2px solid #ffe179;border-radius:11px;background:#8a6cff;color:#fff9e7;font-size:clamp(25px,8vw,39px);padding:0;box-shadow:0 0 25px #ffe179,0 0 60px #7df2de66;animation:bingo-focus-pulse .8s ease-in-out infinite alternate}
+@keyframes bingo-focus-pulse{to{filter:brightness(1.3);box-shadow:0 0 35px #ffe179,0 0 80px #7df2de88}}
+body.bingo-drawing .mo-reading{visibility:hidden}
+@media(max-height:650px){.modal-panel.bingo-panel{padding-top:28px;padding-bottom:14px}.bingo-title{font-size:25px}.bingo-card{gap:4px;grid-template-rows:40px repeat(4,1fr) 44px}.bingo-actions{margin-top:12px}}
+
+@media(max-height:650px){.bingo-panel .bingo-awards{display:none}.bingo-result{font-size:30px}.bingo-actions{gap:6px}.bingo-paid{margin-top:0}}

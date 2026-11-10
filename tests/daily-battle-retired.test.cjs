@@ -28,10 +28,12 @@ test('committed old transactions acknowledge the existing receipt without repeat
   assert.deepEqual(plain(a.account),before);assert.equal(db.writes(),0);
  }
 });
-test('retired GAS scheduler and status do not access Firestore or the daily engine',()=>{
- const c={console:{log:()=>{}}};vm.createContext(c);
- vm.runInContext(fs.readFileSync('gas/DailyBattleScheduler.gs','utf8'),c);
- const store=new Proxy({}, {get(){throw Error('Retired scheduler must not access Firestore');}});
- for(const at of [0,Date.now(),Date.now()+86400000])assert.deepEqual(plain(c.dailyBattleTick_(store,at)),{retired:true,writes:0});
- assert.deepEqual(plain(c.checkDailyBattle()),{retired:true,status:'retired'});
+test('deleted daily GAS files are optional to the existing minute scheduler',()=>{
+ assert.equal(fs.existsSync('gas/DailyBattleScheduler.gs'),false);
+ assert.equal(fs.existsSync('gas/DailyBattleEngine.gs'),false);
+ const code=fs.readFileSync('gas/Code.gs','utf8');
+ const guarded=code.split('\n').find(line=>line.includes("typeof dailyBattleTick_==='function'"));
+ assert.ok(guarded);
+ const c={store:{},console:{error:()=>{throw Error('Missing optional scheduler should not throw');}}};
+ vm.createContext(c);assert.doesNotThrow(()=>vm.runInContext(guarded,c));
 });

@@ -158,7 +158,7 @@ function gasRuntime() {
    return {getResponseCode:()=>status,getContentText:()=>body};
   }}};
  vm.createContext(c);
- for(const file of ['Engine.gs','Code.gs','Migration.gs','Announcements.gs','DailyBattleScheduler.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
+ for(const file of ['Engine.gs','Code.gs','Migration.gs','Announcements.gs'])vm.runInContext(fs.readFileSync(path.join(root,'gas',file),'utf8'),c);
  return c;
 }
 test('GAS REST scheduler commits a complete match with real Firestore transactions and resumes idempotently',async()=>{

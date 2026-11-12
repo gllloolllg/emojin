@@ -38,48 +38,56 @@ async def main():
      box=await button.bounding_box()
      await page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
      await page.mouse.down()
-    await press(up);await page.clock.run_for(999)
-    assert await page.locator('.slot-bet-value').text_content()=='8'
-    await page.clock.run_for(1)
-    assert await page.locator('.slot-bet-value').text_content()=='16'
-    await page.clock.run_for(400)
-    assert await page.locator('.slot-bet-value').text_content()=='32'
+    value=page.locator('.slot-bet-value')
+    bounds=await value.bounding_box()
+    for button in [up,down]:
+     box=await button.bounding_box();assert box['x']>=bounds['x']+bounds['width']
+    await press(up)
+    assert await value.text_content()=='16' # Immediate, before release or long-press delay.
+    await page.clock.run_for(999);assert await value.text_content()=='16'
+    await page.clock.run_for(1);assert await value.text_content()=='24'
+    await page.clock.run_for(132);assert await value.text_content()=='24'
+    await page.clock.run_for(2);assert await value.text_content()=='32'
+    await page.clock.run_for(266);assert await value.text_content()=='48'
     await page.mouse.up();await page.clock.run_for(600)
-    assert await page.locator('.slot-bet-value').text_content()=='32'
-    await press(down);await page.clock.run_for(1200);await page.mouse.up()
-    assert await page.locator('.slot-bet-value').text_content()=='16'
-    await press(up);await page.clock.run_for(500);await page.mouse.up()
-    assert await page.locator('.slot-bet-value').text_content()=='24'
+    assert await value.text_content()=='48'
+    await press(down);assert await value.text_content()=='40'
+    await page.clock.run_for(1200);await page.mouse.up()
+    assert await value.text_content()=='24'
+    await press(up);assert await value.text_content()=='32'
+    await page.clock.run_for(500);await page.mouse.up()
+    assert await value.text_content()=='32'
     await press(up);await page.clock.run_for(1000)
-    box=await page.locator('.slot-bet-value').bounding_box()
+    box=await value.bounding_box()
     await page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
     await page.clock.run_for(1000);await page.mouse.up()
-    assert await page.locator('.slot-bet-value').text_content()=='32'
+    assert await value.text_content()=='48'
     await press(down);await page.clock.run_for(2000);await page.mouse.up()
-    assert await page.locator('.slot-bet-value').text_content()=='8'
-    # Closing while held must cancel its timer, including after reopening.
+    assert await value.text_content()=='8'
+    # Closing preserves the immediate step but cancels further repetition.
     await press(up);await page.clock.run_for(500)
     await page.locator('.slot-bet-dialog').evaluate('(el)=>el.close()')
     await page.clock.run_for(20)
     await page.locator('.slot-bet-dialog').wait_for(state='detached')
     await page.mouse.up()
     await page.locator('#slotBetButton').click();await page.clock.run_for(1500)
-    assert await page.locator('.slot-bet-value').text_content()=='8'
-    # Touch input uses the same cadence; cancellation also stops repetition.
+    assert await value.text_content()=='16'
     cdp=await ctx.new_cdp_session(page)
     box=await up.bounding_box();point={'x':box['x']+box['width']/2,'y':box['y']+box['height']/2}
     await cdp.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[point]})
+    assert await value.text_content()=='24'
     await page.clock.run_for(1200)
     await cdp.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
-    await page.clock.run_for(500)
-    assert await page.locator('.slot-bet-value').text_content()=='24'
+    await page.clock.run_for(500);assert await value.text_content()=='40'
     await cdp.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[point]})
+    assert await value.text_content()=='48'
     await page.clock.run_for(1000)
     await cdp.send('Input.dispatchTouchEvent',{'type':'touchCancel','touchPoints':[]})
-    await page.clock.run_for(500)
-    assert await page.locator('.slot-bet-value').text_content()=='32'
+    await page.clock.run_for(500);assert await value.text_content()=='56'
     await press(down);await page.clock.run_for(1800);await page.mouse.up()
-    assert await page.locator('.slot-bet-value').text_content()=='8'
+    assert await value.text_content()=='8'
+    await up.press('Enter');assert await value.text_content()=='16'
+    await down.press('Space');assert await value.text_content()=='8'
     await page.clock.resume()
     for _ in range(49):await page.locator('.slot-bet-up').click()
     assert await page.locator('.slot-bet-value').text_content()=='400'

@@ -2530,9 +2530,11 @@ function showSlotBet(){
   const dialog=document.createElement('dialog');dialog.className='slot-bet-dialog';
   dialog.setAttribute('aria-labelledby','slotBetTitle');
   dialog.innerHTML=`<h3 id="slotBetTitle">BET</h3>
-    <button class="slot-bet-up" type="button" aria-label="BETを8増やす">▲</button>
-    <output class="slot-bet-value" aria-live="polite"></output>
-    <button class="slot-bet-down" type="button" aria-label="BETを8減らす">▼</button>
+    <div class="slot-bet-adjust">
+      <output class="slot-bet-value" aria-live="polite"></output>
+      <button class="slot-bet-up" type="button" aria-label="BETを8増やす">▲</button>
+      <button class="slot-bet-down" type="button" aria-label="BETを8減らす">▼</button>
+    </div>
     <button class="slot-bet-set" type="button">SET</button>`;
   const up=dialog.querySelector('.slot-bet-up'),down=dialog.querySelector('.slot-bet-down');
   function change(step){
@@ -2559,10 +2561,12 @@ function showSlotBet(){
   for(const [button,step] of [[up,SLOT.BET],[down,-SLOT.BET]]){
     button.addEventListener('pointerdown',event=>{
       if(!event.isPrimary||event.button!==0||button.disabled)return;
-      stopHold(true);ignoredClick=null;
+      stopHold(true);ignoredClick=button;
       hold={button,step,pointerId:event.pointerId,repeated:false};
       button.setPointerCapture?.(event.pointerId);
-      hold.delay=setTimeout(()=>{repeat();if(hold)hold.interval=setInterval(repeat,200);},1000);
+      change(step);
+      if(button.disabled){stopHold(true);return;}
+      hold.delay=setTimeout(()=>{repeat();if(hold)hold.interval=setInterval(repeat,200/1.5);},1000);
     },{signal:events.signal});
     button.addEventListener('pointermove',event=>{
       if(!hold||hold.pointerId!==event.pointerId)return;

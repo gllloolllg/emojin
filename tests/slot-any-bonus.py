@@ -13,6 +13,7 @@ FIXTURES=r'''
 const fs=require('fs'),vm=require('vm'),crypto=require('crypto');
 const source=fs.readFileSync('app.js','utf8'),ctx={crypto:crypto.webcrypto};vm.createContext(ctx);
 vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),ctx);
+vm.runInContext(fs.readFileSync('slot-engine.js','utf8'),ctx);
 const S=ctx.MojiSpinEngine;
 function round(id,cells){const spins=cells.map((c,i)=>({...S.evaluate(c),free:i>0}));return {id:'slot-'+id,version:2,bet:8,freeCount:spins.length-1,spins,total:spins.reduce((n,s)=>n+s.payout,0),createdAt:Date.now()};}
 const empty=()=>Array(9).fill('blank'),zero=()=>{const c=empty();c[4]='wild';return c;};

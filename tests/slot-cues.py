@@ -10,7 +10,7 @@ base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
 WIDTH=int(os.environ.get('EMOJIN_TEST_WIDTH','390'));HEIGHT=int(os.environ.get('EMOJIN_TEST_HEIGHT','844'))
 FIXTURES=r'''
 const fs=require('fs'),vm=require('vm'),crypto=require('crypto'),source=fs.readFileSync('app.js','utf8');
-const c={crypto:crypto.webcrypto};vm.createContext(c);vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),c);const S=c.MojiSpinEngine;
+const c={crypto:crypto.webcrypto};vm.createContext(c);vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),c);vm.runInContext(fs.readFileSync('slot-engine.js','utf8'),c);const S=c.MojiSpinEngine;
 const plans=[['A','blank'],['A','wild'],['B','blank'],['B','wild'],['C','blank'],['C','wild'],['D','wild'],[null,'bell'],['C','blank'],['A','blank']];
 function round(i,center){const cells=Array(9).fill('blank');cells[4]=center;const freeCount=center==='wild'?4:0;
  const spins=Array.from({length:freeCount+1},(_,j)=>({...S.evaluate(cells),free:j>0}));

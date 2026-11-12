@@ -1,5 +1,7 @@
 # エモジンの開発方針
 
+- ファイルの担当は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。スロットの抽選・配当の正本は `slot-engine.js`。画面と共通ウォレット保存は `app.js`。必須JSを増やす場合はindex.htmlの読み込み順・SWのCORE・シェル名クエリとPWAテストを揃える。
+
 - デイリービンゴは [docs/DAILY_BINGO.md](docs/DAILY_BINGO.md) を参照。4×4・10特典重複なし、JST日次1マス・NEW CARD当日追加抽選なし。カードと途中結果は端末内オーナー別、報酬はカードIDの不変receiptとwallet同時保存で二重付与を防ぐ。孵化は上限20、モジは3,000で切り捨てない。
 - デイリーバトルは廃止（未受け取り賞金も含めて終了）。画面・投票・命名・受領は再導入しない。GASのDailyBattleScheduler.gsとDailyBattleEngine.gsは削除。2026-11-10にGAS削除・Firestore廃止ルール適用の完了報告を受領。通常hourlyBattleの毎分トリガーは維持。保存済みデータとreceiptは削除しない。手順は [docs/DAILY_BATTLE.md](docs/DAILY_BATTLE.md)。
 

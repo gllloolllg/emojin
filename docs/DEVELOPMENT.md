@@ -21,7 +21,8 @@ GitHub Pages 公開先：https://gllloolllg.github.io/emojin/ 。Firebase プロ
 | ファイル | 役割 |
 |---|---|
 | `index.html` | 日本語の画面DOM、PWA登録、シェル更新の検知・適用 |
-| `app.js` | 戦闘エンジン、スロットエンジン、Firebase接続・永続化、全画面の描画・演出 |
+| `slot-engine.js` | スロット抽選・配当・保存済み結果の検証（DOM・通信なし） |
+| `app.js` | 戦闘エンジン、Firebase接続・永続化、全画面の描画・演出 |
 | `style.css` | 街・戦闘・一覧・生成・スロット・配当表、スマホ/PWAレイアウト |
 | `sw.js` | シェルのハッシュ計算・ステージング・キャッシュ配信、Firebase SDKキャッシュ |
 | `manifest.webmanifest` | 日本語名、standalone、相対start_url/scope、アイコン |
@@ -42,7 +43,7 @@ SDK取得は `www.gstatic.com`、認証は `identitytoolkit.googleapis.com`・`s
 
 ## 実装の境界
 
-`app.js` は順に `EmojinEngine`、`MojiSpinEngine`、Firebase設定と `createCloud`、`createCloud().then(...)` 内のUIから成る。戦闘結果にはイベント列があり、UIは保存済み結果を再生する。
+`slot-engine.js` がスロットの `MojiSpinEngine` を定義する。`app.js` は通常バトルなどのエンジン、Firebase設定と `createCloud`、`createCloud().then(...)` 内のUIから成る。担当と変更時の確認は [ARCHITECTURE.md](ARCHITECTURE.md) を参照。戦闘結果にはイベント列があり、UIは保存済み結果を再生する。
 
 Authentication はオーナー名を正規化・ハッシュ化して合成メールアドレスにし、パスワードもハッシュ化してメール/パスワード認証に渡す。互換性に関わるため認証方式を無断変更しない。
 
@@ -192,13 +193,13 @@ UIは丸い金色🎰ボタン、絵文字37.5px、SkranjiのMOJI SPIN見出し�
 
 ## PWA更新の確認
 
-`sw.js` は `index.html`・`app.js`・`style.css` の全文をまとめてSHA-256化する。新シェルを先にキャッシュへ準備し、`CHECK_SHELL` と `APPLY_SHELL` メッセージで選択を切り替える。HTMLが参照するJS/CSSにはシェル名のクエリを付ける。
+`sw.js` は `index.html`・`slot-engine.js`・`app.js`・`style.css` の全文をまとめてSHA-256化する。新シェルを先にキャッシュへ準備し、`CHECK_SHELL` と `APPLY_SHELL` メッセージで選択を切り替える。HTMLが参照するJS/CSSにはシェル名のクエリを付ける。
 
 `index.html` は読み込み・再表示・オンライン復帰・5分間隔に更新を確認し、1秒間隔で適用可能か見る。`EmojinCanReload` はbusy・戦闘・モーダル・入力中・生成途中・未送信操作・復帰/孵化/落とし物演出等を確認する。`EmojinPrepareReload` でbusyを立ててからシェル適用とページ置換を行う。
 
 注意：SW自身の更新ではinstall中にskipWaiting、activateでactiveシェル切替・旧キャッシュ削除・clients.claimを実行する。この経路はアプリ側の適用可否判定を通らない。即座にページを強制再読み込みするコードではないが、プレイ中のキャッシュ切替・複数タブへの影響まで安全と断定できない。今回は変更せず、SW変更時の追加検証事項とする。
 
-画像・manifestは既存activeキャッシュを優先して再利用し、コア3ファイルのハッシュにも含めない。画像だけの更新はこのシェル検知の対象外。Firebase SDKは別キャッシュ。オフラインの静的表示が可能でも、認証やFirestoreのゲーム操作まで完全オフライン対応とは扱わない。
+画像・manifestは既存activeキャッシュを優先して再利用し、コア4ファイルのハッシュにも含めない。画像だけの更新はこのシェル検知の対象外。Firebase SDKは別キャッシュ。オフラインの静的表示が可能でも、認証やFirestoreのゲーム操作まで完全オフライン対応とは扱わない。
 
 ## 引き継ぎ文書との差異・不足資料
 

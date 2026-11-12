@@ -4,6 +4,7 @@ const {webcrypto}=require('node:crypto');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../app.js'),'utf8');
 const ctx={crypto:webcrypto};vm.createContext(ctx);
 vm.runInContext(source.slice(0,source.indexOf('/* Firebase configuration is public.')),ctx);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../slot-engine.js'),'utf8'),ctx);
 const S=ctx.MojiSpinEngine,E=ctx.EmojinEngine,plain=x=>JSON.parse(JSON.stringify(x));
 const old={crypto:webcrypto};vm.createContext(old);
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'fixtures/slot-v1-engine.cjs'),'utf8'),old);
@@ -223,4 +224,12 @@ for(const bet of [40,400])test(`${bet} BET settles once across retries, rejects 
  const other=walletStore(100),first=S.createRound(()=>.7,80);await other.spin(first);
  const redirected=await other.spin(round);assert.equal(redirected.record.round.bet,80);
  assert.equal(other.read('wallets/me').wallet.balance,100-80+first.total);
+});
+
+test('standalone engine loads without app, DOM or Firebase',()=>{
+ const isolated={crypto:webcrypto};vm.createContext(isolated);
+ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../slot-engine.js'),'utf8'),isolated);
+ const round=isolated.MojiSpinEngine.createRound(()=>.7,400);
+ isolated.MojiSpinEngine.validateRound(round);assert.equal(round.bet,400);
+ assert.equal(isolated.EmojinEngine,undefined);
 });

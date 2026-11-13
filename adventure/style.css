@@ -47,3 +47,6 @@
 .score-number{display:inline-flex;white-space:nowrap;letter-spacing:0;font-variant-numeric:tabular-nums}.score-number .score-digit{display:inline-block;flex:0 0 .65em;width:.65em;text-align:center}.battle-header .score-hud .score-number{margin:0}.score-table .score-number{font-size:inherit}
 
 .title-screen{position:relative}.play-price{position:absolute;right:16px;bottom:max(12px,env(safe-area-inset-bottom));font-size:15px;white-space:nowrap}.title-screen #start-error{position:absolute;bottom:36px;left:16px;right:16px;font-size:13px;margin:0;text-align:center}.title-screen .menu{margin-bottom:48px}.ranking-screen #rank-content{flex:1}body{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* Track sizes come only from the board, never from emoji intrinsic sizes. */
+.dungeon-area{grid-template-columns:24px minmax(0,1fr);min-width:0;min-height:0}.board,.help-dungeon{grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));min-width:0;min-height:0;contain:size}.board{width:100%;aspect-ratio:1}.cell,.help-cell{min-width:0;min-height:0}@media(min-width:600px){.dungeon-area{grid-template-columns:25px minmax(0,1fr)}}

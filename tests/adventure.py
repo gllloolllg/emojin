@@ -13,6 +13,18 @@ mockCloud.startAdventure=async id=>{starts.push(id);if(failStart)throw Error('�
 mockCloud.saveAdventureResult=async result=>{savedResults.push(result);if(failResult)throw Error('つうしんエラー');AdventureStore.validateResult(result);return {best:true,score:result.score}};
 mockCloud.adventurePersonal=async()=>[{score:123456,name:'me'}];mockCloud.adventureRankings=async()=>[{score:999999,name:'<img src=x>'},{score:123456,name:'me'}];
 '''
+async def check_grid(frame,board,cell):
+ dimensions="""(_,[board,cell])=>{const grid=document.querySelector(board),r=grid.getBoundingClientRect();return [r.width,r.height,...[...grid.querySelectorAll(cell)].flatMap(el=>{const b=el.getBoundingClientRect();return [b.x-r.x,b.y-r.y,b.width,b.height]})]}"""
+ original=await frame.locator(board).locator(cell).first.evaluate('(el)=>({html:el.innerHTML,style:el.getAttribute("style")})')
+ before=await frame.locator('body').evaluate(dimensions,[board,cell])
+ cells=[before[i:i+4] for i in range(2,len(before),4)]
+ assert max(c[2] for c in cells)-min(c[2] for c in cells)<1
+ assert max(c[3] for c in cells)-min(c[3] for c in cells)<1
+ assert all(abs(c[2]-c[3])<1 for c in cells)
+ await frame.locator('body').evaluate("(_,[board,cell])=>{const el=document.querySelector(board).querySelector(cell);el.style.fontSize='220px';el.textContent='🐦‍🔥🧛🦖';}",[board,cell])
+ after=await frame.locator('body').evaluate(dimensions,[board,cell])
+ assert all(abs(a-b)<.1 for a,b in zip(before,after)),(board,before,after)
+ await frame.locator(board).locator(cell).first.evaluate('(el,original)=>{el.innerHTML=original.html;if(original.style===null)el.removeAttribute("style");else el.setAttribute("style",original.style);window.scrollTo(0,0)}',original)
 async def main():
  server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(base.Quiet,directory=str(ROOT)));threading.Thread(target=server.serve_forever,daemon=True).start()
  try:
@@ -28,13 +40,24 @@ async def main():
     except: print('BOOT',await page.locator('#bootMessage').inner_text(),errors);raise
     tops=[await page.locator('#'+id).evaluate('(el)=>el.getBoundingClientRect().top') for id in ['adventureButton','mojiSpinButton','dailyBingoButton']];assert tops[0]<tops[1]<tops[2]
     await page.evaluate('mockCloud.wallet.balance=99');await page.locator('#adventureButton').tap();frame=page.frame_locator('#adventureFrame');await frame.locator('#start').wait_for();assert await frame.locator('#start').is_disabled();assert await frame.locator('.play-price').inner_text()=='1PLAY 100モジ';assert not await page.evaluate('EmojinCanReload()')
+    await frame.locator('#help').tap();await frame.locator('#help-next').tap()
+    await check_grid(frame,'.help-dungeon','.help-cell')
+    await frame.locator('#back').tap()
     await frame.locator('#exit').tap();await page.wait_for_selector('#adventureFrame',state='detached');assert await page.evaluate('starts.length')==0
     await page.evaluate('mockCloud.wallet.balance=200;failStart=true');await page.locator('#adventureButton').tap();await frame.locator('#start:enabled').wait_for();await frame.locator('#start').tap();await frame.locator('#start-error').filter(has_text='つうしん').wait_for()
     await page.evaluate('failStart=false');await frame.locator('#start').tap();await frame.locator('.map-screen').wait_for(timeout=10000);assert await page.evaluate('starts[0]===starts[1]');assert await page.evaluate('mockCloud.wallet.balance')==100
     state=await frame.locator('body').evaluate('()=>({name:Adventure.state.player.name,hp:Adventure.state.player.currentHp,legend:Adventure.state.legend.name})');assert state=={'name':'ほんもののマイエモジン','hp':7,'legend':'みんなのレジェンド'}
+    await check_grid(frame,'.board','.cell')
+    for floor,xp in [(1,1),(4,2),(8,3)]:
+     await frame.locator('body').evaluate("(el,floor)=>{epoch++;run.floor=floor;run.level=4;run.xp=0;const foe=enemy(floor<=3?0:floor<=7?1:2);foe.boss=false;foe.currentHp=0;battleDraw(foe,1,'run');battleVisual=copy([run.player,foe]);window.checkFinish=finishBattle(foe,false)}",floor)
+     await frame.locator('[data-phase="awaiting-tap"]').wait_for()
+     assert await frame.locator('body').evaluate('()=>run.xp')==xp
+    await frame.locator('body').evaluate("()=>{epoch++;run.floor=8;run.xp=0;const foe=enemy(2);foe.boss=false;battleDraw(foe,10,'run');battleVisual=copy([run.player,foe]);window.checkFinish=finishBattle(foe,true)}")
+    await frame.locator('[data-phase="awaiting-tap"]').wait_for();assert await frame.locator('body').evaluate('()=>run.xp')==0
+    await frame.locator('body').evaluate("()=>{epoch++;run.busy=false;drawMap()}")
     await page.screenshot(path=f'/tmp/emojin-adventure-integrated-{w}.png')
     await frame.locator('body').evaluate('()=>{run.player.currentHp=1;run.floor=10;const map=generateFloor(10,run.pos);if(map.boss.name!=="みんなのレジェンド"||map.boss.maxHp!==40)throw Error("legend mismatch");addScore("heart");window.parent.failResult=true;gameover(false)}');await frame.locator('.footnote').filter(has_text='さいしこう').wait_for();assert await page.evaluate('own.currentHp')==7
     await page.evaluate('failResult=false');await frame.locator('.gameover').tap();await frame.locator('.result-score').filter(has_text='ベストスコア').wait_for();await frame.locator('.gameover').tap();await frame.locator('#ranking').tap();await frame.locator('.score-table').wait_for();assert await frame.locator('.score-table img').count()==0;assert '<img src=x>' in await frame.locator('.score-table').inner_text();await frame.locator('#rank-mine').tap();await frame.locator('.score-table').filter(has_text='123456').wait_for();await frame.locator('#back').tap();await frame.locator('#exit').tap();await page.wait_for_selector('#adventureFrame',state='detached');assert not errors,errors;await ctx.close()
-   await browser.close();print('PASS integrated UI 390/320: icon order, price, 99/100 gate, payment retry same ID, owned emojin + legend copy, no main HP mutation, PWA reload guard, score retry, escaped names, leaderboard tabs, exit to town')
+   await browser.close();print('PASS integrated UI 390/320: fixed square grids despite giant emoji in dungeon/help, Lv1/2/3 XP and flee 0, icon order, price, 99/100 gate, payment retry same ID, owned emojin + legend copy, no main HP mutation, PWA reload guard, score retry, escaped names, leaderboard tabs, exit to town')
  finally:server.shutdown()
 asyncio.run(main())

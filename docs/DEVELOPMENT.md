@@ -147,7 +147,7 @@ localStorage の `emojin.firestore.v1.emojin-49855` にはローカル状態、�
 - iPhoneの画面高さ、standalone時100vh、safe-areaの既存調整を不用意に変更しない。
 - `reduced()` は常にfalse。OSの視差効果設定を読んでいてもアニメーション抑制には使っていない。過去のreducedMotion保存値は残る。
 - touch-action、user-select、touch-calloutでダブルタップズーム・長押し選択を抑止。一覧は縦スクロールとpinch-zoomを許す上書きがある。実機挙動は別途確認。
-- バトル速度は1/2/4倍、`emojin.battleSpeed` に保存。バトルのマイエモジン名のみ `.battle-my-name::before` で👤を枠外に表示。
+- バトル速度は1/2/4/6/8倍の順に循環（2026-11-13に6倍・8倍を追加）、`emojin.battleSpeed` に保存。バトルのマイエモジン名のみ `.battle-my-name::before` で👤を枠外に表示。
 - 戦闘エフェクト・メッセージ・実行中スロットに上位のz-index設定がある。実際の重なりは端末・局面別の確認が必要。
 - 街の名前は改行せず、幅に応じて縮小・位置補正する。
 - 一覧タブは下側。左右スワイプと矢印キーで移動でき、見出しはマイエモジン・レジェンド・ボチ。レジェンドは金色と光沢演出。

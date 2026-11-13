@@ -33,7 +33,7 @@ async def main():
    browser=await p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
    ctx=await browser.new_context(viewport={'width':WIDTH,'height':HEIGHT},is_mobile=True,has_touch=True,service_workers='block')
    mock='window.fixture='+json.dumps(fixtures)+r''';
-   localStorage.setItem('emojin.battleSpeed','4');
+   if(!localStorage.getItem('emojin.battleSpeed'))localStorage.setItem('emojin.battleSpeed','4');
    window.audit={paint:[],seen:[],saved:0};
    const player={uid:'me',name:'me',tutorialSeen:true,seenBattleSeq:0,seenLegendSeq:0,unreadBattleIds:fixture.logs.map(l=>l.battleId)};
    window.mockCloud={uid:'me',player,wallet:{balance:2000,updatedAt:Date.now()},hatch:0,hatchPending:0,canReload:true,
@@ -56,6 +56,11 @@ async def main():
    await page.wait_for_function("document.querySelector('#battleCount').textContent.includes('1 / 4')")
    await page.locator('#skipButton').click()
    await page.wait_for_function("!document.querySelector('#battleNext').disabled")
+   assert await page.locator('#speedButton').text_content()=='4×'
+   for speed in [6,8,1,2,4]:
+    await page.locator('#speedButton').tap()
+    assert await page.locator('#speedButton').text_content()==str(speed)+'×'
+    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")==str(speed)
    assert '1 / 4' in await page.locator('#battleCount').text_content()
    assert await page.locator('#battleTurn').text_content()==str(fixtures['logs'][0]['result']['turns'])+' / 10'
    assert sorted(await page.locator('.battle-record-reward').all_text_contents())==sorted(['☆＋3','💀＋1'])
@@ -136,8 +141,14 @@ async def main():
    assert all(s['defeats']==9 for p in award for s in p['states'] if s['id']=='award-a')
    assert any(p['id']=='old' for p in audit['paint'])
    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
+   for speed in [6,8]:
+    await page.evaluate("speed=>localStorage.setItem('emojin.battleSpeed',String(speed))",speed)
+    await page.reload()
+    await page.wait_for_function("document.querySelector('#battleCount').textContent.includes('1 / 4')")
+    assert await page.locator('#speedButton').text_content()==str(speed)+'×'
+   await page.screenshot(path=f'/tmp/emojin-speed-8-{WIDTH}.png')
    assert not errors,errors
-   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, counter {PRIOR} to {PRIOR+1}, fifth-or-later new skull retires, grandfathered winner keeps nine skulls, legend, speed persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, menu and triangle attached to battle button')
+   print(f'PASS {WIDTH}x{HEIGHT}: old log, ten turns, skip waits for tap with final dice/rewards, persistent rewards, counter {PRIOR} to {PRIOR+1}, fifth-or-later new skull retires, grandfathered winner keeps nine skulls, legend, 1/2/4/6/8 cycle and 6/8 reload persistence, no replay writes, no skulls in town, separated record/HP, larger numbers inside star, menu and triangle attached to battle button')
    await browser.close()
  finally:server.shutdown()
 asyncio.run(main())

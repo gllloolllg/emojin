@@ -1221,11 +1221,12 @@ const nameKey = s => normalName(s).toLocaleLowerCase("ja");
 const isReducedSystem = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let store, modalKind = null, modalReturn = null, toastTimer, busy = false, revealReady = false;
 let playback = null, currentBattle = null, battleStates = null;
+const REPLAY_SPEEDS = Object.freeze([1, 2, 4, 6, 8]);
 let replaySpeed = 1;
 
 try {
   const saved = Number(localStorage.getItem("emojin.battleSpeed"));
-  if ([1, 2, 4].includes(saved)) replaySpeed = saved;
+  if (REPLAY_SPEEDS.includes(saved)) replaySpeed = saved;
 } catch {}
 let legendResolve = null, revealResolve = null, revealAutoTimer = null;
 let wander = new Map(), canvasW = 0, canvasH = 0, priorFrame = 0;
@@ -3938,7 +3939,7 @@ function wireEvents() {
     advanceBattle();
   });
   $("speedButton").onclick = () => {
-    replaySpeed = replaySpeed === 1 ? 2 : replaySpeed === 2 ? 4 : 1;
+    replaySpeed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(replaySpeed)+1)%REPLAY_SPEEDS.length];
     $("speedButton").textContent = replaySpeed + "×";
 
     try {

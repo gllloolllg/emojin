@@ -155,13 +155,29 @@ service cloud.firestore {
         && result.runId == d.runId && result.score == d.score
         && result.score == adventureScore(result.events);
     }
+    function validAdventureBoard(d,uid) {
+      let result = getAfter(/databases/$(database)/documents/wallets/$(uid)/operations/$(d.latestRunId + '-result')).data;
+      let paid = get(/databases/$(database)/documents/wallets/$(uid)/operations/$(d.latestRunId)).data;
+      let wallet = getAfter(/databases/$(database)/documents/wallets/$(uid)).data;
+      return d.keys().hasOnly(['uid','name','version','score','runId','finishedAt','entries','latestRunId'])
+        && d.uid == uid && d.version == 3 && d.score is int && d.score >= 0
+        && d.name == get(/databases/$(database)/documents/owners/$(uid)).data.name
+        && d.entries is list && d.entries.size() > 0 && d.entries.size() <= 10
+        && d.entries == wallet.adventureScoresV3
+        && d.score == d.entries[0].score && d.runId == d.entries[0].runId
+        && d.finishedAt == d.entries[0].finishedAt
+        && paid.kind == 'adventureStart' && paid.uid == uid && paid.cost == 100
+        && result.kind == 'adventureResult' && result.uid == uid && result.version == 3
+        && result.runId == d.latestRunId && validAdventureEvents(result.events)
+        && result.score == adventureScore(result.events);
+    }
     match /adventureScoresV3/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && ready() && request.auth.uid == uid
-        && validAdventureScore(request.resource.data,uid);
+        && (validAdventureScore(request.resource.data,uid) || validAdventureBoard(request.resource.data,uid));
       allow update: if signedIn() && ready() && request.auth.uid == uid
-        && request.resource.data.score > resource.data.score
-        && validAdventureScore(request.resource.data,uid);
+        && ((request.resource.data.score > resource.data.score && validAdventureScore(request.resource.data,uid))
+          || (request.resource.data.score >= resource.data.score && validAdventureBoard(request.resource.data,uid)));
       allow delete: if false;
     }
     match /legends/{id} { allow read: if signedIn(); allow create: if signedIn() && ready(); allow update, delete: if false; }

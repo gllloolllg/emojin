@@ -44,10 +44,10 @@ function createStore({E,F,db,ref,receiptRef,nextAccount,requireMatchRules,getUid
   const record={kind:'adventureResult',runId:result.id,uid,version:VERSION,score:result.score,events:result.events,best,at:Date.now()};
   const next=nextAccount(account,{adventureScoresV3:top},op.id);
   tx.set(receipt,record);tx.set(accountRef,next);
-  if(best)tx.set(board(uid),{uid,name,version:VERSION,score:result.score,runId:result.id,finishedAt:entry.finishedAt});
+  tx.set(board(uid),{uid,name,version:VERSION,score:top[0].score,runId:top[0].runId,finishedAt:top[0].finishedAt,entries:top,latestRunId:result.id});
   return {ok:true,record,account:next};
  }
- async function rankings(){const snap=await F.getDocsFromServer(F.query(F.collection(db,'adventureScoresV3'),F.orderBy('score','desc'),F.limit(10)));return snap.docs.map(d=>d.data());}
+ async function rankings(){const snap=await F.getDocsFromServer(F.query(F.collection(db,'adventureScoresV3'),F.orderBy('score','desc'),F.limit(10)));const records=snap.docs.flatMap(d=>{const player=d.data();return (Array.isArray(player.entries)?player.entries:[player]).map(r=>({...r,uid:player.uid,name:player.name}));});return records.sort((a,b)=>b.score-a.score||(a.uid<b.uid?-1:a.uid>b.uid?1:0)||a.finishedAt-b.finishedAt||a.runId.localeCompare(b.runId)).slice(0,10);}
  return {prepareStart,write,rankings};
 }
 root.AdventureStore={COST,VERSION,WEIGHTS,validateResult,snapshot,createStore};

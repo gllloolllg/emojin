@@ -795,11 +795,13 @@ async function createCloud() {
     }).catch(error=>{walletReady=null;throw error;});
     return walletReady;
   }
+  function adventureStore(){return window.AdventureStore.createStore({E,F,db,ref,receiptRef,nextAccount,requireMatchRules,getUid:()=>uid});}
   writeOperation=async op=>{
     if(!auth.currentUser || op.data.uid!==uid)throw Error('オーナーログインが必要です。');
     await ensureWallet();
     const result=await F.runTransaction(db,async tx=>{
       const accountRef=walletRef(),accountSnap=await tx.get(accountRef),account=accountSnap.data();
+      if(op.action==='adventureStart'||op.action==='adventureResult')return adventureStore().write(tx,accountRef,account,op);
       if(op.action==='slotSpin') {
         const receipt=receiptRef(op.id),existing=await tx.get(receipt);
         if(existing.exists()) {
@@ -941,6 +943,13 @@ async function createCloud() {
       plan.legends.forEach(l=>tx.set(ref('legends',String(l.seq)),{seq:l.seq,json:JSON.stringify(l)}));
       tx.set(metaRef,{...plan.meta,revision:Number(meta.revision||0)+1});tx.set(accountRef,next);
       return {ok:true,seq:plan.log.seq,log:plan.log,npcs:plan.npcs,legends:plan.legends,account:next};
+    }).catch(async error=>{
+      if(op.action!=='adventureStart'&&op.action!=='adventureResult')throw error;
+      // A competing same-ID commit may win while rules reject our stale revision.
+      const saved=await F.getDocFromServer(receiptRef(op.id));
+      if(!saved.exists())throw error;
+      const current=await F.getDocFromServer(walletRef());
+      return {ok:true,record:saved.data(),account:current.data()};
     });
     applyAccount(result.account);
     if(result.cancelled) {
@@ -987,6 +996,20 @@ async function createCloud() {
     local.player=owner;persist();await ensureWallet();return {uid,name:owner.name};
   }
   return {
+    async startAdventure(id){
+      const existing=local.pending.find(op=>op.id===id&&op.action==='adventureStart');
+      const data=existing?.data||{uid,...await adventureStore().prepareStart()};
+      const sent=await enqueue('adventureStart',data,id);
+      return (sent.results?.[id]||await retry(()=>writeOperation({action:'adventureStart',data,id}))).record;
+    },
+    async saveAdventureResult(result){
+      result=E.clone(result); // Normalize data crossing the iframe realm before the SDK sees it.
+      const id=result.id+'-result',data={uid,result};
+      const sent=await enqueue('adventureResult',data,id);
+      return (sent.results?.[id]||await retry(()=>writeOperation({action:'adventureResult',data,id}))).record;
+    },
+    async adventureRankings(){return adventureStore().rankings();},
+    async adventurePersonal(){await ensureWallet();await flush();const snap=await F.getDocFromServer(walletRef());applyAccount(snap.data());return snap.data().adventureScoresV3||[];},
     takeUpgradeNotice(){const message=local.upgradeNotice;delete local.upgradeNotice;persist();return message;},
     get revivalPending(){return !!local.revivalPending && local.revivalPending.uid===uid;},
     completeRevival(){delete local.revivalPending;persist();},
@@ -1834,7 +1857,7 @@ function saveDailyState(state){
   try{localStorage.setItem(dailyStorageKey(),JSON.stringify(state));}catch(error){console.warn('Daily draw state',error);}
 }
 function dailyCanShow(){
-  return !!store?.player && (store.player.tutorialSeen || dailyTutorialDoneUid===cloud.uid) && !document.hidden && !busy && !playback && !modalKind && !modalClosing && !revivalPlaying
+  return !adventureFrame && !!store?.player && (store.player.tutorialSeen || dailyTutorialDoneUid===cloud.uid) && !document.hidden && !busy && !playback && !modalKind && !modalClosing && !revivalPlaying
     && !store.draft && !hatchAnimating && !lootFlights && $('battleMenu').classList.contains('hidden')
     && !(store.battles||[]).some(b=>(store.player.unreadBattleIds||[]).includes(b.battleId))
     && !(store.legends||[]).some(l=>l.seq>(store.player.seenLegendSeq||0))
@@ -2006,7 +2029,7 @@ const LOOT = Object.freeze({interval:10000, chance:1/6, limit:3, lifetime:120000
 const streetLoot=new Map();
 let lootLayer,lootElapsed=0,lootSerial=0,lootFlights=0,lootPending=0;
 function lootCanPlay() {
-  return !!store?.player && !document.hidden && !busy && !playback && !modalKind
+  return !adventureFrame && !!store?.player && !document.hidden && !busy && !playback && !modalKind
     && $('battleMenu').classList.contains('hidden')
     && !modalClosing && !revivalPlaying && !store.draft
     && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','detailHost','popoverHost']
@@ -2351,7 +2374,22 @@ async function showDailyBingo(){
   const timer=setInterval(()=>{if(!live())clearInterval(timer);else if(!working&&state&&renderedDay!==B.dayKey())render();},1000);
 }
 
+let adventureFrame=null;
+function showAdventure(){
+  if(busy||playback||modalKind||!store?.player||adventureFrame)return;
+  closeBattleMenu();
+  const frame=document.createElement('iframe');frame.id='adventureFrame';frame.className='adventure-frame';frame.title='エモジンのぼうけん';
+  const shell=new URLSearchParams(location.search).get('_emojin_shell');frame.src='./adventure/index.html'+(shell?'?_emojin_shell='+encodeURIComponent(shell):'');
+  adventureFrame=frame;document.body.classList.add('adventure-open');$('cityScreen').inert=true;document.body.append(frame);frame.focus();
+}
+function installAdventureHost(){window.EmojinAdventureHost={
+ status(){return {uid:cloud.uid,name:cloud.player?.name,balance:cloud.wallet.balance,hasPlayer:!!store?.emojins?.some(e=>e.ownerUid===cloud.uid&&!e.isNpc&&e.status==='active')};},
+ start:id=>cloud.startAdventure(id),save:result=>cloud.saveAdventureResult(result),rankings:()=>cloud.adventureRankings(),personal:()=>cloud.adventurePersonal(),
+ exit(){adventureFrame?.remove();adventureFrame=null;document.body.classList.remove('adventure-open');$('cityScreen').inert=false;refreshNav();$('adventureButton')?.focus();}
+};}
 function installSlotButton(){
+  installAdventureHost();
+  if(!$('adventureButton')){const b=document.createElement('button');b.id='adventureButton';b.className='adventure-launch';b.type='button';b.textContent='🗡️';b.setAttribute('aria-label','エモジンのぼうけん');document.querySelector('.mo-meter').append(b);b.onclick=showAdventure;}
   if(!$('mojiSpinButton')){
     const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
     button.type='button';button.textContent='🎰';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
@@ -2368,6 +2406,7 @@ function installSlotButton(){
   }
 }
 function refreshSlotUI(){
+  const adventure=$('adventureButton');if(adventure)adventure.disabled=!store?.player;
   const bingo=$('dailyBingoButton');if(bingo)bingo.disabled=!store?.player;
 
   const launch=$('mojiSpinButton');
@@ -4054,7 +4093,7 @@ async function init() {
   await playUpdates();
 }
 // Updating is deferred until local writes finish and the owner is back in town.
-window.EmojinCanReload=()=>!!store && !busy && !playback && $('battleMenu').classList.contains('hidden') && (!modalKind || modalKind==='オーナー認証') && !modalClosing
+window.EmojinCanReload=()=>!adventureFrame && !!store && !busy && !playback && $('battleMenu').classList.contains('hidden') && (!modalKind || modalKind==='オーナー認証') && !modalClosing
   && !revivalPlaying && !store.draft && !lootFlights && !hatchAnimating && cloud.canReload
   && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')
   && ['bootScreen','battleScreen','battleCutin','tutorial','revealScreen','legendScreen','popoverHost','detailHost']

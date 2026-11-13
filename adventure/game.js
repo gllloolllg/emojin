@@ -15,7 +15,7 @@ function body(name,emoji,hp,slots){return {id:crypto.randomUUID(),name,emoji,max
 const app=document.querySelector('#app');let run=null,mode='title',epoch=0;
 const SCORE_RULES=window.parent.AdventureStore.WEIGHTS;
 const SCORE_VERSION=window.parent.AdventureStore.VERSION;
-function scoreDigits(score){return `<span class="score-number" data-score-number aria-label="${score}">${String(score).padStart(6,'0').split('').map(d=>`<span class="score-digit" aria-hidden="true">${d}</span>`).join('')}</span>`;}
+function scoreDigits(score,minDigits=6){return `<span class="score-number" data-score-number aria-label="${score}">${String(score).padStart(minDigits,'0').split('').map(d=>`<span class="score-digit" aria-hidden="true">${d}</span>`).join('')}</span>`;}
 function scoreMarkup(){return `<div class="score-hud">スコア　${scoreDigits(run?.score??0)}</div>`;}
 function addScore(event,count=1){if(!run||run.result)return;const value=SCORE_RULES[event];if(!value||count<=0)return;run.score+=value*count;run.scoreEvents[event]=(run.scoreEvents[event]||0)+count;app.querySelectorAll('.score-hud [data-score-number]').forEach(el=>{el.outerHTML=scoreDigits(run.score);});}
 
@@ -26,7 +26,7 @@ async function ranking(tab='all'){
  mode='ranking';sceneTheme();const token=++epoch;
  app.innerHTML=`<section class="screen ranking-screen"><h1>ランキング</h1><div class="ranking-tabs" role="tablist" aria-label="ランキング"><button role="tab" aria-selected="${tab==='all'}" id="rank-all">みんな</button><button role="tab" aria-selected="${tab==='mine'}" id="rank-mine">じぶん</button></div><div id="rank-content">よみこみちゅう</div><button class="text-btn" id="back">もどる</button></section>`;
  app.querySelector('#rank-all').onclick=()=>ranking('all');app.querySelector('#rank-mine').onclick=()=>ranking('mine');app.querySelector('#back').onclick=title;
- try{const rows=await (tab==='all'?HOST.rankings():HOST.personal());if(epoch!==token||mode!=='ranking')return;app.querySelector('#rank-content').innerHTML=`<table class="score-table"><thead><tr><th>ランク</th><th>スコア</th><th>なまえ</th></tr></thead><tbody>${rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${scoreDigits(r.score)}</td><td>${esc(r.name)}</td></tr>`).join('')||'<tr><td colspan="3">きろくは まだ ないよ</td></tr>'}</tbody></table>`;}catch{if(epoch===token)app.querySelector('#rank-content').textContent='よみこめませんでした。もういちど ひらいてください。';}
+ try{const rows=await (tab==='all'?HOST.rankings():HOST.personal());if(epoch!==token||mode!=='ranking')return;app.querySelector('#rank-content').innerHTML=`<table class="score-table"><thead><tr><th>ランク</th><th>スコア</th><th>なまえ</th></tr></thead><tbody>${rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${scoreDigits(r.score,1)}</td><td>${esc(r.name)}</td></tr>`).join('')||'<tr><td colspan="3">きろくは まだ ないよ</td></tr>'}</tbody></table>`;}catch{if(epoch===token)app.querySelector('#rank-content').textContent='よみこめませんでした。もういちど ひらいてください。';}
 }
 
 const wait=ms=>new Promise(r=>setTimeout(r,ms));

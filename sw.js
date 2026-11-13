@@ -1,9 +1,9 @@
 /* A complete shell is staged first and selected only when the UI can reload. */
 const BASE = new URL('./', self.location.href);
-// A new namespace keeps three-file workers from deleting staged four-file shells.
-const PREFIX = 'emojin-shell-v2-' + encodeURIComponent(BASE.pathname) + '-';
+// Isolate the complete adventure shell from older workers during safe updates.
+const PREFIX = 'emojin-shell-v3-' + encodeURIComponent(BASE.pathname) + '-';
 const META = PREFIX + 'meta';
-const CORE = ['index.html', 'slot-engine.js', 'app.js', 'style.css'];
+const CORE = ['index.html', 'slot-engine.js', 'adventure-store.js', 'app.js', 'style.css', 'adventure/index.html', 'adventure/engine.js', 'adventure/game.js', 'adventure/style.css'];
 const EXTRAS = ['city-background.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const key = name => new URL(name, BASE).href;
 let installingShell, operation = Promise.resolve();
@@ -101,7 +101,7 @@ self.addEventListener('fetch', event => {
         const headers=new Headers(cached.headers);headers.set('Cache-Control','no-store');
         headers.delete('Content-Length');headers.delete('ETag');
         let body=await cached.text();
-        if(file==='index.html')body=body.replace(/((?:src|href)=["']\.\/(?:slot-engine\.js|app\.js|style\.css))(["'])/g,
+        if(file==='index.html'||file==='adventure/index.html')body=body.replace(/((?:src|href)=["']\.\/(?:slot-engine\.js|adventure-store\.js|app\.js|engine\.js|game\.js|style\.css))(["'])/g,
           (_,path,quote)=>path+'?_emojin_shell='+encodeURIComponent(active)+quote);
         return new Response(body,{status:cached.status,statusText:cached.statusText,headers});
       }

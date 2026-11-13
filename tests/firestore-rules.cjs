@@ -308,3 +308,62 @@ test('daily bingo pays all completed lines once using the existing private walle
  await first(marks);assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,12321);
  await assertFails(getDoc(doc(env.authenticatedContext('u2').firestore(),'wallets/u1/operations/'+card.id)));
 });
+
+// Adventure integration: real Firestore transactions using the production adapter.
+vm.runInContext(fs.readFileSync(path.join(root,'adventure-store.js'),'utf8'),ctx);
+function adventureClient(db,uid='u1'){
+ const F={doc,collection,query,where,orderBy:require('node:module').createRequire(path.join(process.env.RULE_TEST_DEPENDENCIES||root,'package.json'))('firebase/firestore').orderBy,limit:require('node:module').createRequire(path.join(process.env.RULE_TEST_DEPENDENCIES||root,'package.json'))('firebase/firestore').limit,getDocsFromServer:getDocs};
+ const service=ctx.AdventureStore.createStore({E,F,db,ref:(c,id)=>doc(db,c,id),receiptRef:id=>doc(db,'wallets',uid,'operations',id),getUid:()=>uid,
+  nextAccount:(account,patch,id)=>({...account,...patch,revision:account.revision+1,recentOperations:[...(account.recentOperations||[]),id].slice(-64)}),
+  requireMatchRules:async tx=>{const gate=(await tx.get(doc(db,'config/battle'))).data();if(gate.maintenance)throw Error('maintenance');}});
+ return {service,write:(action,id,data)=>runTransaction(db,async tx=>{const wallet=doc(db,'wallets',uid);const snap=await tx.get(wallet);return service.write({get:r=>tx.get(r),set:(r,v)=>tx.set(r,plain(v))},wallet,snap.data(),{action,id,data});}).catch(async error=>{const saved=await getDoc(doc(db,'wallets',uid,'operations',id));if(!saved.exists())throw error;return {ok:true,record:saved.data(),account:(await getDoc(doc(db,'wallets',uid))).data()};})};
+}
+test('adventure pays once, copies owned living resident and all-player legend, returns same receipt on retry',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);
+ await env.withSecurityRulesDisabled(async context=>{const d=context.firestore();await setDoc(doc(d,'emojins/legend'),{...resident('legend','u2'),status:'legend',stars:50});});
+ const start={playerId:'a',legendId:'legend'};
+ const before=(await getDoc(doc(db,'wallets/u1'))).data().wallet.balance;
+ const [one,two]=await Promise.all([c.write('adventureStart','adventure-paid',start),c.write('adventureStart','adventure-paid',start)]);
+ assert.deepEqual(plain(one.record),plain(two.record));assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,E.accrueMoji({balance:before,updatedAt:1},one.record.at).balance-100);
+ assert.equal(one.record.player.currentHp,one.record.player.maxHp);assert.equal(one.record.player.baseMaxHp,one.record.player.maxHp);assert.equal(one.record.legend.maxHp,40);
+ assert.equal((await getDoc(doc(db,'emojins/a'))).data().status,'active');
+ await assert.rejects(c.write('adventureStart','adventure-other-owner',{playerId:'b',legendId:null}));
+});
+test('adventure refuses insufficient funds and independently checks the latest resident status',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);
+ await env.withSecurityRulesDisabled(async context=>{const d=context.firestore(),w=doc(d,'wallets/u1');await setDoc(w,{...(await getDoc(w)).data(),wallet:{balance:99,updatedAt:Date.now()}});});
+ await assert.rejects(c.write('adventureStart','adventure-poor',{playerId:'a',legendId:null}));assert.equal((await getDoc(doc(db,'wallets/u1'))).data().wallet.balance,99);
+ assert.equal((await getDoc(doc(db,'wallets/u1/operations/adventure-poor'))).exists(),false);
+ await env.withSecurityRulesDisabled(async context=>{const d=context.firestore();await setDoc(doc(d,'emojins/a'),{...resident('a','u1'),status:'dead'});});
+ await assert.rejects(c.write('adventureStart','adventure-dead',{playerId:'a',legendId:null}));
+});
+test('adventure saves personal top ten and one public best atomically; retries are idempotent and equal scores do not update best',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);
+ await env.withSecurityRulesDisabled(async context=>{const d=context.firestore(),w=doc(d,'wallets/u1');await setDoc(w,{...(await getDoc(w)).data(),wallet:{balance:5000,updatedAt:Date.now()}});});
+ for(let i=0;i<12;i++){
+  const id='adventure-run-'+i;await c.write('adventureStart',id,{playerId:'a',legendId:null});
+  const result={id,version:3,score:i*100,floor:1,level:1,clear:false,events:{heart:i}};
+  const saved=await c.write('adventureResult',id+'-result',{result});assert.equal(saved.record.best,true);
+  const again=await c.write('adventureResult',id+'-result',{result});assert.deepEqual(plain(saved.record),plain(again.record));
+ }
+ const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.adventureScoresV3.length,10);assert.equal(wallet.adventureScoresV3[0].score,1100);
+ const board=(await getDoc(doc(db,'adventureScoresV3/u1'))).data();assert.equal(board.name,'Owner');assert.equal(board.score,1100);
+ assert.equal((await getDoc(doc(env.authenticatedContext('u2').firestore(),'adventureScoresV3/u1'))).exists(),true);
+ await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'adventureScoresV3/u1')));
+ await assertFails(setDoc(doc(env.authenticatedContext('u2').firestore(),'adventureScoresV3/u1'),board));
+ const id='adventure-equal';await c.write('adventureStart',id,{playerId:'a',legendId:null});const saved=await c.write('adventureResult',id+'-result',{result:{id,version:3,score:1100,floor:1,level:1,clear:false,events:{heart:11}}});assert.equal(saved.record.best,false);
+ const forged={...board,score:999999,runId:'adventure-unpaid'};await assertFails(setDoc(doc(db,'adventureScoresV3/u1'),forged));
+});
+test('adventure rejects forged score totals and unpaid results without changing the wallet',async()=>{
+ const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);
+ const result={id:'adventure-unpaid',version:3,score:100,floor:1,level:1,clear:false,events:{heart:1}};
+ await assert.rejects(c.write('adventureResult',result.id+'-result',{result}));
+ await c.write('adventureStart','adventure-checked',{playerId:'a',legendId:null});
+ await assert.rejects(c.write('adventureResult','adventure-checked-result',{result:{...result,id:'adventure-checked',score:999}}));
+ await assertFails(setDoc(doc(db,'wallets/u1/operations/adventure-fake'),{kind:'adventureStart',runId:'adventure-fake',uid:'u1',version:3,cost:100,player:{id:'a'}}));
+});
+test('adventure draw includes legends beyond 200 and excludes dead, NPC and foreign player starts',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{const db=context.firestore(),batch=writeBatch(db);for(let i=0;i<230;i++){const id='legend-'+String(i).padStart(3,'0');batch.set(doc(db,'emojins',id),{...resident(id,'u2'),status:'legend',stars:50});}batch.set(doc(db,'emojins/npc'),{...resident('npc','u1'),isNpc:true});await batch.commit();});
+ const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);vm.runInContext('Math.random=()=>0.999999',ctx);
+ try{const draw=await c.service.prepareStart();assert.equal(draw.playerId,'a');assert.equal(draw.legendId,'legend-229');}finally{vm.runInContext('Math.random=()=>0.5',ctx);}
+});

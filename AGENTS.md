@@ -1,5 +1,7 @@
 # エモジンの開発方針
 
+- ミニゲーム「エモジンのぼうけん」は [docs/ADVENTURE.md](docs/ADVENTURE.md)。はじめるで100モジ、wallet/receiptで二重課金防止、元個体を変更しない。ランキングのFirestoreルールを先に適用し、確認後にフロントを公開する。
+
 - ファイルの担当は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。スロットの抽選・配当の正本は `slot-engine.js`。画面と共通ウォレット保存は `app.js`。必須JSを増やす場合はindex.htmlの読み込み順・SWのCORE・シェル名クエリとPWAテストを揃える。
 
 - デイリービンゴは [docs/DAILY_BINGO.md](docs/DAILY_BINGO.md) を参照。4×4・10特典重複なし、JST日次1マス・NEW CARD当日追加抽選なし。カードと途中結果は端末内オーナー別、報酬はカードIDの不変receiptとwallet同時保存で二重付与を防ぐ。孵化は上限20、モジは3,000で切り捨てない。

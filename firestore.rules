@@ -38,7 +38,8 @@ service cloud.firestore {
         allow read: if signedIn() && request.auth.uid == uid;
         allow create: if signedIn() && ready() && request.auth.uid == uid
           && !id.matches('daily-battle-.*')
-          && !id.matches('daily-rename-.*');
+          && !id.matches('daily-rename-.*')
+          && (!id.matches('adventure-.*') || validAdventureOperation(request.resource.data,uid,id));
         allow update, delete: if false;
       }
     }
@@ -104,6 +105,64 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/emojins/$(request.resource.data.emojinIds[0])).data == request.resource.data.after[0]
         && getAfter(/databases/$(database)/documents/emojins/$(request.resource.data.emojinIds[1])).data == request.resource.data.after[1];
       allow update, delete: if false;
+    }
+    // Paid minigame leaderboard: authenticated readers, one best score per player.
+    // This follows the existing client-resolved game trust model; it is not an anti-cheat server.
+    function adventureCounter(e,k) { return e.get(k,0) is int && e.get(k,0) >= 0; }
+    function validAdventureEvents(e) {
+      return e.keys().hasOnly(['mobHp','bomb','heart','chest','fullheal','midboss','floor','bossHeart','randomEncounter','mapEncounter','level'])
+        && adventureCounter(e,'mobHp') && adventureCounter(e,'bomb') && adventureCounter(e,'heart')
+        && adventureCounter(e,'chest') && adventureCounter(e,'fullheal') && adventureCounter(e,'midboss')
+        && adventureCounter(e,'floor') && adventureCounter(e,'bossHeart') && adventureCounter(e,'randomEncounter')
+        && adventureCounter(e,'mapEncounter') && adventureCounter(e,'level');
+    }
+    function adventurePaid(d,uid) {
+      let old = get(/databases/$(database)/documents/wallets/$(uid)).data;
+      let next = getAfter(/databases/$(database)/documents/wallets/$(uid)).data;
+      let minutes = d.at > old.wallet.updatedAt ? int((d.at - old.wallet.updatedAt) / 60000) : 0;
+      let recovered = old.wallet.balance + minutes;
+      let accrued = old.wallet.balance >= 3000 ? old.wallet.balance : (recovered > 3000 ? 3000 : recovered);
+      return d.at is int && d.at <= request.time.toMillis()+60000 && accrued >= 100
+        && next.wallet.balance == accrued - 100 && next.revision == old.revision+1;
+    }
+    function validAdventureOperation(d,uid,id) {
+      return (d.kind == 'adventureStart' && d.runId == id && d.uid == uid && d.version == 3 && d.cost == 100
+        && d.player.id is string
+        && get(/databases/$(database)/documents/emojins/$(d.player.id)).data.ownerUid == uid
+        && get(/databases/$(database)/documents/emojins/$(d.player.id)).data.status == 'active'
+        && get(/databases/$(database)/documents/emojins/$(d.player.id)).data.isNpc == false
+        && d.player.maxHp == get(/databases/$(database)/documents/emojins/$(d.player.id)).data.maxHp
+        && d.player.slots == get(/databases/$(database)/documents/emojins/$(d.player.id)).data.slots
+        && adventurePaid(d,uid))
+        || (d.kind == 'adventureResult' && id == d.runId + '-result' && d.uid == uid && d.version == 3
+        && get(/databases/$(database)/documents/wallets/$(uid)/operations/$(d.runId)).data.kind == 'adventureStart'
+        && validAdventureEvents(d.events) && d.score is int && d.score == adventureScore(d.events));
+    }
+    function adventureScore(e) {
+      return e.get('mobHp',0)*400 + e.get('bomb',0)*100 + e.get('heart',0)*100
+        + e.get('chest',0)*300 + e.get('fullheal',0)*300 + e.get('midboss',0)*1000
+        + e.get('floor',0)*500 + e.get('bossHeart',0)*100
+        + e.get('randomEncounter',0)*300 + e.get('mapEncounter',0)*500 + e.get('level',0)*1000;
+    }
+    function validAdventureScore(d,uid) {
+      let result = getAfter(/databases/$(database)/documents/wallets/$(uid)/operations/$(d.runId + '-result')).data;
+      let paid = get(/databases/$(database)/documents/wallets/$(uid)/operations/$(d.runId)).data;
+      return d.keys().hasOnly(['uid','name','version','score','runId','finishedAt'])
+        && d.uid == uid && d.version == 3 && d.score is int && d.score >= 0
+        && d.name == get(/databases/$(database)/documents/owners/$(uid)).data.name
+        && paid.kind == 'adventureStart' && paid.uid == uid && paid.cost == 100
+        && result.kind == 'adventureResult' && result.uid == uid && result.version == 3
+        && result.runId == d.runId && result.score == d.score
+        && result.score == adventureScore(result.events);
+    }
+    match /adventureScoresV3/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && ready() && request.auth.uid == uid
+        && validAdventureScore(request.resource.data,uid);
+      allow update: if signedIn() && ready() && request.auth.uid == uid
+        && request.resource.data.score > resource.data.score
+        && validAdventureScore(request.resource.data,uid);
+      allow delete: if false;
     }
     match /legends/{id} { allow read: if signedIn(); allow create: if signedIn() && ready(); allow update, delete: if false; }
   }

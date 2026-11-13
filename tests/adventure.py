@@ -60,4 +60,4 @@ async def main():
     await page.evaluate('failResult=false');await frame.locator('.gameover').tap();await frame.locator('.result-score').filter(has_text='ベストスコア').wait_for();await frame.locator('.gameover').tap();await frame.locator('#ranking').tap();await frame.locator('.score-table').wait_for();assert await frame.locator('.score-table img').count()==0;assert '<img src=x>' in await frame.locator('.score-table').inner_text();await frame.locator('#rank-mine').tap();await frame.locator('.score-table').filter(has_text='123456').wait_for();await frame.locator('#back').tap();await frame.locator('#exit').tap();await page.wait_for_selector('#adventureFrame',state='detached');assert not errors,errors;await ctx.close()
    await browser.close();print('PASS integrated UI 390/320: fixed square grids despite giant emoji in dungeon/help, Lv1/2/3 XP and flee 0, icon order, price, 99/100 gate, payment retry same ID, owned emojin + legend copy, no main HP mutation, PWA reload guard, score retry, escaped names, leaderboard tabs, exit to town')
  finally:server.shutdown()
-asyncio.run(main())
+if __name__=='__main__': asyncio.run(main())

@@ -348,6 +348,10 @@ test('adventure saves personal top ten and one public best atomically; retries a
  }
  const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.adventureScoresV3.length,10);assert.equal(wallet.adventureScoresV3[0].score,1100);
  const board=(await getDoc(doc(db,'adventureScoresV3/u1'))).data();assert.equal(board.name,'Owner');assert.equal(board.score,1100);
+ assert.equal(board.entries.length,10);const ranking=await c.service.rankings();assert.equal(ranking.length,10);assert.equal(ranking[0].score,1100);assert.equal(ranking[1].score,1000);assert(ranking.every(r=>r.uid==='u1'));
+ await env.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'adventureScoresV3/u2'),{uid:'u2',name:'Other',version:3,score:5000,runId:'adventure-legacy',finishedAt:1});});
+ const mixed=await c.service.rankings();assert.equal(mixed.length,10);assert.equal(mixed[0].name,'Other');assert.equal(mixed.filter(r=>r.uid==='u1').length,9);
+
  assert.equal((await getDoc(doc(env.authenticatedContext('u2').firestore(),'adventureScoresV3/u1'))).exists(),true);
  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'adventureScoresV3/u1')));
  await assertFails(setDoc(doc(env.authenticatedContext('u2').firestore(),'adventureScoresV3/u1'),board));

@@ -63,12 +63,12 @@
 .map-screen .depth-meter{min-width:0;max-height:100%;gap:20px}
 .map-screen .tower .floor,.map-screen .tower-marker{height:var(--depth-floor-height,20px);flex:none}
 .map-screen .tower-marker{top:calc(8px + (var(--floor) - 1)*var(--depth-step,22px))}
-.map-screen .cell{font-size:calc(var(--map-cell-size,32px)*.8);line-height:1}
-.map-screen .cell .hero{font-size:calc(var(--map-cell-size,32px)*1.12);line-height:1}
-.map-screen .cell .cell-content{line-height:1}.map-screen .cell.enemy-cell .cell-content{font-size:calc(var(--map-cell-size,32px)*1.03)}
-.map-screen .cell.boss-cell .cell-content{font-size:calc(var(--map-cell-size,32px)*1.25)}
-.map-screen .cell .cell-content .stairs{width:90%;height:auto;min-width:0;max-width:none}
-.map-screen .cell .cell-content .treasure-chest{width:calc(var(--map-cell-size,32px)*.92);height:auto}
+.map-screen .cell{font-size:calc(var(--map-cell-size,32px)*.6);line-height:1}
+.map-screen .cell .hero{font-size:calc(var(--map-cell-size,32px)*.84);line-height:1}
+.map-screen .cell .cell-content{line-height:1}.map-screen .cell.enemy-cell .cell-content{font-size:calc(var(--map-cell-size,32px)*.77)}
+.map-screen .cell.boss-cell .cell-content{font-size:calc(var(--map-cell-size,32px)*.94)}
+.map-screen .cell .cell-content .stairs{width:68%;height:auto;min-width:0;max-width:none}
+.map-screen .cell .cell-content .treasure-chest{width:calc(var(--map-cell-size,32px)*.69);height:auto}
 .help-dungeon{height:min(78vw,340px,43dvh);flex:none;contain:none}
 @media(max-height:640px){.map-screen{gap:8px;padding:12px 18px 8px}.map-screen .profile{gap:10px}.map-screen .avatar{font-size:36px}.map-screen .name{font-size:19px}.map-screen .status-hearts{font-size:22px;margin-top:6px}.map-screen .experience{margin-top:6px}.map-screen .status .slots{margin-top:6px}}
 .map-screen .dungeon-area{grid-template-rows:minmax(0,1fr)}

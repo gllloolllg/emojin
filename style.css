@@ -957,3 +957,7 @@ body.bingo-drawing .mo-reading{visibility:hidden}
 
 /* Side games: adventure, slot, bingo. */
 .adventure-launch{position:absolute;top:89px;left:8px;width:56px;height:56px;border-radius:50%;border:2px solid #fff0b0;background:#694730;box-shadow:0 3px 10px #0005;font-size:35px;padding:0;pointer-events:auto}.adventure-launch:disabled{opacity:.35}.moji-spin-launch{top:153px}.bingo-launch{top:217px}.adventure-frame{position:fixed;inset:0;width:100%;height:100%;height:100dvh;border:0;background:#000;z-index:1000}body.adventure-open{overflow:hidden}
+
+/* The parent owns device safe areas; iframe viewport excludes the status/home bars. */
+body.adventure-open:after{content:'';position:fixed;inset:0;background:#000;z-index:999;pointer-events:none}
+.adventure-frame{inset:var(--safe-top) env(safe-area-inset-right,0px) var(--safe-bottom) env(safe-area-inset-left,0px);width:calc(100% - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));height:calc(100dvh - var(--safe-top) - var(--safe-bottom))}

@@ -73,3 +73,7 @@
 @media(max-height:640px){.map-screen{gap:8px;padding:12px 18px 8px}.map-screen .profile{gap:10px}.map-screen .avatar{font-size:36px}.map-screen .name{font-size:19px}.map-screen .status-hearts{font-size:22px;margin-top:6px}.map-screen .experience{margin-top:6px}.map-screen .status .slots{margin-top:6px}}
 .map-screen .dungeon-area{grid-template-rows:minmax(0,1fr)}
 @media(orientation:landscape) and (max-height:540px){.map-screen{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:24px}.map-screen>.score-hud{grid-column:1/-1}.map-screen .dungeon-area{grid-column:1;grid-row:2}.map-screen .status{grid-column:2;grid-row:2;align-self:center}.map-screen .bottom{grid-column:1/-1;grid-row:3}.map-screen .avatar{font-size:30px}.map-screen .name{font-size:17px}.map-screen .status-hearts{font-size:20px}.map-screen .slot{font-size:18px}}
+
+/* Highlight only the result-to-ranking visit, never ordinary ranking views. */
+.score-table tr.current-run{animation:ranked-score-blink 1.2s steps(1,end) infinite}
+@keyframes ranked-score-blink{0%,65%{background:#fff;color:#000}66%,100%{background:transparent;color:#fff}}

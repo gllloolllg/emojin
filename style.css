@@ -961,3 +961,17 @@ body.bingo-drawing .mo-reading{visibility:hidden}
 /* The parent owns device safe areas; iframe viewport excludes the status/home bars. */
 body.adventure-open:after{content:'';position:fixed;inset:0;background:#000;z-index:999;pointer-events:none}
 .adventure-frame{inset:var(--safe-top) env(safe-area-inset-right,0px) var(--safe-bottom) env(safe-area-inset-left,0px);width:calc(100% - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));height:calc(100dvh - var(--safe-top) - var(--safe-bottom))}
+
+/* Compact arcade navigation: one quiet frame system for all three games. */
+.side-game-menu{position:absolute;top:89px;left:8px;display:grid;gap:10px;width:56px;pointer-events:auto}
+.side-game-menu .side-game-button{position:relative;inset:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;width:56px;height:64px;padding:9px 0 7px;border:1px solid #74648080;border-radius:15px;background:#201a2aeb;color:#e9e0ee;box-shadow:0 4px 10px #0003,inset 0 1px 0 #ffffff0a;line-height:1;isolation:isolate;transition:background .16s,border-color .16s,transform .16s}
+.side-game-button:before{content:'';position:absolute;top:0;left:18px;right:18px;height:2px;background:var(--game-accent);border-radius:0 0 2px 2px;opacity:.8}
+.side-game-button .side-game-icon{display:block;font-size:27px;line-height:1;filter:none}
+.side-game-button .side-game-caption{font-size:9px;line-height:1;margin-top:7px;letter-spacing:.06em;color:#c7b9ce;font-weight:600}
+.side-game-menu .adventure-launch{--game-accent:#9cd6c8}.side-game-menu .moji-spin-launch{--game-accent:#e7c68c}.side-game-menu .bingo-launch{--game-accent:#b8a8e3}
+.side-game-menu .side-game-button:active{transform:scale(.94);background:#302739;border-color:var(--game-accent)}
+.side-game-menu .side-game-button:focus-visible{border-color:var(--game-accent)}
+@media(hover:hover){.side-game-menu .side-game-button:hover{transform:translateY(-2px);background:#2c2435;border-color:var(--game-accent)}}
+.side-game-menu .side-game-button:disabled{opacity:.35;transform:none}
+.side-game-menu .side-game-button.has-round{box-shadow:0 4px 10px #0003,inset 0 1px 0 #ffffff0a}
+.side-game-menu .side-game-button.has-round:after{content:'';position:absolute;right:7px;top:8px;width:5px;height:5px;border-radius:50%;background:#e7c68c;box-shadow:0 0 5px #e7c68c70}

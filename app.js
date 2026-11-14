@@ -2389,17 +2389,19 @@ function installAdventureHost(){window.EmojinAdventureHost={
 };}
 function installSlotButton(){
   installAdventureHost();
-  if(!$('adventureButton')){const b=document.createElement('button');b.id='adventureButton';b.className='adventure-launch';b.type='button';b.textContent='🗡️';b.setAttribute('aria-label','エモジンのぼうけん');document.querySelector('.mo-meter').append(b);b.onclick=showAdventure;}
+  if(!$('sideGameMenu')){const menu=document.createElement('nav');menu.id='sideGameMenu';menu.className='side-game-menu';menu.setAttribute('aria-label','あそび');document.querySelector('.mo-meter').append(menu);}
+  if(!$('adventureButton')){const b=document.createElement('button');b.id='adventureButton';b.className='adventure-launch side-game-button';b.type='button';b.innerHTML='<span class="side-game-icon" aria-hidden="true">🗡️</span><span class="side-game-caption" aria-hidden="true">ぼうけん</span>';b.setAttribute('aria-label','エモジンのぼうけん');document.querySelector('.mo-meter').append(b);b.onclick=showAdventure;}
   if(!$('mojiSpinButton')){
-    const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch';
-    button.type='button';button.textContent='🎰';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
+    const button=document.createElement('button');button.id='mojiSpinButton';button.className='moji-spin-launch side-game-button';
+    button.type='button';button.innerHTML='<span class="side-game-icon" aria-hidden="true">🎰</span><span class="side-game-caption" aria-hidden="true">スロット</span>';button.setAttribute('aria-label','MOJI SPINで遊ぶ');
     document.querySelector('.mo-meter').appendChild(button);button.onclick=showMojiSpin;
   }
   if(!$('dailyBingoButton')){
-    const button=document.createElement('button');button.id='dailyBingoButton';button.className='bingo-launch';
-    button.type='button';button.textContent='🔢';button.setAttribute('aria-label','デイリービンゴ');
+    const button=document.createElement('button');button.id='dailyBingoButton';button.className='bingo-launch side-game-button';
+    button.type='button';button.innerHTML='<span class="side-game-icon" aria-hidden="true">🔢</span><span class="side-game-caption" aria-hidden="true">ビンゴ</span>';button.setAttribute('aria-label','デイリービンゴ');
     document.querySelector('.mo-meter').appendChild(button);button.onclick=showDailyBingo;
   }
+  for(const id of ['adventureButton','mojiSpinButton','dailyBingoButton'])$('sideGameMenu').append($(id));
   if(!$('mojiSpinFonts')){
     const link=document.createElement('link');link.id='mojiSpinFonts';link.rel='stylesheet';
     link.href='https://fonts.googleapis.com/css2?family=Aldrich&family=Skranji:wght@700&display=swap';document.head.appendChild(link);

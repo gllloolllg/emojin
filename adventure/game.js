@@ -1,5 +1,5 @@
 'use strict';
-const E=globalThis.EmojinEngine;
+const E=globalThis.EmojinEngine, B=E.Boss;
 const HOST=window.parent!==window?window.parent.EmojinAdventureHost:null;
 if(HOST)document.documentElement.dataset.embedded='true';
 let starting=false,startId=null;
@@ -31,11 +31,11 @@ async function ranking(tab='all',highlight=null,initialRows=null){
 
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const label={attack1:'こうげき1',attack2:'こうげき2',blank:'ハズレ',heal:'かいふく',guard:'ぼうぎょ',counter:'カウンター',poison:'どく',strong:'きょうげき',drain:'きゅうけつ',ram:'たいあたり',twin:'ツイン',fullheal:'ぜんかいふく',curse:'のろい'};
+const label={attack1:'こうげき1',attack2:'こうげき2',blank:'ハズレ',heal:'かいふく',guard:'ぼうぎょ',counter:'カウンター',poison:'どく',strong:'きょうげき',drain:'きゅうけつ',ram:'たいあたり',twin:'ツイン',fullheal:'ぜんかいふく',curse:'のろい',devil:'ひっさつわざ'};
 const SLOT_ORDER={attack2:1,attack1:2,counter:3,guard:4,heal:5,blank:6};
 function slotEntries(f,isEnemy=false){const entries=f.slots.map((face,index)=>({face,index}));return entries.sort((a,b)=>isEnemy?(SLOT_ORDER[a.face]??0)-(SLOT_ORDER[b.face]??0):Number(!E.SPECIAL.includes(a.face))-Number(!E.SPECIAL.includes(b.face)));}
-function abilityIcon(face,blocked=false){const value={attack2:2,strong:3,ram:4}[face];return `<span class="ability-glyph"><span>${E.FACES[face].icon}</span>${value?`<span class="ability-value">${value}</span>`:''}${blocked?'<span class="ability-curse" aria-label="のろい">☠️</span>':''}</span>`;}
-function slots(f,selected,isEnemy=false){return `<div class="slots">${slotEntries(f,isEnemy).map(({face:s,index:i})=>`<div data-slot="${i}" class="slot ${selected===i?'selected':''} ${f.cursedSlots.includes(i)?'cursed':''}" aria-label="${label[s]}" title="${esc(E.FACES[s].text)}">${abilityIcon(s,f.cursedSlots.includes(i))}</div>`).join('')}</div>`;}
+function abilityIcon(face,blocked=false,effect=null){const value={attack2:2,strong:3,ram:4}[face];return `<span class="ability-glyph">${face==='devil'?B.icon(effect):`<span>${E.FACES[face].icon}</span>${value?`<span class="ability-value">${value}</span>`:''}`}${blocked?'<span class="ability-curse" aria-label="のろい">☠️</span>':''}</span>`;}
+function slots(f,selected,isEnemy=false){return `<div class="slots">${slotEntries(f,isEnemy).map(({face:s,index:i})=>`<div data-slot="${i}" class="slot ${selected===i?'selected':''} ${f.cursedSlots.includes(i)?'cursed':''}" aria-label="${label[s]}" title="${esc((s==='devil'?B.FACE:E.FACES[s]).text)}">${abilityIcon(s,f.cursedSlots.includes(i),s==='devil'?f.bossEffect:null)}</div>`).join('')}</div>`;}
 function hearts(f,extra=''){const base=f.baseMaxHp??f.maxHp;return `<div class="hearts ${extra}" role="img" aria-label="HP ${f.currentHp} / ${f.maxHp}">${Array.from({length:f.maxHp},(_,i)=>`<span class="heart ${i>=base?'gold':''} ${i>=f.currentHp?'lost':''}" aria-hidden="true">♥</span>`).join('')}</div>`;}
 function sceneTheme(floor=null){const ratio=floor===null?0:(10-floor)/9;const mix=(a,b)=>Math.round(b+(a-b)*ratio);const bg=floor===null?'#000':`rgb(${mix(52,0)},${mix(31,0)},${mix(19,0)})`;const tile=floor===null?'#353535':`rgb(${mix(114,38)},${mix(77,38)},${mix(49,38)})`;const light=floor===null?'#737373':`rgb(${mix(167,105)},${mix(119,105)},${mix(77,105)})`;document.documentElement.style.setProperty('--scene-bg',bg);document.documentElement.style.setProperty('--tile',tile);document.documentElement.style.setProperty('--reachable',light);document.body.style.backgroundColor=bg;app.style.backgroundColor=bg;}
 function treasureChest(){return '<svg class="treasure-chest" viewBox="0 0 48 38" role="img" aria-label="たからばこ" shape-rendering="crispEdges"><g class="chest-body"><path d="M5 14h38v20H5z" fill="#794720" stroke="#23160c" stroke-width="3"/><path d="M10 14h5v19h-5zm23 0h5v19h-5z" fill="#d6a343"/><path d="M5 14h38v5H5z" fill="#d6a343"/></g><g class="chest-lid"><path d="M5 15V7h4V3h30v4h4v8z" fill="#98602c" stroke="#23160c" stroke-width="3"/><path d="M10 4h5v10h-5zm23 0h5v10h-5z" fill="#d6a343"/><path d="M5 13h38v4H5z" fill="#d6a343"/><path d="M21 12h7v11h-7z" fill="#efc868" stroke="#38240e" stroke-width="2"/><path d="M24 15h2v4h-2z" fill="#38240e"/></g></svg>';}
@@ -72,7 +72,7 @@ function enemy(type){const t=TYPES[type],hp=int(...t.hp),s=Array.from({length:ty
 function adjacent(i){const a=[];if(i%5)a.push(i-1);if(i%5<4)a.push(i+1);if(i>=5)a.push(i-5);if(i<20)a.push(i+5);return a;}
 const key=(a,b)=>a<b?`${a}-${b}`:`${b}-${a}`;
 function reachable(cells,edges,start){const found=new Set([start]),queue=[start];for(let i=0;i<queue.length;i++)for(const n of adjacent(queue[i]))if(cells[n]&&edges.has(key(n,queue[i]))&&!found.has(n)){found.add(n);queue.push(n);}return found;}
-function generateFloor(floor,start){const cells=Array.from({length:25},(_,i)=>i===start||Math.random()>=CONFIG.missing),edges=new Set();for(let i=0;i<25;i++)if(cells[i])for(const n of adjacent(i))if(n>i&&cells[n]&&Math.random()>=CONFIG.blocked)edges.add(key(i,n));let found=reachable(cells,edges,start);if(found.size<2){const n=pick(adjacent(start));cells[n]=true;edges.add(key(start,n));found=reachable(cells,edges,start);}let goals=[...found].filter(x=>x!==start&&!adjacent(start).includes(x));if(!goals.length){const first=pick(adjacent(start)),second=pick(adjacent(first).filter(x=>x!==start&&!adjacent(start).includes(x)));cells[first]=cells[second]=true;edges.add(key(start,first));edges.add(key(first,second));found=reachable(cells,edges,start);goals=[...found].filter(x=>x!==start&&!adjacent(start).includes(x));}const goal=pick(goals);const items={};for(let i=0;i<25;i++)if(cells[i]&&i!==start&&i!==goal){const r=Math.random();if(r<CONFIG.heart)items[i]={kind:'heart'};else if(r<CONFIG.heart+CONFIG.bomb)items[i]={kind:'bomb',amount:1};else if(r<CONFIG.heart+CONFIG.bomb+CONFIG.chest)items[i]={kind:'chest'};else if(r<CONFIG.heart+CONFIG.bomb+CONFIG.chest+CONFIG.mapEnemy)items[i]={kind:'enemy',enemy:enemy(floor<=3?0:floor<=7?1:2)};}return {floor,cells,edges,goal,items,boss:floor===5?enemy(3):floor===10?(run.legend?copy(run.legend):{...enemy(3),maxHp:40,baseMaxHp:40,currentHp:40}):null};}
+function generateFloor(floor,start){const cells=Array.from({length:25},(_,i)=>i===start||Math.random()>=CONFIG.missing),edges=new Set();for(let i=0;i<25;i++)if(cells[i])for(const n of adjacent(i))if(n>i&&cells[n]&&Math.random()>=CONFIG.blocked)edges.add(key(i,n));let found=reachable(cells,edges,start);if(found.size<2){const n=pick(adjacent(start));cells[n]=true;edges.add(key(start,n));found=reachable(cells,edges,start);}let goals=[...found].filter(x=>x!==start&&!adjacent(start).includes(x));if(!goals.length){const first=pick(adjacent(start)),second=pick(adjacent(first).filter(x=>x!==start&&!adjacent(start).includes(x)));cells[first]=cells[second]=true;edges.add(key(start,first));edges.add(key(first,second));found=reachable(cells,edges,start);goals=[...found].filter(x=>x!==start&&!adjacent(start).includes(x));}const goal=pick(goals);const items={};for(let i=0;i<25;i++)if(cells[i]&&i!==start&&i!==goal){const r=Math.random();if(r<CONFIG.heart)items[i]={kind:'heart'};else if(r<CONFIG.heart+CONFIG.bomb)items[i]={kind:'bomb',amount:1};else if(r<CONFIG.heart+CONFIG.bomb+CONFIG.chest)items[i]={kind:'chest'};else if(r<CONFIG.heart+CONFIG.bomb+CONFIG.chest+CONFIG.mapEnemy)items[i]={kind:'enemy',enemy:enemy(floor<=3?0:floor<=7?1:2)};}return {floor,cells,edges,goal,items,boss:floor===5?enemy(3):floor===10?B.prepare(run.legend?copy(run.legend):{...enemy(3),maxHp:40,baseMaxHp:40,currentHp:40}):null};}
 function refreshStartButton(){if(mode!=='title'||starting)return;const status=HOST?.status();const b=app.querySelector('#start');if(b)b.disabled=!status||status.balance<100||!status.hasPlayer;}
 setInterval(refreshStartButton,1000);
 function createRun(record){epoch++;const player=copy(record.player);run={id:record.runId,score:0,scoreEvents:{},result:null,player,bombs:0,level:1,xp:0,floor:1,pos:int(0,24),steps:0,busy:false,visited:[],message:'',started:Date.now(),battles:0,legend:record.legend};run.map=generateFloor(1,run.pos);run.visited=[`1:${run.pos}`];}
@@ -127,11 +127,11 @@ async function nextFloor(){const token=epoch;run.busy=true;const screen=app.quer
 function battleInfo(f,side){return `<section class="battle-info info-${side===1?'upper':'lower'}" data-info="${side}">${side===0?hearts(f):''}<h2>${esc(f.name)}</h2>${slots(f,null,side===1)}${side===1?hearts(f):''}<div class="status-marks">${f.poisoned?'🦠':''}${f.cursedSlots.length?'☠️':''}</div></section>`;}
 function battleTurnLimit(enemy){return enemy.boss?(run.floor===10?30:20):10;}
 function battleDraw(enemy,turn,phase,log='',rolls=[]){mode='battle';sceneTheme();const p=run.player;app.innerHTML=`<section class="screen battle-screen ${enemy.boss?'boss-battle':''}" data-phase="${phase}"><header class="battle-header">${scoreMarkup()}<span id="turn">${Math.max(1,turn)}/${battleTurnLimit(enemy)}</span></header><div class="fighter fighter-upper" data-fighter="1"><span class="fighter-art enemy-avatar">${enemy.emoji}</span></div>${battleInfo(enemy,1)}<div class="battle-dice die-upper" data-die="1"></div><div class="fighter fighter-lower" data-fighter="0"><span class="fighter-art">${p.emoji}</span></div>${battleInfo(p,0)}<div class="battle-dice die-lower" data-die="0"></div><div class="battle-fx"></div><section class="battle-caption-wrap"><div class="battle-log" aria-live="polite">${esc(log)}</div><div class="battle-stock">💣×${run.bombs}</div><div class="battle-experience">${experienceMarkup()}</div></section>${phase==='select'&&enemy.boss?`<section class="battle-selection"><div class="bomb-picker"><span class="bomb-count">💣×<span id="quantity">${run.floor===10?run.bombs:0}</span></span>${run.floor===10?'':`<div class="arrows"><button id="up" aria-label="ばくだんをふやす">▲</button><button id="down" aria-label="ばくだんをへらす">▼</button></div>`}</div><button class="primary" id="throw">なげる</button></section>`:''}</section>`;}
-function paintBattle(states){states.forEach((f,side)=>{const info=app.querySelector(`[data-info="${side}"]`);if(!info)return;const selected=[...info.querySelectorAll(".slot.selected")].map(el=>el.dataset.slot);info.outerHTML=battleInfo(f,side);selected.forEach(index=>app.querySelector(`[data-info="${side}"] [data-slot="${index}"]`)?.classList.add("selected"));});}
+function paintBattle(states){art(1)?.classList.toggle('boss-charged',!!states[1]?.bossCharged);states.forEach((f,side)=>{const info=app.querySelector(`[data-info="${side}"]`);if(!info)return;const selected=[...info.querySelectorAll(".slot.selected")].map(el=>el.dataset.slot);info.outerHTML=battleInfo(f,side);selected.forEach(index=>app.querySelector(`[data-info="${side}"] [data-slot="${index}"]`)?.classList.add("selected"));});}
 function caption(text){const el=app.querySelector('.battle-log');if(el)el.textContent=text;}
 function art(side){return app.querySelector(`[data-fighter="${side}"] .fighter-art`);}
 let battleVisual=[],battleRolls=[[],[]];
-function focusSlots(side,faces,index=null){const indices=new Set(index===null?battleRolls[side].filter(r=>faces.includes(r.face)&&!r.cursed).map(r=>r.slot):Array.isArray(index)?index:[index]);app.querySelectorAll(`[data-info="${side}"] .slot`).forEach(tile=>tile.classList.toggle('selected',indices.has(Number(tile.dataset.slot))));}
+function focusSlots(side,faces,index=null){const effect=battleVisual[side]?.bossEffect;if(index===null&&effect&&({attack:['attack1','attack2','strong','ram'],heal:['heal','fullheal'],curse:['curse']}[effect.kind]||[]).some(face=>faces.includes(face)))faces=[...faces,'devil'];const indices=new Set(index===null?battleRolls[side].filter(r=>faces.includes(r.face)&&!r.cursed).map(r=>r.slot):Array.isArray(index)?index:[index]);app.querySelectorAll(`[data-info="${side}"] .slot`).forEach(tile=>tile.classList.toggle('selected',indices.has(Number(tile.dataset.slot))));}
 function clearFocus(){app.querySelectorAll('.slot.selected').forEach(el=>el.classList.remove('selected'));}
 function hit(side,strong=false){return animateNode(art(side),[{transform:'translateX(0)'},{transform:`translateX(${strong?-18:-10}px) rotate(-9deg)`,offset:.2},{transform:'translateX(12px) rotate(6deg)',offset:.43},{transform:'translateX(-5px)',offset:.7},{transform:'translateX(0) rotate(0)'}],450);}
 function localPoint(side){const host=app.querySelector('.battle-fx').getBoundingClientRect(),p=center(art(side).getBoundingClientRect());return {x:p.x-host.left,y:p.y-host.top};}
@@ -141,6 +141,8 @@ function trail(source,target){const host=app.querySelector('.battle-fx'),a=local
 async function rollDice(rolls,token,twinSide=null){if(twinSide===null)battleRolls=[[],[]];rolls.forEach(r=>battleRolls[r.side].push({...r}));const boxes=[];if(twinSide!==null)app.querySelector(`[data-die="${twinSide}"]`).innerHTML='';for(const r of rolls){const host=app.querySelector(`[data-die="${r.side}"]`);if(twinSide===null)host.innerHTML='';const tile=document.createElement('div');tile.className='dice-tile';host.append(tile);boxes.push({tile,roll:r});animateNode(tile,[{transform:`translate(${r.side?90:-90}px,${r.side?-70:70}px) scale(.3) rotate(${r.side?110:-110}deg)`,opacity:0},{transform:`translate(0,-12px) scale(1.2) rotate(${r.side?-22:22}deg)`,opacity:1,offset:.6},{transform:`translate(0,0) scale(1) rotate(${r.side?5:-5}deg)`,opacity:1}],420);}
  const duration=CONFIG.turnMs===1?1:420,start=performance.now();let cycle=0;while(performance.now()-start<duration){if(epoch!==token)return;boxes.forEach(({tile,roll:r})=>{const fighter=battleVisual[r.side],entry=slotEntries(fighter,r.side===1)[cycle%6];tile.innerHTML=abilityIcon(entry.face,fighter.cursedSlots.includes(entry.index));});cycle++;await wait(CONFIG.turnMs===1?1:55);}if(epoch!==token)return;for(const {tile,roll:r} of boxes){tile.innerHTML=abilityIcon(r.face,r.cursed);tile.dataset.face=r.face;if(r.face==='blank'&&!r.cursed)animateNode(tile,[{transform:'rotate(-5deg)'},{transform:'translateY(14px) rotate(10deg)',opacity:.7}],300);}[...new Set(rolls.map(r=>r.side))].forEach(side=>focusSlots(side,[],rolls.filter(r=>r.side===side).map(r=>r.slot)));await wait(CONFIG.turnMs===1?1:CONFIG.diceHoldMs);}
 async function playBattleEvent(ev,token){if(epoch!==token)return;clearFocus();const delay=CONFIG.turnMs===1?1:400;app.querySelector('.battle-screen').dataset.phase=ev.type;
+ if(ev.type==='bossDraw'){await playBossDraw(ev,token);return;}
+ if(ev.type==='bossUltra'){await playBossUltra(ev,token);return;}
  if(ev.type==='roll'){await rollDice(ev.rolls,token);return;}
  if(ev.type==='twin'){focusSlots(ev.side,['twin']);caption('🎲 ツイン！');await rollDice(ev.rolls,token,ev.side);return;}
  if(ev.type==='guard'||ev.type==='counterIdle')return;
@@ -157,13 +159,110 @@ async function playBattleEvent(ev,token){if(epoch!==token)return;clearFocus();co
  if(ev.type==='impact'||ev.type==='counter')ev.state.forEach((f,side)=>{const delta=f.currentHp-before[side].currentHp;if(delta)floatHearts(side,delta);});
  if(run.floor===10){const available=Math.max(0,before[1].currentHp);const damage=ev.type==='impact'?ev.attacks.filter(a=>a.side===0).reduce((n,a)=>n+a.damage,0)+ev.drains.filter(d=>d.side===0).reduce((n,d)=>n+d.amount,0):ev.type==='counter'?ev.counters.filter(c=>c.target===1).reduce((n,c)=>n+c.damage,0):ev.type==='poisonTick'&&ev.sides.includes(1)?1:0;scoreBossHearts(available,damage,before[1].maxHp);}
  battleVisual=copy(ev.state);paintBattle(ev.state);await wait(delay);}
+ async function playBossCardDraw({screen,portrait,effect,isCurrent,fast=false,animate,wait,onReturn}){
+  const document=screen.ownerDocument,overlay=document.createElement('div');
+  overlay.className='boss-special';overlay.dataset.phase='lightning';overlay.setAttribute('aria-label','ひっさつわざの ちゅうせん');
+  overlay.innerHTML='<div class="boss-special-portrait" aria-hidden="true"></div><div class="boss-special-cards"></div><canvas class="boss-special-flames" aria-hidden="true"></canvas><div class="boss-special-whiteout" aria-hidden="true"></div>';
+  screen.append(overlay);
+  const boss=overlay.querySelector('.boss-special-portrait'),row=overlay.querySelector('.boss-special-cards'),canvas=overlay.querySelector('canvas'),flash=overlay.querySelector('.boss-special-whiteout'),ctx=canvas.getContext('2d');
+  boss.textContent=portrait;boss.classList.toggle('boss-charged',effect.wasCharged);
+  const cardKinds=['attack','heal','curse',effect.wasCharged?'ultra':'charge'];
+  row.innerHTML=cardKinds.map(kind=>`<div class="boss-special-card"><span class="ability-glyph">${B.icon({kind,n:effect.n})}</span><span class="boss-special-label">${{attack:'こうげき',heal:'かいふく',curse:'のろい',charge:'チャージ',ultra:'ちょう<br>ひっさつ'}[kind]}</span></div>`).join('');
+  const cards=[...row.children],valid=()=>isCurrent()&&overlay.isConnected,duration=ms=>fast?1:ms;
+  const pause=ms=>wait(duration(ms)),motion=(el,frames,ms,options={})=>animate(el,frames,duration(ms),{fill:'forwards',...options});
+  const sizeCanvas=()=>{canvas.width=Math.ceil(overlay.clientWidth/4);canvas.height=Math.ceil(overlay.clientHeight/4);};
+  function drawLightning(progress){
+   const rect=overlay.getBoundingClientRect(),target=screen.querySelector('[data-die="1"]').getBoundingClientRect(),w=canvas.width,h=canvas.height;
+   const tx=(target.left+target.width/2-rect.left)/4,ty=(target.top+target.height/2-rect.top)/4;
+   const paths=[[[w*.52,0],[w*.48,ty*.16],[w*.61,ty*.16],[w*.53,ty*.35],[w*.69,ty*.35],[w*.57,ty*.57],[w*.74,ty*.57],[tx-5,ty*.8],[tx+4,ty*.8],[tx,ty]],[[w*.12,0],[w*.23,ty*.2],[w*.14,ty*.2],[w*.36,ty*.45],[w*.28,ty*.45],[w*.51,ty*.72],[w*.44,ty*.72],[tx,ty]],[[w*.94,0],[w*.79,ty*.22],[w*.88,ty*.22],[w*.7,ty*.49],[w*.81,ty*.49],[tx-3,ty*.76],[tx+6,ty*.76],[tx,ty]],[[w*.53,ty*.35],[w*.4,ty*.42],[w*.45,ty*.56],[w*.22,ty*.7]]];
+   ctx.clearRect(0,0,w,h);ctx.save();ctx.beginPath();ctx.rect(0,0,w,Math.ceil((ty+22)*progress+1));ctx.clip();
+   for(const [width,color] of [[10,'#7130c9'],[5,'#d4a5ff'],[2,'#fff']]){
+    ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineJoin='miter';
+    for(const points of paths){ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(Math.round(x),Math.round(y)):ctx.moveTo(Math.round(x),Math.round(y)));ctx.stroke();}
+    if(progress>.8)for(let i=0;i<10;i++){const a=i*Math.PI/5;ctx.beginPath();ctx.moveTo(Math.round(tx+Math.cos(a)*5),Math.round(ty+Math.sin(a)*5));ctx.lineTo(Math.round(tx+Math.cos(a)*21),Math.round(ty+Math.sin(a)*21));ctx.stroke();}
+   }
+   ctx.restore();
+  }
+  function lightning(){return new Promise(resolve=>{
+   const start=performance.now();
+   function frame(now){if(!valid()){resolve();return;}const p=Math.min(1,(now-start)/duration(85));drawLightning(p);if(p<1)requestAnimationFrame(frame);else resolve();}
+   requestAnimationFrame(frame);
+  });}
+  function breathe(){return new Promise(resolve=>{
+   sizeCanvas();
+   const rect=overlay.getBoundingClientRect(),cardRect=row.getBoundingClientRect(),bossRect=boss.getBoundingClientRect(),w=canvas.width,h=canvas.height;
+   const sourceX=w*.5,sourceY=(bossRect.bottom-rect.top-bossRect.height*.26)/4,cardTop=(cardRect.top-rect.top)/4,baseY=(cardRect.bottom-rect.top+20)/4;
+   const halfAtCards=(cardRect.width*.5+20)/4,start=performance.now();let uncovered=false;
+   function frame(now){
+    if(!valid()){resolve();return;}
+    const elapsed=now-start,fade=Math.max(0,(elapsed-duration(2000))/duration(950)),tick=Math.floor(elapsed/65);
+    if(elapsed>=duration(2000)&&!uncovered){uncovered=true;overlay.dataset.phase='clearing';cards.forEach((card,i)=>{if(i!==effect.card){card.getAnimations().forEach(a=>a.cancel());card.style.opacity='0';}});}
+    ctx.clearRect(0,0,w,h);if(fade>=1){resolve();return;}
+    for(let y=Math.floor(sourceY);y<=Math.ceil(baseY);y++){
+     const depth=(y-sourceY)/Math.max(1,cardTop-sourceY-3),half=3+Math.max(0,depth)*halfAtCards,flutter=Math.sin(y*.34-elapsed*.024)*1.2;
+     const left=Math.floor(sourceX-half+flutter),right=Math.ceil(sourceX+half+flutter);
+     ctx.fillStyle='#ce3439';ctx.fillRect(left,y,right-left,1);
+     ctx.fillStyle='#ef6030';ctx.fillRect(Math.ceil(sourceX-half*.86+flutter),y,Math.ceil(half*1.72),1);
+     ctx.fillStyle='#ff9a39';ctx.fillRect(Math.ceil(sourceX-half*.58+flutter),y,Math.ceil(half*1.16),1);
+    }
+    for(let y=Math.floor(sourceY);y<baseY;y+=3){
+     const half=3+Math.max(0,(y-sourceY)/Math.max(1,cardTop-sourceY-3))*halfAtCards;
+     for(let x=Math.max(0,Math.ceil(sourceX-half+3));x<Math.min(w,sourceX+half-3);x+=3){const value=((x*17+y*29-tick*13)%41+41)%41;if(value<8){ctx.fillStyle=value<3?'#ffe19a':'#ef6030';ctx.fillRect(x,y,2,value<3?1:3);}}
+    }
+    if(fade>0){ctx.globalCompositeOperation='destination-out';for(let y=0;y<h;y+=3)for(let x=0;x<w;x+=3)if(((x*37+y*61+x*y*7)%101)/100<fade)ctx.fillRect(x,y,3,3);ctx.globalCompositeOperation='source-over';}
+    requestAnimationFrame(frame);
+   }
+   frame(start);
+  });}
+  try{
+   sizeCanvas();await lightning();if(!valid())return false;
+   await pause(25);await motion(flash,[{opacity:0},{opacity:1}],55);if(!valid())return false;
+   ctx.clearRect(0,0,canvas.width,canvas.height);overlay.style.background='#000';await pause(40);
+   overlay.dataset.phase='cards';await motion(flash,[{opacity:1},{opacity:0}],180);if(!valid())return false;
+   for(let i=0;i<cards.length;i++){await motion(cards[i],[{opacity:0,transform:'translateY(12px)'},{opacity:1,transform:'translateY(0)'}],220,{easing:'steps(5,end)'});if(!valid())return false;if(i<cards.length-1)await pause(170);}
+   overlay.dataset.phase='cards-hold';await motion(boss,[{opacity:0,transform:'translateX(-50%) scale(.88)'},{opacity:1,transform:'translateX(-50%) scale(1)'}],650);await pause(350);if(!valid())return false;
+   overlay.dataset.phase='fire';await breathe();if(!valid())return false;
+   overlay.dataset.phase='result';await motion(cards[effect.card],[{transform:'scale(1)'},{transform:'scale(1.08)',offset:.5},{transform:'scale(1)'}],400);
+   if(effect.kind==='charge'){
+    await pause(450);if(!valid())return false;
+    const card=cards[3];overlay.dataset.phase='charging';
+    await motion(card,[{boxShadow:'0 0 0 #ffb34d',borderColor:'#fff'},{boxShadow:'0 0 28px #ffb34d',borderColor:'#ffe1a0'}],450);
+    await motion(card.firstElementChild,[{opacity:1,filter:'brightness(1)',transform:'scale(1)'},{opacity:0,filter:'brightness(3)',transform:'scale(.6)'}],220);if(!valid())return false;
+    card.firstElementChild.innerHTML=B.ultimateIcon(true);card.querySelector('.boss-special-label').innerHTML='ちょう<br>ひっさつ';boss.classList.add('boss-charged');overlay.dataset.phase='charged';
+    await Promise.all([motion(card.firstElementChild,[{opacity:0,filter:'brightness(2.5)',transform:'scale(.6)'},{opacity:1,filter:'brightness(1.5)',transform:'scale(1.18)',offset:.55},{opacity:1,filter:'brightness(1)',transform:'scale(1)'}],500),motion(card,[{boxShadow:'0 0 28px #ffb34d',borderColor:'#ffe1a0'},{boxShadow:'0 0 22px #f14768',borderColor:'#fff'}],500)]);
+    await pause(650);
+   }else await pause(900);
+   if(!valid())return false;
+   onReturn();overlay.dataset.phase='return';await motion(overlay,[{opacity:1},{opacity:0}],220);
+   return valid();
+  }finally{overlay.remove();}
+ }
+async function playBossDraw(ev,token){
+ const screen=app.querySelector('.battle-screen');caption('');
+ await playBossCardDraw({screen,portrait:ev.state[1].emoji,effect:ev.effect,isCurrent:()=>epoch===token&&screen.isConnected,fast:CONFIG.turnMs===1,animate:animateNode,wait,onReturn(){
+  battleVisual=copy(ev.state);paintBattle(ev.state);
+  const die=screen.querySelector('[data-die="1"]');die.innerHTML=`<div class="dice-tile" data-face="devil">${abilityIcon('devil',false,ev.effect)}</div>`;
+  focusSlots(1,[],ev.effect.slot);
+ }});
+ if(epoch===token&&ev.effect.kind==='charge')caption('まりょくを ためている…');
+}
+async function playBossUltra(ev,token){
+ focusSlots(1,[],ev.effect.slot);caption('ちょうひっさつ！');
+ const screen=app.querySelector('.battle-screen');
+ const flash=document.createElement('div');flash.className='boss-ultra-flash';screen.append(flash);
+ const effect=document.createElement('span');effect.className='boss-ultra-hit';effect.innerHTML=B.ultimateIcon(true);const at=localPoint(0);effect.style.left=at.x+'px';effect.style.top=at.y+'px';screen.querySelector('.battle-fx').append(effect);
+ const duration=CONFIG.turnMs===1?1:650;
+ await Promise.all([hit(0,true),animateNode(flash,[{opacity:0},{opacity:.65,offset:.15},{opacity:0}],duration),animateNode(effect,[{transform:'translate(-50%,-50%) scale(.3)',opacity:0},{transform:'translate(-50%,-50%) scale(1.5)',opacity:1,offset:.25},{transform:'translate(-50%,-50%) scale(2)',opacity:0}],duration)]);
+ flash.remove();effect.remove();if(epoch!==token)return;
+ floatHearts(0,-ev.damage);battleVisual=copy(ev.state);paintBattle(ev.state);await wait(CONFIG.turnMs===1?1:400);
+}
 function waitBossIntroTap(screen,token){screen.dataset.phase='ready';screen.tabIndex=0;screen.focus({preventScroll:true});return new Promise(resolve=>{const done=()=>{screen.removeEventListener('click',done);screen.removeEventListener('keydown',key);resolve(epoch===token);};const key=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();done();}};screen.addEventListener('click',done);screen.addEventListener('keydown',key);});}
 async function showBossAppearance(enemy,token){mode='boss-intro';const blackout=document.createElement('div');blackout.className='boss-blackout';blackout.setAttribute('aria-hidden','true');app.append(blackout);try{await animateNode(blackout,[{opacity:0},{opacity:1}],CONFIG.bossBlackoutMs,{easing:'linear',fill:'forwards'});if(epoch!==token)return false;await wait(CONFIG.bossDarkHoldMs);}finally{blackout.remove();}if(epoch!==token)return false;sceneTheme();
  app.innerHTML=`<section class="screen boss-intro" data-phase="portrait"><div class="boss-intro-window"><div class="boss-intro-art">${enemy.emoji}</div><div class="boss-intro-message" role="status"></div><div class="boss-intro-abilities">${slots(enemy,null,true)}</div></div></section>`;await animateNode(app.querySelector('.boss-intro-art'),[{opacity:0},{opacity:1}],CONFIG.bossPortraitMs,{fill:'forwards',easing:'linear'});if(epoch!==token)return false;
  const screen=app.querySelector('.boss-intro');screen.dataset.phase='frame';await wait(CONFIG.bossFrameMs);if(epoch!==token)return;const message=screen.querySelector('.boss-intro-message'),text=`${run.floor===10?'ラスボス':'ボス'}　${enemy.name}があらわれた`,characters=Array.from(text),start=performance.now();screen.dataset.phase='message';for(let i=0;i<characters.length;i++){const due=start+(i+1)*CONFIG.bossMessageMs/characters.length;await wait(Math.max(0,due-performance.now()));if(epoch!==token)return false;message.textContent=characters.slice(0,i+1).join('');}
  screen.dataset.phase='slots';for(const slot of screen.querySelectorAll('.slot')){slot.classList.add('revealed');await wait(CONFIG.bossSlotMs);if(epoch!==token)return false;}return waitBossIntroTap(screen,token);}
 async function encounter(raw,boss,mapCell=null){const token=epoch;run.busy=true;run.battles++;const enemy=copy(raw);enemy.boss=boss;enemy.mapCell=mapCell;enemy.poisoned=false;enemy.cursedSlots=[];if(!boss)addScore(mapCell===null?'randomEncounter':'mapEncounter',run.floor<=3?1:run.floor<=7?2:3);if(boss){if(!await showBossAppearance(enemy,token))return;}else{app.querySelector('.dungeon-area')?.classList.add('flash');await wait(CONFIG.encounterFlashMs);if(epoch!==token)return;}battleDraw(enemy,0,'intro',boss?'':'てきが あらわれた！');battleVisual=copy([run.player,enemy]);battleRolls=[[],[]];[0,1].forEach(side=>animateNode(art(side),[{transform:`translate(${side?100:-100}px,${side?-40:40}px) scale(.65)`,opacity:0},{transform:'translate(0,0) scale(1)',opacity:1}],600));await wait(1000);if(epoch!==token)return;if(!boss){battleDraw(enemy,0,'run','バトル スタート！');await fight(enemy,token);return;}battleDraw(enemy,0,'select');const finalBoss=run.floor===10;let n=finalBoss?run.bombs:0;const update=()=>{document.querySelector('#quantity').textContent=n;const up=document.querySelector('#up'),down=document.querySelector('#down');if(up)up.disabled=n>=run.bombs;if(down)down.disabled=n<=0;};if(!finalBoss){document.querySelector('#up').onclick=()=>{n=Math.min(run.bombs,n+1);update();};document.querySelector('#down').onclick=()=>{n=Math.max(0,n-1);update();};}update();document.querySelector('#throw').onclick=async()=>{document.querySelector('#throw').disabled=true;run.bombs-=n;battleDraw(enemy,0,'run',n?`💣 ${n} ダメージ！`:'バトル スタート！');if(n){await flyIcon('💣',app.querySelector('.battle-stock').getBoundingClientRect(),art(1).getBoundingClientRect(),400);if(epoch!==token)return;if(finalBoss)scoreBossHearts(enemy.currentHp,n,enemy.maxHp);enemy.currentHp=Math.max(0,enemy.currentHp-n);hit(1,true);floatHearts(1,-Math.min(n,raw.currentHp));paintBattle([run.player,enemy]);}await wait(350);if(epoch!==token)return;if(enemy.currentHp===0){await finishBattle(enemy,false);return;}await fight(enemy,token);};}
-async function fight(enemy,token){const max=battleTurnLimit(enemy);let foe=enemy;for(let turn=1;turn<=max;turn++){if(epoch!==token)return;app.querySelector('#turn').textContent=turn+'/'+max;const phase=E.resolveTurn(run.player,foe);battleVisual=copy(phase.before);for(const ev of phase.events){await playBattleEvent(ev,token);if(epoch!==token)return;}run.player=phase.after[0];foe={...phase.after[1],boss:enemy.boss,mapCell:enemy.mapCell};paintBattle([run.player,foe]);await wait(CONFIG.turnMs===1?1:CONFIG.betweenTurnsMs);if(epoch!==token)return;if(run.player.currentHp<=0){caption('HPが なくなった');if(await waitBattleTap(token))gameover(false);return;}if(foe.currentHp<=0){await finishBattle(foe,false);return;}if(turn===max){if(foe.boss&&run.floor===10)await meteorGameOver(token);else await finishBattle(foe,true);return;}}}
+async function fight(enemy,token){const max=battleTurnLimit(enemy);let foe=enemy;for(let turn=1;turn<=max;turn++){if(epoch!==token)return;app.querySelector('#turn').textContent=turn+'/'+max;const phase=foe.bossSpecial?B.resolveTurn(run.player,foe):E.resolveTurn(run.player,foe);battleVisual=copy(phase.before);if(foe.bossSpecial)paintBattle(phase.before);for(const ev of phase.events){await playBattleEvent(ev,token);if(epoch!==token)return;}run.player=phase.after[0];foe={...phase.after[1],boss:enemy.boss,mapCell:enemy.mapCell};paintBattle([run.player,foe]);await wait(CONFIG.turnMs===1?1:CONFIG.betweenTurnsMs);if(epoch!==token)return;if(run.player.currentHp<=0){caption('HPが なくなった');if(await waitBattleTap(token))gameover(false);return;}if(foe.currentHp<=0){await finishBattle(foe,false);return;}if(turn===max){if(foe.boss&&run.floor===10)await meteorGameOver(token);else await finishBattle(foe,true);return;}}}
 async function meteorGameOver(token){if(epoch!==token)return;const screen=app.querySelector('.battle-screen');screen.dataset.phase='meteors';screen.classList.add('meteor-shaking');caption('');clearFocus();const sky=document.createElement('div');sky.className='meteor-sky';screen.append(sky);await Promise.all(Array.from({length:28},(_,i)=>{const meteor=document.createElement('span');meteor.className='falling-meteor';meteor.textContent='☄️';Object.assign(meteor.style,{left:((i*37+13)%125)+'%',fontSize:(28+(i%5)*8)+'px'});sky.append(meteor);return animateNode(meteor,[{transform:'translate(0,-20vh)',opacity:0},{transform:'translate(-10vw,25vh)',opacity:1,offset:.3},{transform:'translate(-35vw,125vh)',opacity:1}],900,{delay:i*65,easing:'linear',fill:'forwards'});}));if(epoch!==token)return;await wait(250);if(epoch!==token)return;run.player.currentHp=0;gameover(false,'ダンジョンがくずれた');}
 async function experienceParticles(token){const host=app.querySelector('.battle-fx'),gauge=app.querySelector('.battle-experience .xp-track');if(!host||!gauge)return false;const from=localPoint(1),bounds=host.getBoundingClientRect(),target=center(gauge.getBoundingClientRect()),to={x:target.x-bounds.left,y:target.y-bounds.top};const offsets=[[-22,-12],[-8,-24],[12,-20],[24,-3],[10,16],[-15,13]];
  app.querySelector('.battle-screen').dataset.phase='experience';

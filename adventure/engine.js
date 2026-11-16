@@ -101,7 +101,7 @@
    */
   // This phase resolver preserves the v3 turn order and skill arithmetic.
   // It never awards records, retires a resident, refills NPCs or writes data.
-  function resolveTurn(inputA, inputB, rng = Math.random) {
+  function resolveTurn(inputA, inputB, rng = Math.random, extension = null) {
     const states = [clone(inputA), clone(inputB)];
     const before = clone(states);
     const events = [];
@@ -154,6 +154,13 @@
       actions[side].push({ face, slot });
     }
     rolls.forEach(r => acceptRoll(r.side, r.slot, false));
+    /* ADVENTURE_BOSS_BEGIN */
+    const context = extension ? { states, actions, rolls, rng, emit } : null;
+    if (extension?.afterRoll?.(context) === false) {
+      states.forEach(s => { s.currentHp = clamp(s.currentHp, 0, s.maxHp); });
+      return {before,after:stateList(),rolls,events};
+    }
+    /* ADVENTURE_BOSS_END */
 
     const count = (side, face) => actions[side].filter(a => a.face === face).length;
     const healing = [];
@@ -173,12 +180,18 @@
       healing.push({ side, amount: s.currentHp - oldHp, full, removed, clearedPoison: oldPoison && !s.poisoned });
     });
     if (healing.length) emit("heal", { healing });
+    /* ADVENTURE_BOSS_BEGIN */
+    extension?.heal?.(context);
+    /* ADVENTURE_BOSS_END */
 
     const guards = [count(0, "guard"), count(1, "guard")];
     if (guards.some(Boolean)) emit("guard", { guards });
 
     const attackPower = side => actions[side].reduce((sum, a) => sum + ({ attack1:1, attack2:2, strong:3, ram:4 }[a.face] || 0), 0);
     const powers = [attackPower(0), attackPower(1)];
+    /* ADVENTURE_BOSS_BEGIN */
+    extension?.attack?.(powers, context);
+    /* ADVENTURE_BOSS_END */
     // Reflection intercepts incoming attacks before they can damage the defender.
     // Non-attack losses (poison, drain and ram recoil) are unaffected.
     const counterCounts = [count(0, "counter"), count(1, "counter")];
@@ -249,6 +262,9 @@
       }
     });
 
+    /* ADVENTURE_BOSS_BEGIN */
+    extension?.curse?.(context);
+    /* ADVENTURE_BOSS_END */
     states.forEach(s => { s.currentHp = clamp(s.currentHp, 0, s.maxHp); });
     return {before,after:stateList(),rolls,events};
   }
@@ -448,3 +464,64 @@
   else root.EmojinEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
+/* ADVENTURE_BOSS_MODULE_BEGIN */
+/* Final-boss-only actions. Ordinary skills, main battles and GAS are untouched. */
+(function(root){
+ 'use strict';
+ const E=typeof module!=='undefined'&&module.exports?module.exports:root.EmojinEngine;
+ const CARDS=Object.freeze(['attack','heal','curse','ultimate']);
+ const FACE=Object.freeze({icon:'😈',name:'ひっさつわざ',text:'ラスボスの ひっさつわざ。',special:true});
+ function prepare(legend){
+  const boss=E.clone(legend),slot=boss.slots.findIndex(face=>E.FACES[face]?.special);
+  boss.slots[slot<0?5:slot]='devil';
+  return {...boss,maxHp:40,baseMaxHp:40,currentHp:40,poisoned:false,cursedSlots:[],bossSpecial:true,bossN:1,bossCharged:false,bossEffect:null};
+ }
+ function resolveTurn(player,inputBoss,rng=Math.random){
+  if(!inputBoss.bossSpecial)return E.resolveTurn(player,inputBoss,rng);
+  const boss={...inputBoss,bossEffect:null};let effect=null;
+  return E.resolveTurn(player,boss,rng,{
+   afterRoll({states,actions,rng,emit}){
+    const action=actions[1].find(a=>a.face==='devil');
+    if(!action)return;
+    const foe=states[1],n=foe.bossN,wasCharged=foe.bossCharged,card=E.index(rng,4);
+    const kind=card===3?(wasCharged?'ultra':'charge'):CARDS[card];
+    effect={kind,n,card,slot:action.slot,wasCharged};
+    foe.bossN=n+1;foe.bossEffect=effect;
+    if(card===3)foe.bossCharged=!wasCharged;
+    emit('bossDraw',{effect});
+    if(kind==='ultra'){
+     const hp=states[0].currentHp;states[0].currentHp=Math.max(0,hp-10);
+     emit('bossUltra',{effect,damage:Math.min(10,Math.max(0,hp))});
+     if(states[0].currentHp===0)return false;
+    }
+   },
+   heal({states,rng,emit}){
+    if(effect?.kind!=='heal')return;
+    const s=states[1],oldHp=s.currentHp,clearedPoison=s.poisoned,removed=[];
+    s.currentHp=Math.min(s.maxHp,s.currentHp+effect.n);s.poisoned=false;
+    if(s.cursedSlots.length){const slot=s.cursedSlots[E.index(rng,s.cursedSlots.length)];removed.push(slot);s.cursedSlots=s.cursedSlots.filter(i=>i!==slot);}
+    emit('heal',{healing:[{side:1,amount:s.currentHp-oldHp,full:false,removed,clearedPoison,boss:true}]});
+   },
+   attack(powers){if(effect?.kind==='attack')powers[1]+=effect.n;},
+   curse({states,rng,emit}){
+    if(effect?.kind!=='curse')return;
+    const selected=E.sample([0,1,2,3,4,5],effect.n,rng),added=selected.filter(slot=>!states[0].cursedSlots.includes(slot));
+    states[0].cursedSlots=[...new Set([...states[0].cursedSlots,...selected])].sort((a,b)=>a-b);
+    emit('curseApply',{side:1,target:0,selected,added,boss:true});
+   }
+  });
+ }
+ function ultimateIcon(ready){
+  const outer=ready?'#ee4763':'#a96b28',middle=ready?'#b22152':'#d89530',light=ready?'#fff3da':'#ffe4a3';
+  const shape=ready?'M24 1 29 10 39 6 37 17 47 22 38 28 42 40 30 37 24 47 18 37 6 41 10 29 1 24 10 18 6 7 18 10Z':'M19 5H29V9H36V16H41V32H36V39H29V43H19V39H12V32H7V16H12V9H19Z';
+  return `<svg class="boss-ultimate-icon" data-state="${ready?'ultra':'charge'}" viewBox="0 0 48 48" role="img" aria-label="${ready?'ちょうひっさつ 10':'チャージ'}" shape-rendering="crispEdges"><path d="${shape}" fill="${outer}"/><path d="M20 10H28V15H34V20H38V29H33V34H28V39H20V34H15V29H11V20H15V15H20Z" fill="${middle}"/><path d="M17 16 22 20H26L31 16V23L35 27 30 34H18L13 27 17 23Z" fill="${light}"/><path d="M17 24H22V27H17ZM26 24H31V27H26ZM21 30H27V32H21Z" fill="${ready?'#7b1238':'#754015'}"/>${ready?'<path d="M25 4 18 18H24L20 28 32 13H26L31 4Z" fill="#fff6ed"/><text x="48" y="47" text-anchor="end" font-size="15" font-family="monospace" font-weight="bold" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke" shape-rendering="auto">10</text>':'<path d="M2 21H6V27H2ZM42 21H46V27H42ZM20 0H28V3H20ZM20 45H28V48H20Z" fill="#edba5c"/>'}</svg>`;
+ }
+ function icon(effect){
+  if(!effect)return '<span>😈</span>';
+  if(effect.kind==='charge'||effect.kind==='ultra')return ultimateIcon(effect.kind==='ultra');
+  return `<span>${{attack:'⚔️',heal:'🧪',curse:'☠️'}[effect.kind]}</span><span class="ability-value">${effect.n}</span>`;
+ }
+ const api={CARDS,FACE,prepare,resolveTurn,ultimateIcon,icon};
+ E.Boss=api;
+})(typeof globalThis!=='undefined'?globalThis:this);
+/* ADVENTURE_BOSS_MODULE_END */

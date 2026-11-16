@@ -27,7 +27,7 @@ test('exact requested symbols, weights, line payouts, frozen tables and unchange
  assert.deepEqual(plain(S.CONFIG.symbols.map(s=>s.weight)),weights);
  assert.deepEqual(plain(S.CONFIG.symbols.map(s=>s.payout)),payouts);
  assert.equal(weights.reduce((n,x)=>n+x,0),100);assert.equal(S.BET,8);
- assert.equal(S.byId.berry.emoji,'🍇');assert.equal(S.CONFIG.lines.length,8);
+ assert.equal(S.byId.berry.emoji,'🫐');assert.equal(S.CONFIG.lines.length,8);
  assert.deepEqual(plain(S.CONFIG.freeCounts),[{count:4,weight:40},{count:5,weight:30},{count:7,weight:20},{count:10,weight:8},{count:20,weight:2}]);
  assert.ok(Object.isFrozen(S.CONFIG.anyBonus.cherry));
 });

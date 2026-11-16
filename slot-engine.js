@@ -11,7 +11,7 @@ const CONFIG=Object.freeze({
     {id:'gift',emoji:'🎁',weight:6,payout:64,name:'BAR'},
     {id:'bell',emoji:'🔔',weight:9,payout:32,name:'ベル'},
     {id:'melon',emoji:'🍉',weight:11,payout:16,name:'スイカ'},
-    {id:'berry',emoji:'🍇',weight:13,payout:8,name:'グレープ'},
+    {id:'berry',emoji:'🫐',weight:13,payout:8,name:'ブルーベリー'},
     {id:'orange',emoji:'🍊',weight:15,payout:4,name:'オレンジ'},
     {id:'cherry',emoji:'🍒',weight:18,payout:2,name:'チェリー'},
     {id:'blank',emoji:'',weight:21.5,payout:0,name:'ブランク'}

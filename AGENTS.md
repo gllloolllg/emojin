@@ -1,6 +1,7 @@
 # エモジンの開発方針
 
 - ミニゲーム「エモジンのぼうけん」は [docs/ADVENTURE.md](docs/ADVENTURE.md)。はじめるで100モジ、wallet/receiptで二重課金防止、元個体を変更しない。ランキングのFirestoreルールを先に適用し、確認後にフロントを公開する。
+- 周回は [docs/ADVENTURE_LOOPS.md](docs/ADVENTURE_LOOPS.md)。ラスボス撃破後に宝箱で通常枠1つを強制置換し、状態・課金IDを維持して11階以降へ続く。周回倍率を得点カウンターへ積算し、保存世代3・既存ルールを維持。ランキングのfloor欠落は表示時のみ10で補完する。
 
 - ファイルの担当は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。スロットの抽選・配当の正本は `slot-engine.js`。画面と共通ウォレット保存は `app.js`。必須JSを増やす場合はindex.htmlの読み込み順・SWのCORE・シェル名クエリとPWAテストを揃える。
 

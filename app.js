@@ -1008,6 +1008,7 @@ async function createCloud() {
       const sent=await enqueue('adventureResult',data,id);
       return (sent.results?.[id]||await retry(()=>writeOperation({action:'adventureResult',data,id}))).record;
     },
+    async adventureLegend(){return adventureStore().prepareLegend();},
     async adventureRankings(){return adventureStore().rankings();},
     async adventurePersonal(){await ensureWallet();await flush();const snap=await F.getDocFromServer(walletRef());applyAccount(snap.data());return snap.data().adventureScoresV3||[];},
     takeUpgradeNotice(){const message=local.upgradeNotice;delete local.upgradeNotice;persist();return message;},
@@ -2384,7 +2385,7 @@ function showAdventure(){
 }
 function installAdventureHost(){window.EmojinAdventureHost={
  status(){return {uid:cloud.uid,name:cloud.player?.name,balance:cloud.wallet.balance,hasPlayer:!!store?.emojins?.some(e=>e.ownerUid===cloud.uid&&!e.isNpc&&e.status==='active')};},
- start:id=>cloud.startAdventure(id),save:result=>cloud.saveAdventureResult(result),rankings:()=>cloud.adventureRankings(),personal:()=>cloud.adventurePersonal(),
+ start:id=>cloud.startAdventure(id),save:result=>cloud.saveAdventureResult(result),rankings:()=>cloud.adventureRankings(),personal:()=>cloud.adventurePersonal(),legend:()=>cloud.adventureLegend(),
  exit(){adventureFrame?.remove();adventureFrame=null;document.body.classList.remove('adventure-open');$('cityScreen').inert=false;refreshNav();$('adventureButton')?.focus();}
 };}
 function installSlotButton(){

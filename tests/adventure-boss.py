@@ -82,7 +82,7 @@ async def main():
     }''')
     await frame.locator('[data-phase="awaiting-tap"]').wait_for(timeout=15000)
     assert await frame.locator('body').evaluate('()=>run.score')==15400
-    await frame.locator('.battle-screen').tap();await frame.locator('.gameover h1').filter(has_text='GAME CLEAR').wait_for()
+    await frame.locator('.battle-screen').tap();await frame.locator('.lap-clear h1').filter(has_text='GAME CLEAR').wait_for();assert await page.evaluate('savedResults.length')==0
     assert await page.evaluate('own.currentHp')==7
     assert not errors,errors
     await ctx.close()

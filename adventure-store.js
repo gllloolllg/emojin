@@ -3,7 +3,7 @@
 'use strict';
 const COST=100,VERSION=3,WEIGHTS={mobHp:400,bomb:100,heart:100,chest:300,fullheal:300,midboss:1000,floor:500,bossHeart:100,randomEncounter:300,mapEncounter:500,level:1000};
 function validateResult(r){
- if(!r||r.version!==VERSION||typeof r.id!=='string'||!/^adventure-[a-zA-Z0-9-]{1,80}$/.test(r.id)||!Number.isSafeInteger(r.score)||r.score<0||!Number.isInteger(r.floor)||r.floor<1||r.floor>10||!Number.isInteger(r.level)||r.level<1||typeof r.clear!=='boolean'||(r.clear&&r.floor!==10))throw Error('スコアの内容を確認してください。');
+ if(!r||r.version!==VERSION||typeof r.id!=='string'||!/^adventure-[a-zA-Z0-9-]{1,80}$/.test(r.id)||!Number.isSafeInteger(r.score)||r.score<0||!Number.isSafeInteger(r.floor)||r.floor<1||!Number.isInteger(r.level)||r.level<1||typeof r.clear!=='boolean'||(r.clear&&r.floor%10!==0))throw Error('スコアの内容を確認してください。');
  if(!r.events||Object.keys(r.events).some(k=>!Object.hasOwn(WEIGHTS,k)))throw Error('スコアの集計が不正です。');
  let total=0;for(const [key,weight] of Object.entries(WEIGHTS)){const n=r.events[key]??0;if(!Number.isSafeInteger(n)||n<0)throw Error('スコアの集計が不正です。');total+=n*weight;}if(total!==r.score||!Number.isSafeInteger(total))throw Error('スコアが一致しません。');return r;
 }
@@ -19,6 +19,7 @@ function createStore({E,F,db,ref,receiptRef,nextAccount,requireMatchRules,getUid
   const all=legends.docs.map(d=>d.data());const pick=arr=>arr[Math.floor(Math.random()*arr.length)];
   return {playerId:pick(own).id,legendId:all.length?pick(all).id:null};
  }
+ async function prepareLegend(){const snap=await F.getDocsFromServer(F.query(F.collection(db,'emojins'),F.where('status','==','legend')));const all=snap.docs.map(d=>d.data());return all.length?snapshot(all[Math.floor(Math.random()*all.length)],40):null;}
  async function write(tx,accountRef,account,op){
   const uid=getUid(),receipt=receiptRef(op.id),prior=await tx.get(receipt);if(prior.exists())return {ok:true,record:prior.data(),account};
   await requireMatchRules(tx);
@@ -48,7 +49,7 @@ function createStore({E,F,db,ref,receiptRef,nextAccount,requireMatchRules,getUid
   return {ok:true,record,account:next};
  }
  async function rankings(){const snap=await F.getDocsFromServer(F.query(F.collection(db,'adventureScoresV3'),F.orderBy('score','desc'),F.limit(10)));const records=snap.docs.flatMap(d=>{const player=d.data();return (Array.isArray(player.entries)?player.entries:[player]).map(r=>({...r,uid:player.uid,name:player.name}));});return records.sort((a,b)=>b.score-a.score||(a.uid<b.uid?-1:a.uid>b.uid?1:0)||a.finishedAt-b.finishedAt||a.runId.localeCompare(b.runId)).slice(0,10);}
- return {prepareStart,write,rankings};
+ return {prepareStart,prepareLegend,write,rankings};
 }
 root.AdventureStore={COST,VERSION,WEIGHTS,validateResult,snapshot,createStore};
 })(globalThis);

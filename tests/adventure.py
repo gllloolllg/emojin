@@ -11,6 +11,7 @@ const priorState=mockCloud.getState;mockCloud.getState=async()=>({...await prior
 window.starts=[];window.savedResults=[];window.failStart=false;window.failResult=false;
 mockCloud.startAdventure=async id=>{starts.push(id);if(failStart)throw Error('つうしんエラー');const key='test.'+id;if(localStorage.getItem(key))return JSON.parse(localStorage.getItem(key));if(mockCloud.wallet.balance<100)throw Error('ざんだか ぶそく');mockCloud.wallet.balance-=100;const record={runId:id,player:AdventureStore.snapshot(own),legend};localStorage.setItem(key,JSON.stringify(record));return record;};
 mockCloud.saveAdventureResult=async result=>{savedResults.push(result);if(failResult)throw Error('つうしんエラー');AdventureStore.validateResult(result);return {best:true,score:result.score}};
+window.legendDraws=0;mockCloud.adventureLegend=async()=>{legendDraws++;return {...legend,id:'legend-'+legendDraws,name:'べつのレジェンド'+legendDraws};};
 mockCloud.adventurePersonal=async()=>[{score:123456,name:'me'}];mockCloud.adventureRankings=async()=>[{score:999999,name:'<img src=x>'},{score:123456,name:'me'}];
 '''
 async def check_grid(frame,board,cell):

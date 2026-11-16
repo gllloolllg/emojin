@@ -342,13 +342,13 @@ test('adventure saves personal top ten and one public best atomically; retries a
  await env.withSecurityRulesDisabled(async context=>{const d=context.firestore(),w=doc(d,'wallets/u1');await setDoc(w,{...(await getDoc(w)).data(),wallet:{balance:5000,updatedAt:Date.now()}});});
  for(let i=0;i<12;i++){
   const id='adventure-run-'+i;await c.write('adventureStart',id,{playerId:'a',legendId:null});
-  const result={id,version:3,score:i*100,floor:1,level:1,clear:false,events:{heart:i}};
+  const result={id,version:3,score:i*100,floor:i===11?31:1,level:1,clear:false,events:{heart:i}};
   const saved=await c.write('adventureResult',id+'-result',{result});assert.equal(saved.record.best,true);
   const again=await c.write('adventureResult',id+'-result',{result});assert.deepEqual(plain(saved.record),plain(again.record));
  }
  const wallet=(await getDoc(doc(db,'wallets/u1'))).data();assert.equal(wallet.adventureScoresV3.length,10);assert.equal(wallet.adventureScoresV3[0].score,1100);
  const board=(await getDoc(doc(db,'adventureScoresV3/u1'))).data();assert.equal(board.name,'Owner');assert.equal(board.score,1100);
- assert.equal(board.entries.length,10);const ranking=await c.service.rankings();assert.equal(ranking.length,10);assert.equal(ranking[0].score,1100);assert.equal(ranking[1].score,1000);assert(ranking.every(r=>r.uid==='u1'));
+ assert.equal(board.entries.length,10);assert.equal(board.entries[0].floor,31);assert.equal(wallet.adventureScoresV3[0].floor,31);const ranking=await c.service.rankings();assert.equal(ranking.length,10);assert.equal(ranking[0].score,1100);assert.equal(ranking[1].score,1000);assert(ranking.every(r=>r.uid==='u1'));
  await env.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'adventureScoresV3/u2'),{uid:'u2',name:'Other',version:3,score:5000,runId:'adventure-legacy',finishedAt:1});});
  const mixed=await c.service.rankings();assert.equal(mixed.length,10);assert.equal(mixed[0].name,'Other');assert.equal(mixed.filter(r=>r.uid==='u1').length,9);
 
@@ -369,5 +369,5 @@ test('adventure rejects forged score totals and unpaid results without changing 
 test('adventure draw includes legends beyond 200 and excludes dead, NPC and foreign player starts',async()=>{
  await env.withSecurityRulesDisabled(async context=>{const db=context.firestore(),batch=writeBatch(db);for(let i=0;i<230;i++){const id='legend-'+String(i).padStart(3,'0');batch.set(doc(db,'emojins',id),{...resident(id,'u2'),status:'legend',stars:50});}batch.set(doc(db,'emojins/npc'),{...resident('npc','u1'),isNpc:true});await batch.commit();});
  const db=env.authenticatedContext('u1').firestore(),c=adventureClient(db);vm.runInContext('Math.random=()=>0.999999',ctx);
- try{const draw=await c.service.prepareStart();assert.equal(draw.playerId,'a');assert.equal(draw.legendId,'legend-229');}finally{vm.runInContext('Math.random=()=>0.5',ctx);}
+ try{const draw=await c.service.prepareStart();assert.equal(draw.playerId,'a');assert.equal(draw.legendId,'legend-229');const next=await c.service.prepareLegend();assert.equal(next.name,'legend-229');assert.equal(next.maxHp,40);}finally{vm.runInContext('Math.random=()=>0.5',ctx);}
 });

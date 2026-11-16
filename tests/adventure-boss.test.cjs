@@ -7,7 +7,7 @@ const draw=(p,b,card)=>B.resolveTurn(p,b,sequence(0,0,(card+.1)/4,0));
 test('final boss copies only the legend special slot, preserves identity and five ordinary slots',()=>{
  const source={...player(),name:'とてもながい レジェンド名',emoji:'🐦‍🔥',slots:['attack2','guard','drain','counter','heal','blank']},before=E.clone(source),b=B.prepare(source);
  assert.deepEqual(source,before);assert.equal(b.name,source.name);assert.equal(b.emoji,source.emoji);assert.deepEqual(b.slots,['attack2','guard','devil','counter','heal','blank']);assert.equal(b.maxHp,40);assert.equal(b.bossN,1);assert.equal(b.bossCharged,false);
- assert.equal(E.FACES.drain.value,2);assert.equal(E.FACES.ram.value,4);assert.equal(E.FACES.devil,undefined);
+ assert.equal(E.FACES.drain.value,1);assert.equal(E.FACES.ram.value,4);assert.equal(E.FACES.devil,undefined);
 });
 test('boss actions use four equal probability ranges and increment n only on a valid devil draw',()=>{
  for(const [value,kind] of [[0,'attack'],[.249999,'attack'],[.25,'heal'],[.499999,'heal'],[.5,'curse'],[.749999,'curse'],[.75,'charge'],[.999999,'charge']]){
@@ -19,7 +19,7 @@ test('boss attack n runs through ordinary guard, counter and simultaneous attack
  const guarded=draw(player('guard'),boss(3),0);assert.equal(guarded.after[0].currentHp,6);assert.equal(guarded.events.find(e=>e.type==='impact').attacks[0].blocked,1);
  const reflected=draw(player('counter'),boss(5),0);assert.equal(reflected.after[0].currentHp,8);assert.equal(reflected.after[1].currentHp,35);assert.equal(reflected.events.find(e=>e.type==='counter').counters[0].damage,5);
  const ram=draw(player('ram'),boss(2),0);assert.equal(ram.after[0].currentHp,4);assert.equal(ram.after[1].currentHp,36);
- const drain=draw(player('drain'),boss(2),0);assert.equal(drain.after[0].currentHp,8);assert.equal(drain.after[1].currentHp,38);
+ const drain=draw(player('drain'),boss(2),0);assert.equal(drain.after[0].currentHp,7);assert.equal(drain.after[1].currentHp,39);
 });
 test('boss healing happens in the normal healing phase, up to HP40, cleans poison and one curse',()=>{
  const b=boss(4);b.currentHp=39;b.poisoned=true;b.cursedSlots=[3,4];
@@ -48,8 +48,8 @@ test('charge icons have no number, powered ultra has ten, selected charge remain
  assert(!B.icon({kind:'charge',n:5}).includes('<text'));assert(B.icon({kind:'ultra',n:5}).includes('>10</text>'));assert(!B.icon({kind:'charge',n:5}).includes('😈'));assert(B.icon({kind:'attack',n:5}).includes('>5</span>'));
  const r=draw(player(),boss(),3);assert.equal(r.after[1].bossEffect.kind,'charge');assert(B.icon(r.after[1].bossEffect).includes('data-state="charge"'));assert(r.after[1].bossCharged);
 });
-test('deferred drain and ram balance changes are not applied, including golden HP recovery',()=>{
+test('drain1 and counter-only recoil waiver also apply in final-boss fights',()=>{
  const p=player('drain');p.baseMaxHp=6;p.maxHp=11;p.currentHp=6;
- const drained=B.resolveTurn(p,boss(),sequence(0,.2));assert.equal(drained.after[0].currentHp,8);assert.equal(drained.after[1].currentHp,38);
- const b=boss();b.slots[1]='counter';const reflected=B.resolveTurn(player('ram'),b,sequence(0,.2));assert.equal(reflected.after[0].currentHp,2);
+ const drained=B.resolveTurn(p,boss(),sequence(0,.2));assert.equal(drained.after[0].currentHp,6);assert.equal(drained.after[1].currentHp,39);
+ const b=boss();b.slots[1]='counter';const reflected=B.resolveTurn(player('ram'),b,sequence(0,.2));assert.equal(reflected.after[0].currentHp,4);
 });

@@ -9,6 +9,7 @@
 
 - まず [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) の仕様・確認状況を読む。実装と依頼の差異は報告し、独断で仕様を変更しない。
 - 最大10ターン方式は [docs/MATCH_V4.md](docs/MATCH_V4.md) を優先する。共通エンジン変更後は `node scripts/sync-gas-engine.cjs` と `--check` を行う。移行はプレビュー提示・対象確認後に実行し、ゲートで旧クライアントの書き込みを防ぐ。
+- 吸血1・反射時の体当たり反動免除と、ミニゲームの吸血回復上限は [docs/SKILL_BALANCE.md](docs/SKILL_BALANCE.md)。GASのEngine.gs保存を確認してからフロントを公開する。過去ログ・個体・得点は移行しない。
 - 💀5個以上でボチの最新仕様は [docs/FIVE_DEFEATS.md](docs/FIVE_DEFEATS.md)。DEFEAT_LIMIT=5、config/battleと新ログのdefeatLimit=5を揃える。既存activeの💀5〜9は次に💀を獲得するまで生存し、勝利・同点では退場させない。個数は切り捨てず、過去のボチは維持する。旧3/10個方式の新規保存を拒否する。
 - スマホでのユーザー体験、軽さ、シンプルなファイル構成を優先する。依頼なしに大幅なリファクタリング、フレームワーク、ビルド工程を導入しない。
 - 通常の修正は作業ブランチで行う。既存の変更を保護し、変更内容・実施した確認・未確認事項を提示する。クラウドの既存チェックアウトを使い、明示的な依頼なしに Git worktree を作らない。

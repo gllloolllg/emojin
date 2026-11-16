@@ -12,8 +12,8 @@ const resident=(id,face='blank',extra={})=>({id,name:id,emoji:'🐸',ownerName:i
 const match=(a,b,rng=()=>0)=>E.battle(a,b,rng,100000,'b-fixed');
 
 for(const [label,old] of [['browser',require('./fixtures/rules-v3-engine.cjs')],['deployed GAS',require('./fixtures/deployed-gas-v3-engine.cjs')]])
-test('1000 seeded turn comparisons preserve '+label+' v3 phase events and arithmetic',()=>{
- const faces=Object.keys(E.FACES);
+test('1000 seeded comparisons preserve '+label+' unchanged skills and phase order',()=>{
+ const faces=Object.keys(E.FACES).filter(face=>!['drain','ram'].includes(face));
  for(let seed=0;seed<1000;seed++){
   const rng=E.seeded(seed);
   const pair=['a','b'].map(id=>resident(id,'blank',{currentHp:1+Math.floor(rng()*8),stars:4,poisoned:rng()<.5,

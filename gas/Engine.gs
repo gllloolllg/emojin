@@ -20,8 +20,8 @@
     counter: { icon: "↩️", name: "カウンター", text: "攻撃ダメージを無効にし、同じ量のダメージを相手に与える。", color: "blue" },
     poison: { icon: "🦠", name: "毒", text: "相手を毒にする。次のターン開始時に1ダメージ。1/3で解除。", color: "green", special: true },
     strong: { icon: "💥", value: 3, name: "強攻撃", text: "相手に3ダメージ。攻撃として扱う。", color: "amber", special: true },
-    drain: { icon: "🦇", value: 2, name: "吸血", text: "相手の♡を最大2奪い、その分だけ回復する。", color: "pink", special: true },
-    ram: { icon: "🦬", value: 4, name: "体当たり", text: "相手に4ダメージ自分にも2ダメージ。攻撃扱いなのでカウンターを食らうと最悪。", color: "amber", special: true },
+    drain: { icon: "🦇", value: 1, name: "吸血", text: "相手の♡を最大1奪い、その分だけ元の最大HPまで回復する。防御やカウンターの影響をうけない。", color: "pink", special: true },
+    ram: { icon: "🦬", value: 4, name: "体当たり", text: "相手に4ダメージ、自分にも2ダメージ。カウンターされたときは反動を受けず、反射ダメージだけを受ける。", color: "amber", special: true },
     twin: { icon: "🎲", twin: true, name: "ツイン", text: "さらに2個抽選する。その際のツインはハズレ扱い。", color: "violet", special: true },
     fullheal: { icon: "💖", name: "全回復", text: "♡を最大まで回復する。毒と呪いは残る。", color: "pink", special: true },
     curse: { icon: "☠️", name: "呪い", text: "スロットを3つ呪う。呪われた目が出ると効果は無効、そのスロットの呪いが消える。", color: "violet", special: true }
@@ -180,16 +180,16 @@
     const attackPower = side => actions[side].reduce((sum, a) => sum + ({ attack1:1, attack2:2, strong:3, ram:4 }[a.face] || 0), 0);
     const powers = [attackPower(0), attackPower(1)];
     // Reflection intercepts incoming attacks before they can damage the defender.
-    // Non-attack losses (poison, drain and ram recoil) are unaffected.
+    // Poison and drain bypass reflection; a countered ram has no recoil.
     const counterCounts = [count(0, "counter"), count(1, "counter")];
     const reflected = [0, 1].map(side => counterCounts[side] ? powers[1-side] : 0);
     const received = [0, 1].map(side => counterCounts[side] ? 0 : Math.max(0, powers[1-side] - guards[side]));
-    const selfDamage = [count(0,"ram") * 2, count(1,"ram") * 2];
+    const selfDamage = [0,1].map(side => count(side,"ram") * (counterCounts[1-side] ? 0 : 2));
     const impactHp = states.map(s => s.currentHp);
     // Drain uses actual available HP at the start of this simultaneous phase.
     const drained = [
-      Math.min(Math.max(0, impactHp[1]), count(0,"drain") * 2),
-      Math.min(Math.max(0, impactHp[0]), count(1,"drain") * 2)
+      Math.min(Math.max(0, impactHp[1]), count(0,"drain")),
+      Math.min(Math.max(0, impactHp[0]), count(1,"drain"))
     ];
     const attacks = [];
     [0,1].forEach(side => {

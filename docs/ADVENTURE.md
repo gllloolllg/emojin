@@ -11,7 +11,7 @@
 ## ファイル
 - `adventure/` は最終試遊版（2026-11-13 / standalone 0461d1c）を基礎に、本番用HOSTアダプターを接続した静的画面。
 - `adventure-store.js` は開始・スコアの共通ウォレット処理。`createCloud` の既存writeOperationから呼ぶ。
-- `adventure/engine.js` はapp.js純エンジンを基礎に、既存の全回復の `baseMaxHp` 上限とラスボス専用拡張点だけを持つ。普通の能力計算は同一で、有効化済みの金ハートを減らさない。末尾の `EmojinEngine.Boss` が😈専用の計算とアイコンを担当。通常メイン/GASのエンジンは変更しない。
+- `adventure/engine.js` はapp.js純エンジンを基礎に、全回復・吸血の `baseMaxHp` 上限とラスボス専用拡張点を持つ。その他の能力計算は共通で、有効化済みの金ハートを減らさない。末尾の `EmojinEngine.Boss` が😈専用の計算とアイコンを担当。吸血1・反射時の体当たり反動免除の反映状況は [SKILL_BALANCE.md](SKILL_BALANCE.md) を参照。
 - PWAのCOREに全ファイルを含め、キャッシュ名前空間を分ける。iframeを開いている間はEmojinCanReload=false。
 
 ## スコア v3

@@ -15,7 +15,7 @@ const source=fs.readFileSync('app.js','utf8'),c={};vm.createContext(c);vm.runInC
 const e=(id,face='blank',extra={})=>({id,name:id,emoji:'🐸',ownerUid:id,ownerName:id,isNpc:false,maxHp:8,currentHp:8,stars:0,defeats:0,rulesVersion:4,recordVersion:0,status:'active',poisoned:false,cursedSlots:[],slots:Array(6).fill(face),createdAt:1,endedAt:null,...extra});
 // Historical same-owner logs must remain replayable after new pair selection changes.
 const a=E.battle(e('skip-a','strong',{ownerUid:'historical-owner'}),e('skip-b','blank',{ownerUid:'historical-owner'}),E.seeded(1),1000,'skip');
-const legacy=old.battle(e('old-a','attack1'),e('old-b'),old.seeded(1),1001);legacy.battleId='old';
+const legacy=old.battle(e('old-a','drain'),e('old-b','counter'),old.seeded(1),1001);legacy.battleId='old';
 const draw=E.battle(e('draw-a'),e('draw-b'),E.seeded(1),1002,'draw');
 const award=E.battle(e('award-a','strong',{stars:49,defeats:9}),e('award-b','blank',{defeats:Number(process.env.EMOJIN_TEST_PRIOR||4)}),E.seeded(1),1003,'award');
 const logs=[a,legacy,draw,award].map((l,i)=>({...l,seq:i+1}));
@@ -140,6 +140,7 @@ async def main():
    assert defeats[0]==PRIOR and defeats[-1]==PRIOR+1 and max(defeats)==PRIOR+1
    assert all(s['defeats']==9 for p in award for s in p['states'] if s['id']=='award-a')
    assert any(p['id']=='old' for p in audit['paint'])
+   assert any(s['id']=='old-b' and s['currentHp']==6 for p in audit['paint'] if p['id']=='old' for s in p['states']), 'Historical drain2 HP must not be recalculated as drain1'
    assert await page.evaluate("localStorage.getItem('emojin.battleSpeed')")=='4'
    for speed in [6,8]:
     await page.evaluate("speed=>localStorage.setItem('emojin.battleSpeed',String(speed))",speed)

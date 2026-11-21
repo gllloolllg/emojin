@@ -6,7 +6,7 @@ const CONFIG=Object.freeze({
   maxBet:400,
   lineBet:1,
   symbols:Object.freeze([
-    {id:'wild',emoji:'🤡',weight:2.5,payout:256,name:'ワイルド'},
+    {id:'wild',emoji:'🤡',weight:3,payout:256,name:'ワイルド'},
     {id:'smile',emoji:'😄',weight:4,payout:128,name:'7'},
     {id:'gift',emoji:'🎁',weight:6,payout:64,name:'BAR'},
     {id:'bell',emoji:'🔔',weight:9,payout:32,name:'ベル'},
@@ -14,7 +14,7 @@ const CONFIG=Object.freeze({
     {id:'berry',emoji:'🫐',weight:13,payout:8,name:'ブルーベリー'},
     {id:'orange',emoji:'🍊',weight:15,payout:4,name:'オレンジ'},
     {id:'cherry',emoji:'🍒',weight:18,payout:2,name:'チェリー'},
-    {id:'blank',emoji:'',weight:21.5,payout:0,name:'ブランク'}
+    {id:'blank',emoji:'',weight:21,payout:0,name:'ブランク'}
   ].map(Object.freeze)),
   anyBonus:Object.freeze(Object.fromEntries(Object.entries({
     cherry:{4:4,5:8,6:40,7:160,8:800,9:4000},
